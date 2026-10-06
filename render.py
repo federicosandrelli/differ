@@ -61,6 +61,7 @@ kbd { font: 11px var(--mono); background: var(--bg3); border: 1px solid var(--li
 #side .head .meta { color: var(--fg2); font-size: 12px; }
 #side .controls { padding: 8px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
 #side .list { overflow-y: auto; flex: 1; padding-bottom: 24px; }
+#side .notice { padding: 8px 16px 2px; font-size: 11.5px; color: var(--fg3); }
 #side .searchbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
 #side .search { flex: 1; font: 12.5px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; outline: none; min-width: 0; }
 #side .search:focus { border-color: var(--accent); }
@@ -206,7 +207,7 @@ if (rest.length) GROUPS.push({ title: 'Other', description: '', files: rest });
 const ORDER = GROUPS.flatMap(g => g.files);
 
 const state = {
-  view: 'overview', filter: 'implementation', whole: false, side: 'tree', closed: new Set(), q: '',
+  view: 'overview', filter: 'implementation', whole: false, side: 'tree', closed: new Set(), q: '', showImportOnly: false,
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -453,9 +454,14 @@ function markHtml(html, q) {
     return out + part.slice(i);
   }).join('');
 }
+function importOnly(f) {
+  const classes = Object.keys(f.stats.by_class);
+  return f.stats.substantive === 0 && classes.length > 0 && classes.every(c => c === 'import');
+}
+function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 function visibleFiles() {
   const base = state.side === 'tree' ? [...FILES].sort((x, y) => x.path.localeCompare(y.path)) : ORDER;
-  return base.filter(f => (state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test')) && matches(f));
+  return base.filter(f => kindVisible(f) && matches(f) && (state.showImportOnly || state.q || !importOnly(f)));
 }
 
 // A renamed file kept its directory; a moved one left it. Git reports both as R.
@@ -541,9 +547,17 @@ function renderSide() {
       ${state.side === 'tree' ? `<span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>` : ''}
       <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview · <kbd>/</kbd> search</span></div>
     <div class="searchbar"><input type="search" class="search" placeholder="Search file names and changed lines" value="${esc(state.q)}" spellcheck="false"><span class="hint" id="searchmeta"></span></div>
-    <div class="list">${renderList()}</div><div class="grip"></div>`;
+    <div class="list">${importOnlyNotice()}${renderList()}</div><div class="grip"></div>`;
+  const prev = document.querySelector('#side .list');
+  const scroll = prev ? prev.scrollTop : 0;
   document.getElementById('side').innerHTML = h;
+  document.querySelector('#side .list').scrollTop = scroll;
   updateSearchMeta();
+}
+function importOnlyNotice() {
+  const n = FILES.filter(f => kindVisible(f) && importOnly(f)).length;
+  if (!n || state.q) return '';
+  return `<div class="notice">${state.showImportOnly ? `Showing ${n} file${n > 1 ? 's' : ''} with import-only changes` : `${n} file${n > 1 ? 's' : ''} with import-only changes hidden`} · <a href="#" data-importonly="${state.showImportOnly ? '0' : '1'}">${state.showImportOnly ? 'hide' : 'show'}</a></div>`;
 }
 function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
@@ -555,7 +569,8 @@ function renderList() {
   if (state.side === 'tree') return renderTree();
   let h = '';
   for (const g of GROUPS) {
-    const files = g.files.filter(f => (state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test')) && matches(f));
+    const shown = new Set(visibleFiles().map(f => f.path));
+    const files = g.files.filter(f => shown.has(f.path));
     if (!files.length) continue;
     const sub = files.reduce((a, f) => a + f.stats.substantive, 0), raw = files.reduce((a, f) => a + f.stats.raw, 0);
     h += `<div class="group"><h2><span>${esc(g.title)}</span><span class="n">${fmt(sub)}${sub !== raw ? ` <span style="opacity:.6">/ ${fmt(raw)}</span>` : ''}</span></h2>`;
@@ -683,7 +698,7 @@ function go(path, line) {
 }
 
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-side],[data-tree],[data-folder],[data-show],[data-whole],[data-review],[data-nav],[data-fold],[data-runs],[data-run],[data-line]');
+  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-side],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-nav],[data-fold],[data-runs],[data-run],[data-line]');
   if (!t) return;
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); render(); return; }
   if (t.dataset.go) { go('overview'); return; }
@@ -696,6 +711,7 @@ document.addEventListener('click', (e) => {
   }
   if (t.dataset.filter) { state.filter = t.dataset.filter; render(); return; }
   if (t.dataset.side) { state.side = t.dataset.side; try { localStorage.setItem('dr:side', state.side); } catch {} render(); return; }
+  if (t.dataset.importonly !== undefined) { e.preventDefault(); state.showImportOnly = t.dataset.importonly === '1'; try { localStorage.setItem('dr:import-only', state.showImportOnly ? '1' : '0'); } catch {} renderSide(); return; }
   if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
   if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); renderSide(); return; }
   if (t.dataset.show) { state.show[t.dataset.show] = !state.show[t.dataset.show]; render(); return; }
@@ -708,7 +724,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('input', (e) => {
   if (!e.target.classList.contains('search')) return;
   state.q = e.target.value.trim();
-  document.querySelector('#side .list').innerHTML = renderList();
+  document.querySelector('#side .list').innerHTML = importOnlyNotice() + renderList();
   updateSearchMeta();
   const f = BY_PATH[state.view];
   if (f) { hlCache.delete(f.path); document.getElementById('main').innerHTML = renderFile(f); }
@@ -734,7 +750,7 @@ window.addEventListener('hashchange', () => {
   if (BY_PATH[m[1]] && (state.view !== m[1] || m[2])) go(m[1], m[2] ? +m[2] : null);
 });
 (function init() {
-  try { state.side = localStorage.getItem('dr:side') || 'tree'; } catch {}
+  try { state.side = localStorage.getItem('dr:side') || 'tree'; state.showImportOnly = localStorage.getItem('dr:import-only') === '1'; } catch {}
   const h = decodeURIComponent(location.hash.slice(1));
   if (h) { const m = h.match(/^(.*?)(?::(\d+))?$/); if (BY_PATH[m[1]]) { go(m[1], m[2] ? +m[2] : null); return; } }
   render();
