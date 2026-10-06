@@ -506,10 +506,8 @@ function renderTreeNode(node, out) {
   const dirs = [...node.dirs.values()].sort((x, y) => x.label.localeCompare(y.label));
   for (const d of dirs) {
     const closed = state.closed.has(d.full);
-    const only = d.agg.kinds.size === 1 ? [...d.agg.kinds][0] : null;
-    const cls = only === 'A' || only === 'D' ? 'st-' + only : '';
     out.push(`<div class="node"><div class="row dir ${closed ? 'closed' : ''}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
-      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico">▤</span><span class="pill ${cls}"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${d.agg.n}</span>` : ''}</div>`);
+      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico">▤</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${d.agg.n}</span>` : ''}</div>`);
     if (!closed) { out.push('<div class="kids">'); renderTreeNode(d, out); out.push('</div>'); }
     out.push('</div>');
   }
