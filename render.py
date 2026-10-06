@@ -208,7 +208,7 @@ if (rest.length) GROUPS.push({ title: 'Other', description: '', files: rest });
 const ORDER = GROUPS.flatMap(g => g.files);
 
 const state = {
-  view: 'overview', filter: 'all', whole: false, side: 'tree', closed: new Set(),
+  view: 'overview', filter: 'implementation', whole: false, side: 'tree', closed: new Set(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
