@@ -157,7 +157,9 @@ table.diff tr.add td { background: var(--add-bg); } table.diff tr.add td.n { bac
 table.diff tr.del td { background: var(--del-bg); } table.diff tr.del td.n { background: var(--del-num); } table.diff tr.del td.m { color: var(--del-fg); }
 table.diff tr.ctx td.c { color: var(--fg2); }
 table.diff tr.dim td.c { opacity: var(--dim); }
-table.diff tr.target td { outline: 2px solid var(--accent); outline-offset: -2px; }
+table.diff td { transition: box-shadow .8s ease; }
+table.diff tr.target td { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent); }
+table.diff tr.target td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent); }
 table.diff td.c { white-space: pre-wrap; word-break: break-all; }
 table.diff td.c .tag { float: right; font: 10px var(--sans); color: var(--fg3); background: var(--bg3); border-radius: 3px; padding: 0 5px; margin-left: 8px; opacity: 1; }
 tr.fold td { background: var(--bg2); color: var(--fg3); font: 11.5px var(--sans); padding: 3px 12px; cursor: pointer; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -188,8 +190,8 @@ const D = JSON.parse(document.getElementById('data').textContent);
 const ANN = D.annotations, PR = ANN.pr;
 const FILES = D.files;
 const BY_PATH = Object.fromEntries(FILES.map(f => [f.path, f]));
-const NOISE = ['import', 'rename', 'docstring', 'whitespace', 'moved'];
-const NOISE_LABEL = { import: 'imports', rename: 'rename fallout', docstring: 'docstrings & comments', whitespace: 'whitespace', moved: 'moved code' };
+const NOISE = ['import', 'rename', 'whitespace', 'moved'];
+const NOISE_LABEL = { import: 'imports', rename: 'rename fallout', whitespace: 'whitespace', moved: 'moved code' };
 const RADIUS = 4;
 
 for (const f of FILES) {
@@ -309,7 +311,6 @@ function runSummary(r, f) {
   const n = r.removed.length + r.added.length;
   if (r.class === 'import') return `<span class="cls">imports</span> ${n} import line${n > 1 ? 's' : ''} changed`;
   if (r.class === 'rename') return `<span class="cls">rename fallout</span> <code>${esc(r.rename ? r.rename[0] : '')}</code> → <code>${esc(r.rename ? r.rename[1] : '')}</code> · ${n} line${n > 1 ? 's' : ''}`;
-  if (r.class === 'docstring') return `<span class="cls">docstring</span> ${n} docstring or comment line${n > 1 ? 's' : ''}`;
   if (r.class === 'whitespace') return `<span class="cls">whitespace</span> ${n} whitespace-only line${n > 1 ? 's' : ''}`;
   if (r.class === 'moved') return `<span class="cls">moved</span> ${n} lines moved ${r.removed.length ? 'to' : 'from'} <code>${esc(r.moved_to.path.split('/').pop())}:${r.moved_to.line}</code>`;
   return `${n} lines`;
@@ -671,7 +672,7 @@ function render() {
   main.innerHTML = f ? renderFile(f) : renderOverview();
   if (state.target) {
     const el = document.getElementById(state.target);
-    if (el) el.scrollIntoView({ block: 'center' });
+    if (el) { el.scrollIntoView({ block: 'center' }); setTimeout(() => el.classList.remove('target'), 2500); }
     state.target = null;
   } else if (!f) main.scrollTop = 0;
 }

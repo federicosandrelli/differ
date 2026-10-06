@@ -266,17 +266,12 @@ def classify_run(run: Run, side_sets: dict, renames: list[tuple[str, str]], rena
     if paired and all(re.sub(r"\s+", "", o) == re.sub(r"\s+", "", n) for o, n in zip(removed, added)):
         run.cls = "whitespace"
         return
-    old_imports, old_docs = side_sets["old"]
-    new_imports, new_docs = side_sets["new"]
+    old_imports, _ = side_sets["old"]
+    new_imports, _ = side_sets["new"]
     if changed and all(no in old_imports for no, _ in run.removed) and all(no in new_imports for no, _ in run.added):
         run.cls = "import"
         return
 
-    def is_doc(no, text, docs):
-        return not text.strip() or text.strip().startswith("#") or no in docs
-    if all(is_doc(no, t, old_docs) for no, t in run.removed) and all(is_doc(no, t, new_docs) for no, t in run.added):
-        run.cls = "docstring"
-        return
 
     if paired:
         flags = [apply_renames(o, renames) == n for o, n in zip(removed, added)]

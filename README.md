@@ -13,7 +13,6 @@ What it does, per PR:
   - `rename`: the removed line becomes the added line exactly by applying a rename
     that recurs in at least two blocks of the PR (or a git file rename). The block
     with the definition is the origin; the rest is fallout.
-  - `docstring`: every changed line is a docstring, comment or blank line.
   - `whitespace`: lines equal once whitespace is removed.
   - `moved`: an identical block removed in one place and added in another.
   - `substantive`: everything else.
