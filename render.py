@@ -61,6 +61,11 @@ kbd { font: 11px var(--mono); background: var(--bg3); border: 1px solid var(--li
 #side .head .meta { color: var(--fg2); font-size: 12px; }
 #side .controls { padding: 8px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
 #side .list { overflow-y: auto; flex: 1; padding-bottom: 24px; }
+#side .searchbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+#side .search { flex: 1; font: 12.5px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; outline: none; min-width: 0; }
+#side .search:focus { border-color: var(--accent); }
+.tree .cnt.hits { background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
+mark { background: #ffe066; color: #1c1f26; border-radius: 2px; padding: 0 1px; }
 .group { padding: 10px 0 4px; }
 .group h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); margin: 0; padding: 4px 16px; display: flex; justify-content: space-between; }
 .group h2 .n { font-weight: 400; }
@@ -201,7 +206,7 @@ if (rest.length) GROUPS.push({ title: 'Other', description: '', files: rest });
 const ORDER = GROUPS.flatMap(g => g.files);
 
 const state = {
-  view: 'overview', filter: 'implementation', whole: false, side: 'tree', closed: new Set(),
+  view: 'overview', filter: 'implementation', whole: false, side: 'tree', closed: new Set(), q: '',
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -257,8 +262,8 @@ function buildRows(f) {
   const rows = [];
   const raw = f.content.split('\n'); if (raw.length && raw[raw.length - 1] === '') raw.pop();
   if (f.content_side === 'old') {
-    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl[i], run: runOfOld.get(i + 1), notes: notes.get(i + 1) }));
-    return rows;
+    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl[i], text: t, run: runOfOld.get(i + 1), notes: notes.get(i + 1) }));
+    return flagHits(rows);
   }
   const removedBefore = new Map();
   for (const h of f.hunks) {
@@ -268,12 +273,22 @@ function buildRows(f) {
       let anchor = null;
       for (let j = i + 1; j < L.length; j++) if (L[j][2] != null) { anchor = L[j][2]; break; }
       if (anchor == null) anchor = h.new_start + L.filter(x => x[2] != null).length;
-      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: hlOne(t, f.lang), run: runOfOld.get(o), dim: dimOld.has(o) });
+      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
     }
   }
   for (let i = 1; i <= raw.length + 1; i++) {
     for (const d of removedBefore.get(i) || []) rows.push(d);
-    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl[i - 1], run: runOfNew.get(i), dim: dimNew.has(i), notes: notes.get(i) });
+    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i), notes: notes.get(i) });
+  }
+  return flagHits(rows);
+}
+let hitRuns = new Set();
+function flagHits(rows) {
+  hitRuns = new Set();
+  const q = state.q.toLowerCase();
+  if (!q) return rows;
+  for (const r of rows) {
+    if (r.text.toLowerCase().includes(q)) { r.hit = true; r.html = markHtml(r.html, state.q); if (r.run) hitRuns.add(r.run); }
   }
   return rows;
 }
@@ -282,7 +297,7 @@ function blocksFor(rows) {
   const blocks = [];
   for (const r of rows) {
     const last = blocks[blocks.length - 1];
-    if (r.type === 'ctx' && !r.notes) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
+    if (r.type === 'ctx' && !r.notes && !r.hit) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
     else if (r.run && last && last.run === r.run) last.rows.push(r);
     else blocks.push({ run: r.run || null, rows: [r] });
   }
@@ -301,6 +316,7 @@ function runSummary(r, f) {
 const runKey = (f, r) => `${f.path}#${r.index}`;
 function isCollapsed(f, r) {
   if (!NOISE.includes(r.class)) return false;
+  if (hitRuns.has(r)) return false;
   if (r.class === 'rename' && r.origin) return false;
   if (state.show[r.class]) return false;
   return !state.expanded.has(runKey(f, r));
@@ -398,9 +414,32 @@ function fileCounts(f) {
   const s = f.stats;
   return `<span class="a">+${s.additions}</span> <span class="d">−${s.deletions}</span>`;
 }
+// Search matches the path and the changed lines of a file, case-insensitively.
+const hitCache = new Map();
+function hits(f) {
+  const q = state.q.toLowerCase();
+  if (!q) return 0;
+  const key = f.path + '\u0000' + q;
+  if (hitCache.has(key)) return hitCache.get(key);
+  let n = 0;
+  for (const h of f.hunks) for (const [tag, , , text] of h.lines) if (tag !== ' ' && text.toLowerCase().includes(q)) n++;
+  hitCache.set(key, n);
+  return n;
+}
+function matches(f) { return !state.q || f.path.toLowerCase().includes(state.q.toLowerCase()) || hits(f) > 0; }
+function markHtml(html, q) {
+  if (!q) return html;
+  const needle = esc(q).toLowerCase();
+  return html.split(/(<[^>]+>)/).map(part => {
+    if (part.startsWith('<')) return part;
+    let out = '', i = 0, lower = part.toLowerCase();
+    for (;;) { const j = lower.indexOf(needle, i); if (j < 0) break; out += part.slice(i, j) + '<mark>' + part.slice(j, j + needle.length) + '</mark>'; i = j + needle.length; }
+    return out + part.slice(i);
+  }).join('');
+}
 function visibleFiles() {
   const base = state.side === 'tree' ? [...FILES].sort((x, y) => x.path.localeCompare(y.path)) : ORDER;
-  return base.filter(f => state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'));
+  return base.filter(f => (state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test')) && matches(f));
 }
 
 // A renamed file kept its directory; a moved one left it. Git reports both as R.
@@ -460,6 +499,7 @@ function renderTreeNode(node, out) {
       <span class="chev"></span><span class="ico">·</span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
+      ${state.q && hits(f) ? `<span class="cnt hits">${hits(f)}</span>` : ''}
       <span class="spacer"></span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>`);
   }
 }
@@ -483,15 +523,23 @@ function renderSide() {
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
       <span class="seg"><button data-side="tree" class="${state.side === 'tree' ? 'on' : ''}">Tree</button><button data-side="groups" class="${state.side === 'groups' ? 'on' : ''}">Reading order</button></span>
       ${state.side === 'tree' ? `<span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>` : ''}
-      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview</span></div>
-    <div class="list">`;
-  if (state.side === 'tree') {
-    h += renderTree() + `</div>`;
-    document.getElementById('side').innerHTML = h + '<div class="grip"></div>';
-    return;
-  }
+      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview · <kbd>/</kbd> search</span></div>
+    <div class="searchbar"><input type="search" class="search" placeholder="Search file names and changed lines" value="${esc(state.q)}" spellcheck="false"><span class="hint" id="searchmeta"></span></div>
+    <div class="list">${renderList()}</div><div class="grip"></div>`;
+  document.getElementById('side').innerHTML = h;
+  updateSearchMeta();
+}
+function updateSearchMeta() {
+  const el = document.getElementById('searchmeta'); if (!el) return;
+  if (!state.q) { el.textContent = ''; return; }
+  const files = visibleFiles(); const n = files.reduce((a, f) => a + hits(f), 0);
+  el.textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${n} line${n === 1 ? '' : 's'}`;
+}
+function renderList() {
+  if (state.side === 'tree') return renderTree();
+  let h = '';
   for (const g of GROUPS) {
-    const files = g.files.filter(f => state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'));
+    const files = g.files.filter(f => (state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test')) && matches(f));
     if (!files.length) continue;
     const sub = files.reduce((a, f) => a + f.stats.substantive, 0), raw = files.reduce((a, f) => a + f.stats.raw, 0);
     h += `<div class="group"><h2><span>${esc(g.title)}</span><span class="n">${fmt(sub)}${sub !== raw ? ` <span style="opacity:.6">/ ${fmt(raw)}</span>` : ''}</span></h2>`;
@@ -506,8 +554,7 @@ function renderSide() {
     }
     h += `</div>`;
   }
-  h += `</div>`;
-  document.getElementById('side').innerHTML = h + '<div class="grip"></div>';
+  return h;
 }
 (function sideResize() {
   try { const w = localStorage.getItem('dr:side-width'); if (w) document.documentElement.style.setProperty('--side', w + 'px'); } catch {}
@@ -635,8 +682,21 @@ document.addEventListener('click', (e) => {
   if (t.dataset.runs) { for (const k of t.dataset.runs.split('|')) state.expanded.add(k); render(); return; }
   if (t.dataset.run) { const k = t.dataset.run; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
 });
+document.addEventListener('input', (e) => {
+  if (!e.target.classList.contains('search')) return;
+  state.q = e.target.value.trim();
+  document.querySelector('#side .list').innerHTML = renderList();
+  updateSearchMeta();
+  const f = BY_PATH[state.view];
+  if (f) { hlCache.delete(f.path); document.getElementById('main').innerHTML = renderFile(f); }
+});
 document.addEventListener('keydown', (e) => {
+  if (e.target.classList && e.target.classList.contains('search')) {
+    if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input', { bubbles: true })); e.target.blur(); }
+    return;
+  }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
+  if (e.key === '/') { e.preventDefault(); const i = document.querySelector('#side .search'); if (i) { i.focus(); i.select(); } return; }
   const files = visibleFiles(); const i = files.indexOf(BY_PATH[state.view]);
   if (e.key === 'j') { const n = files[i + 1] || files[0]; if (n) go(n.path); }
   else if (e.key === 'k') { const n = i > 0 ? files[i - 1] : null; if (n) go(n.path); else go('overview'); }
