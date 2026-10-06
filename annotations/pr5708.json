@@ -1,0 +1,278 @@
+{
+  "pr": {
+    "number": 5708,
+    "title": "GE-4378: Reconcile outbound transactions with sell deal tranches",
+    "url": "https://github.com/granular-energy/granular-community-back/pull/5708",
+    "repo": "granular-energy/granular-community-back",
+    "base": "6cd2ffb86d987f8c90089337f461166b28eb6b62",
+    "head": "cc49bfaff72d9058f7ecbe516877e314f9d5f111",
+    "author": "federicosandrelli",
+    "commits": 34
+  },
+  "summary": "Adds a third way to recognise outbound transactions: reconcile them straight against sell deal tranches, with no allocation made first. The 501 stub becomes a four-step service: validate the selections, recognise the transactions without reconciliation (which creates the dispatched supply volumes), plan each dispatched supply volume onto the demand volume of its month on a selected tranche, then record the plan as one completed ad hoc allocation run and finalise it as a pooled batch. To share the matching rules with the buy side, the matching result moves into a new DealReconciliationContext built by the shared module, and the buy-side plan module is renamed _inbound_deal_reconciliation_plan. Everything downstream of the run (undo, delivery monitoring, consistency checks) is untouched and exercised end to end.",
+  "review_focus": [
+    "The shared context extraction: does the buy side still compute exactly what it did before? The rename fallout is mechanical, the context plumbing is not.",
+    "The planner in _outbound_deal_reconciliation_plan.py: month resolution in the organisation time zone, which tranches each supply volume is offered, and what happens when the tranches cannot take everything.",
+    "Validation order in _validate_contracted_demand_reconciliation.py: side check before delivered tranches are dropped, unrecognised check before loading tranches.",
+    "Two ValueErrors in the sell side (missing asset, no dispatched supply volume) surface as 500s rather than 400s; decide whether that is the intent."
+  ],
+  "groups": [
+    {
+      "title": "Shared deal reconciliation context",
+      "description": "The matching result the buy side computed inline becomes a DealReconciliationContext built once by the shared module. The buy-side plan module is renamed to make room for the sell side; its tests follow.",
+      "files": [
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/_deal_reconciliation.py",
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/_inbound_deal_reconciliation_plan.py",
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/_contracted_supply_reconciliation_plan.py",
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_inbound_transactions_with_contracted_supply_reconciliation.py",
+        "granular_backend/app/domain/usecases/certificates/undo_transaction_recognition/undo_transaction_recognition.py"
+      ]
+    },
+    {
+      "title": "Sell side use case",
+      "description": "The new package replaces the stub. Read the service first for the shape of the operation, then validation, then the planner, then the run writer.",
+      "files": [
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/recognise_outbound_transactions_with_contracted_demand_reconciliation.py",
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/_validate_contracted_demand_reconciliation.py",
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/_outbound_deal_reconciliation_plan.py",
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/_create_dispatched_allocation_run.py",
+        "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation.py"
+      ]
+    },
+    {
+      "title": "Data access and models",
+      "description": "Three new queries the sell side needs, two eager loads added to shared queries, and two small model changes.",
+      "files": [
+        "granular_backend/app/crud/supply_volumes.py",
+        "granular_backend/app/crud/demand_volumes.py",
+        "granular_backend/app/crud/allocation_volumes.py",
+        "granular_backend/app/crud/deal.py",
+        "granular_backend/app/crud/inventory_certificate_volumes.py",
+        "granular_backend/app/models/demand_volume.py",
+        "granular_backend/app/models/allocation_run.py"
+      ]
+    },
+    {
+      "title": "Wiring",
+      "description": "Error messages, the outbox event and its handler, dependency injection, and two import paths that follow the module becoming a package. Nothing here has logic of its own.",
+      "files": [
+        "granular_backend/app/commons/enums.py",
+        "granular_backend/app/messaging/event.py",
+        "granular_backend/app/messaging/handlers/recognise_outbound_transactions_with_contracted_demand_reconciliation_handler.py",
+        "granular_backend/app/di/handlers.py",
+        "granular_backend/app/di/outbox_pollers.py",
+        "granular_backend/app/api/api_v1/endpoints/registry_transactions.py",
+        "granular_backend/app/api/registry_transaction_commands.py"
+      ]
+    },
+    {
+      "title": "Unit tests",
+      "description": "The planner and validators are tested with mocks and no database; the service pipeline with every step mocked; the buy-side tests are adapted to the context split.",
+      "files": [
+        "tests/domain/usecases/test_contracted_demand_reconciliation.py",
+        "tests/domain/usecases/test_recognise_outbound_transactions_with_contracted_demand_reconciliation.py",
+        "tests/domain/usecases/test_inbound_deal_reconciliation.py",
+        "tests/domain/usecases/test_execute_contracted_supply_reconciliation.py",
+        "tests/messaging/test_serde.py"
+      ]
+    },
+    {
+      "title": "End-to-end tests",
+      "description": "A sell deal fixture that uploads certificates, creates the deal and runs the operation through the API and outbox. Covers the happy path, every rejection, over-delivery, undo, and the consistency checks.",
+      "files": [
+        "e2e/app/test_helpers/contracted_demand_reconciliation_helpers.py",
+        "e2e/app/endpoints/contracted_demand_reconciliation/conftest.py",
+        "e2e/app/endpoints/contracted_demand_reconciliation/test_sell_deal_reconciliation.py",
+        "e2e/app/endpoints/contracted_demand_reconciliation/test_sell_deal_integrity.py",
+        "e2e/app/helpers.py",
+        "e2e/app/test_face_value_gas_reconciliation.py",
+        "e2e/app/test_helpers/inbound_reconciliation_helpers.py"
+      ]
+    },
+    {
+      "title": "Removed plan",
+      "description": "The implementation plan that drove this PR, deleted now that the code is in.",
+      "files": [".claude/plans/20260929-ge4378-outbound-sell-deal-reconciliation.md"]
+    }
+  ],
+  "files": {
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/_deal_reconciliation.py": {
+      "summary": "New DealReconciliationContext (assignments, volumes, tranches, unrecognised quantities, allowed pairs) and build_deal_reconciliation_context, which runs the matcher. load_available_deal_tranches is split into load_requested_deal_tranches and drop_delivered_deal_tranches so the sell side can check the deal side before dropping delivered tranches. validate_transaction_volumes_have_inventory moves here from the buy-side plan.",
+      "notes": [
+        {"line": 63, "text": "The context is the only thing both sides now share: allowed_pairs is the matcher's output, so a change to matching rules lands here for both directions."},
+        {"line": 134, "text": "Behaviour-preserving split: load_available_deal_tranches below is now the composition of the two new functions."}
+      ]
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/_inbound_deal_reconciliation_plan.py": {
+      "summary": "Renamed from _deal_reconciliation_plan. build_deal_reconciliation_plan now takes a DealReconciliationContext instead of eight arguments; the matcher call moves into build_deal_reconciliation_context. DealReconciliationPlan becomes InboundDealReconciliationPlan and the private loaded context becomes InboundDealReconciliationContext wrapping the shared one plus inventory.",
+      "notes": [
+        {"line": 44, "text": "The planning step is unchanged apart from reading from the context. The matcher now runs inside _load_reconciliation_context (line 245), which is before the inventory validation it used to follow; check nothing depended on that order."},
+        {"line": 236, "text": "_validate_inventory_volumes was removed from this file and is now validate_transaction_volumes_have_inventory in the shared module."}
+      ]
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/_contracted_supply_reconciliation_plan.py": {
+      "summary": "Follows the rename: imports and the plan type annotation."
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_inbound_transactions_with_contracted_supply_reconciliation.py": {
+      "summary": "Import path follows the module rename; the block moved to keep imports sorted."
+    },
+    "granular_backend/app/domain/usecases/certificates/undo_transaction_recognition/undo_transaction_recognition.py": {
+      "summary": "Import path follows the module rename."
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/recognise_outbound_transactions_with_contracted_demand_reconciliation.py": {
+      "summary": "The service. request_reconciliation validates, creates the async operation with the submitted selections as properties, and posts the outbox event. execute re-validates in the worker, recognises the transactions through RecogniseOutboundTransactionsWithoutReconciliationService, plans, writes the allocation run, and finalises it as a pooled batch. Any failure raises RecognitionException so the handler rolls everything back.",
+      "tests": [
+        "tests/domain/usecases/test_recognise_outbound_transactions_with_contracted_demand_reconciliation.py",
+        "e2e/app/endpoints/contracted_demand_reconciliation/test_sell_deal_reconciliation.py"
+      ],
+      "notes": [
+        {"line": 140, "text": "Validation runs twice: once at request time for the 400, once in the worker against the current state. The worker's context is the one used, so a tranche delivered between request and execution is dropped then."},
+        {"line": 155, "text": "Finalisation failures (for example a batch spanning registries) are converted to RecognitionException, which the handler stores on the operation. The recognition and the run are rolled back with it."},
+        {"line": 171, "text": "Recognition without reconciliation is reused wholesale, so inventory movement and deleted-allocation warnings behave exactly as in the plain outbound flow."}
+      ]
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/_validate_contracted_demand_reconciliation.py": {
+      "summary": "Builds the sell-side DealReconciliationContext. Beyond the shared checks it rejects: an explicitly selected volume that is already recognised, a tranche from a buy deal, a tranche that already has any allocation, and a volume that matches none of the selected tranches.",
+      "tests": [
+        "tests/domain/usecases/test_contracted_demand_reconciliation.py",
+        "e2e/app/endpoints/contracted_demand_reconciliation/test_sell_deal_reconciliation.py"
+      ],
+      "notes": [
+        {"line": 50, "text": "Order matters: the side check runs on the requested tranches before delivered ones are dropped, so a delivered buy tranche is reported as 'not sell' rather than silently ignored."},
+        {"line": 72, "text": "The whole TCV quantity is used as the unrecognised quantity. That is only valid because _validate_selected_volumes_are_unrecognised has already rejected any recognised volume."},
+        {"line": 136, "text": "Sell deals reconcile whole transactions: one unmatched volume fails the operation rather than being left against no demand. This is a deliberate difference from the buy side."}
+      ]
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/_outbound_deal_reconciliation_plan.py": {
+      "summary": "Loads the dispatched supply volumes recognition created and the demand volumes of the selected tranches, then reuses build_greedy_deal_reconciliation_plan to place each supply volume on the demand volume of its month (organisation time zone). Each supply volume is offered only the matching tranches that have a demand volume for its month.",
+      "tests": ["tests/domain/usecases/test_contracted_demand_reconciliation.py"],
+      "notes": [
+        {"line": 88, "text": "Without over-delivery, quantity the tranches cannot take stays recognised against no demand; the operation only fails when no tranche takes anything. With over-delivery the shared rule puts the excess on the last selected tranche."},
+        {"line": 95, "text": "This raise fires when the greedy plan placed nothing. A partial placement succeeds silently, leaving a null-demand recognition row; the e2e over_delivery test asserts that remainder."},
+        {"line": 134, "text": "ValueError, not RecognitionException: a transaction volume with no dispatched supply volume is treated as an invariant violation and will surface as a 500 in the worker."},
+        {"line": 165, "text": "A tranche is offered only if it has a demand volume for the month. If a volume matches tranches but none has that month, the error names the first tranche and the month."},
+        {"line": 184, "text": "Month boundary in the organisation time zone, not UTC. The unit test covers 23:30 UTC on 31 January landing in February for Paris."}
+      ]
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation/_create_dispatched_allocation_run.py": {
+      "summary": "Writes the plan as one SUCCESSFUL, non-draft, AD_HOC allocation run from the APP source, with one allocation volume per planned placement, then recomputes allocated quantities. The run's supply and demand windows are the min and max over the placements.",
+      "tests": ["e2e/app/endpoints/contracted_demand_reconciliation/test_sell_deal_reconciliation.py"],
+      "notes": [
+        {"line": 36, "text": "demand_end_time uses the new DemandVolume.demand_period_end property (start + duration)."},
+        {"line": 47, "text": "ValueError on a supply volume without an asset. Reachable only if the eager load in get_dispatched_supply_volumes_for_transaction_certificate_volumes fails, so a 500 is defensible, but it is the second non-RecognitionException raise in this flow."}
+      ]
+    },
+    "granular_backend/app/domain/usecases/certificates/recognise_transaction/recognise_outbound_transactions_with_contracted_demand_reconciliation.py": {
+      "summary": "The 501 stub from #5598, deleted. Its command and service names live on in the new package with the same module name, which is why the two API imports change path."
+    },
+    "granular_backend/app/crud/supply_volumes.py": {
+      "summary": "New query: the DISPATCHED supply volumes of given transaction certificate volumes, with their asset eager-loaded, ordered by TCV, period start, id."
+    },
+    "granular_backend/app/crud/demand_volumes.py": {
+      "summary": "New query: the demand volumes of given deal tranches, ordered by tranche and period start."
+    },
+    "granular_backend/app/crud/allocation_volumes.py": {
+      "summary": "New query: which of the given tranches already have any allocation volume, draft or not, in any batch. Used to refuse tranches the user has already allocated to.",
+      "notes": [
+        {"line": 118, "text": "Raw SQL joining allocation_volume to demand_volume. Includes draft runs on purpose: a draft allocation against the tranche still means the user is on the other path."}
+      ]
+    },
+    "granular_backend/app/crud/deal.py": {
+      "summary": "get_deal_tranches_for_reconciliation now also eager-loads Deal.counterparty, which the run writer needs per allocation volume.",
+      "notes": [
+        {"line": 120, "text": "This query is shared with the buy side and undo, so every caller now pays for the counterparty load. One extra select per call; fine, but it is a shared cost."}
+      ]
+    },
+    "granular_backend/app/crud/inventory_certificate_volumes.py": {
+      "summary": "Eager-loads TransactionCertificateVolume.asset in the shared transaction volume query, because the matcher reads the asset during the request.",
+      "notes": [
+        {"line": 274, "text": "One line, shared query. Every caller of get_inventory_and_transaction_certificate_volumes_for_transactions now loads TCV assets too."}
+      ]
+    },
+    "granular_backend/app/models/demand_volume.py": {
+      "summary": "New demand_period_end property: demand_period_start plus duration."
+    },
+    "granular_backend/app/models/allocation_run.py": {
+      "summary": "allocate_supply_volume_to_counterparty accepts an EnergyVolume as well as a float for quantity."
+    },
+    "granular_backend/app/commons/enums.py": {
+      "summary": "Six new error messages for the sell-side rejections and a new async operation file path."
+    },
+    "granular_backend/app/messaging/event.py": {
+      "summary": "New outbox event RecogniseOutboundTransactionsWithContractedDemandReconciliation, same fields as the command minus uploaded_by."
+    },
+    "granular_backend/app/messaging/handlers/recognise_outbound_transactions_with_contracted_demand_reconciliation_handler.py": {
+      "summary": "Outbox handler: builds the command from the event, runs the service, and saves the deleted-allocations warning on success. Mirrors the other recognition handlers."
+    },
+    "granular_backend/app/di/handlers.py": {
+      "summary": "Factory for the new handler."
+    },
+    "granular_backend/app/di/outbox_pollers.py": {
+      "summary": "Registers the new handler with the ingestion outbox poller."
+    },
+    "granular_backend/app/api/api_v1/endpoints/registry_transactions.py": {
+      "summary": "Import path follows the module becoming a package. No behaviour change."
+    },
+    "granular_backend/app/api/registry_transaction_commands.py": {
+      "summary": "Import path follows the module becoming a package. No behaviour change."
+    },
+    "tests/domain/usecases/test_contracted_demand_reconciliation.py": {
+      "summary": "Planner and validator tests with MagicMock models and no database: month placement, time zone boundary, per-volume tranche offers, month-less tranches, no remaining quantity, buy tranche rejected before delivered drop, unmatched volume, over-delivery on the last tranche.",
+      "kind": "test"
+    },
+    "tests/domain/usecases/test_recognise_outbound_transactions_with_contracted_demand_reconciliation.py": {
+      "summary": "Service pipeline with every step mocked: a recognition failure stops before planning, a finalisation failure is reported as the operation's failure.",
+      "kind": "test"
+    },
+    "tests/domain/usecases/test_inbound_deal_reconciliation.py": {
+      "summary": "Adapted to the context split: a _match_and_plan helper reproduces the old build_deal_reconciliation_plan signature so the six existing tests keep their bodies; the loader test now also asserts the matcher is called once.",
+      "kind": "test",
+      "notes": [
+        {"line": 33, "text": "Origin of the six substituted call sites below. The helper calls build_deal_reconciliation_context then build_deal_reconciliation_plan, which is what prepare_inbound_deal_reconciliation now does."}
+      ]
+    },
+    "tests/domain/usecases/test_execute_contracted_supply_reconciliation.py": {
+      "summary": "Follows the module and class rename only.",
+      "kind": "test"
+    },
+    "tests/messaging/test_serde.py": {
+      "summary": "Round-trip case for the new event.",
+      "kind": "test"
+    },
+    "e2e/app/test_helpers/contracted_demand_reconciliation_helpers.py": {
+      "summary": "SellDealReconciliationContext sets up a January sell deal, uploads issuance and cancellation volumes, recognises the issuances, and runs the operation through the API and outbox. Also the generalised assert_consistency_checks_pass (moved from the gas test with a check filter), assert_demand_recognitions, and transactions_by_identifier.",
+      "kind": "test",
+      "notes": [
+        {"line": 282, "text": "assert_consistency_checks_pass is the old assert_tcb_to_dcv_checks_pass from test_face_value_gas_reconciliation.py with a select_check filter and .first() ordered by initiated_at instead of .one()."}
+      ]
+    },
+    "e2e/app/endpoints/contracted_demand_reconciliation/conftest.py": {
+      "summary": "sell_deal fixture wiring the context to the existing clients and fixtures.",
+      "kind": "test"
+    },
+    "e2e/app/endpoints/contracted_demand_reconciliation/test_sell_deal_reconciliation.py": {
+      "summary": "Happy path asserting the run, batch, allocation volumes, supply volumes and operation properties; then one test per rejection: no demand volume for the month, user allocation on the tranche, buy tranche, recognised volume selected explicitly, volume no tranche matches.",
+      "kind": "test"
+    },
+    "e2e/app/endpoints/contracted_demand_reconciliation/test_sell_deal_integrity.py": {
+      "summary": "The cross-cutting behaviours: inventory allocations pruned when cancelled certificates no longer cover them, over-delivery on and off, production-shaped hourly dispatched volumes, and undo restoring tranche, demand and inventory. Each ends by running the consistency checks.",
+      "kind": "test"
+    },
+    "e2e/app/helpers.py": {
+      "summary": "Registers the new handler in the fake outbox pollers and adds post_outbound_deal_reconciliation.",
+      "kind": "test"
+    },
+    "e2e/app/test_face_value_gas_reconciliation.py": {
+      "summary": "Its local consistency check helper and transactions_by_identifier move to the new helpers module; the three call sites pass a tcb_to_dcv filter instead.",
+      "kind": "test"
+    },
+    "e2e/app/test_helpers/inbound_reconciliation_helpers.py": {
+      "summary": "build_deal_body spreads each tranche dict so a test can pass extra fields such as requirement_technology.",
+      "kind": "test"
+    },
+    ".claude/plans/20260929-ge4378-outbound-sell-deal-reconciliation.md": {
+      "summary": "The plan this PR implemented, removed.",
+      "kind": "docs"
+    }
+  }
+}
