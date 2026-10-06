@@ -21,6 +21,7 @@ TEMPLATE = r"""<!doctype html>
   --line: #e3e6eb; --accent: #2f6feb; --accent-bg: #e8f0fe;
   --add-bg: #e6f7ec; --add-fg: #166534; --add-num: #c6ebd3; --del-bg: #fdecec; --del-fg: #991b1b; --del-num: #f7cfcf;
   --note-bg: #fff8e1; --note-line: #f2d98a; --dim: 0.45;
+  --mod-bg: #fff1d6; --mod-fg: #9a5b00; --ren-bg: #efe6ff; --ren-fg: #6d3fc7;
   --code: #1c1f26; --kw: #a626a4; --str: #50a14f; --cmt: #9ca3af; --num: #986801; --fn: #4078f2; --cls: #c18401; --builtin: #0184bc;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
 }
@@ -29,6 +30,7 @@ TEMPLATE = r"""<!doctype html>
   --line: #262b36; --accent: #6ea0ff; --accent-bg: #1a2742;
   --add-bg: #10291b; --add-fg: #7ee2a4; --add-num: #184d2c; --del-bg: #351a1d; --del-fg: #ff9b9b; --del-num: #5a2328;
   --note-bg: #2b2616; --note-line: #5e4d1d;
+  --mod-bg: #3a2c10; --mod-fg: #f0b45a; --ren-bg: #2a1f45; --ren-fg: #c4a6ff;
   --code: #e6e8ee; --kw: #c678dd; --str: #98c379; --cmt: #6b7280; --num: #d19a66; --fn: #61afef; --cls: #e5c07b; --builtin: #56b6c2;
 }}
 :root[data-theme="dark"] {
@@ -36,6 +38,7 @@ TEMPLATE = r"""<!doctype html>
   --line: #262b36; --accent: #6ea0ff; --accent-bg: #1a2742;
   --add-bg: #10291b; --add-fg: #7ee2a4; --add-num: #184d2c; --del-bg: #351a1d; --del-fg: #ff9b9b; --del-num: #5a2328;
   --note-bg: #2b2616; --note-line: #5e4d1d;
+  --mod-bg: #3a2c10; --mod-fg: #f0b45a; --ren-bg: #2a1f45; --ren-fg: #c4a6ff;
   --code: #e6e8ee; --kw: #c678dd; --str: #98c379; --cmt: #6b7280; --num: #d19a66; --fn: #61afef; --cls: #e5c07b; --builtin: #56b6c2;
 }
 * { box-sizing: border-box; }
@@ -49,7 +52,9 @@ button:hover { background: var(--bg3); } button.on { background: var(--accent-bg
 .seg button.on { background: var(--accent-bg); color: var(--accent); }
 kbd { font: 11px var(--mono); background: var(--bg3); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 
-#side { width: 360px; flex: none; border-right: 1px solid var(--line); background: var(--bg2); display: flex; flex-direction: column; height: 100vh; }
+#side { width: var(--side, 420px); min-width: 260px; max-width: 70vw; flex: none; border-right: 1px solid var(--line); background: var(--bg2); display: flex; flex-direction: column; height: 100vh; position: relative; }
+#side .grip { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 6; }
+#side .grip:hover, #side .grip.dragging { background: var(--accent); opacity: .4; }
 #side .head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
 #side .head h1 { font-size: 14px; margin: 0 0 4px; line-height: 1.3; cursor: pointer; }
 #side .head h1:hover { color: var(--accent); }
@@ -72,12 +77,36 @@ kbd { font: 11px var(--mono); background: var(--bg3); border: 1px solid var(--li
 .file .sum { font-size: 12px; color: var(--fg2); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .file .bar { height: 3px; background: var(--bg3); border-radius: 2px; margin-top: 5px; display: flex; overflow: hidden; }
 .file .bar i { display: block; height: 100%; } .bar .s { background: var(--accent); } .bar .noise { background: var(--fg3); opacity: .5; }
-.badge { font: 10px/16px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--bg3); color: var(--fg2); flex: none; }
+.badge { font: 10px/16px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--bg3); color: var(--fg2); flex: none; min-width: 16px; text-align: center; }
 .badge.A { background: var(--add-num); color: var(--add-fg); } .badge.D { background: var(--del-num); color: var(--del-fg); }
-.badge.R { background: var(--accent-bg); color: var(--accent); }
+.badge.M { background: var(--mod-bg); color: var(--mod-fg); } .badge.R, .badge.V { background: var(--ren-bg); color: var(--ren-fg); }
+.st-A { color: var(--add-fg); } .st-D { color: var(--del-fg); } .st-M { color: var(--mod-fg); } .st-R, .st-V { color: var(--ren-fg); }
+
+.tree { padding: 6px 8px 24px 10px; font-size: 12.5px; }
+.tree .legend { display: flex; gap: 8px 10px; flex-wrap: wrap; padding: 4px 6px 10px; font-size: 11.5px; color: var(--fg2); align-items: center; }
+.tree .legend .pill { font-size: 11.5px; } .tree .legend .n { margin-left: -4px; font-family: var(--mono); color: var(--fg3); }
+.tree .row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; white-space: nowrap; cursor: pointer; border-radius: 4px; min-width: 0; }
+.tree .row:hover { background: var(--bg3); }
+.tree .row.active { background: var(--accent-bg); }
+.tree .chev { width: 14px; flex: none; font-size: 9px; color: var(--fg3); text-align: center; }
+.tree .ico { width: 14px; flex: none; text-align: center; color: var(--fg3); font-size: 11px; }
+.tree .pill { font-family: var(--mono); font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--bg3); color: var(--fg); display: inline-flex; min-width: 0; flex: 0 1 auto; }
+.tree .pill .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tree .pill s { opacity: .6; margin-right: 6px; flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree .pill.st-A { background: var(--add-num); color: var(--add-fg); } .tree .pill.st-M { background: var(--mod-bg); color: var(--mod-fg); }
+.tree .pill.st-D { background: var(--del-num); color: var(--del-fg); text-decoration: line-through; }
+.tree .pill.st-R, .tree .pill.st-V { background: var(--ren-bg); color: var(--ren-fg); }
+.tree .pill.test { font-style: italic; }
+.tree .cnt { font-family: var(--mono); font-size: 11.5px; color: var(--fg2); }
+.tree .from { font-family: var(--mono); font-size: 11.5px; color: var(--fg3); overflow: hidden; text-overflow: ellipsis; min-width: 3ch; flex: 0 2 auto; }
+.tree .spacer { flex: 1; }
+.tree .kids { margin-left: 11px; padding-left: 8px; border-left: 1px solid var(--line); }
+.tree .leaf.reviewed .pill { opacity: .5; }
 .kind { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); }
-.check { width: 15px; height: 15px; border: 1.5px solid var(--fg3); border-radius: 4px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: var(--bg); }
-.file.reviewed .check, .check.on { background: var(--accent); border-color: var(--accent); }
+.check { width: 15px; height: 15px; border: 1.5px solid var(--fg3); border-radius: 4px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: transparent; opacity: .35; }
+.file:hover .check, .row:hover .check { opacity: 1; }
+.check:hover { border-color: var(--accent); color: var(--accent); }
+.file.reviewed .check, .leaf.reviewed .check, .check.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
 
 #main { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; }
 .page { max-width: 1100px; margin: 0 auto; padding: 28px 36px 80px; }
@@ -179,7 +208,7 @@ if (rest.length) GROUPS.push({ title: 'Other', description: '', files: rest });
 const ORDER = GROUPS.flatMap(g => g.files);
 
 const state = {
-  view: 'overview', filter: 'all', whole: false,
+  view: 'overview', filter: 'all', whole: false, side: 'tree', closed: new Set(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -377,7 +406,78 @@ function fileCounts(f) {
   return `<span class="a">+${s.additions}</span> <span class="d">−${s.deletions}</span>`;
 }
 function visibleFiles() {
-  return ORDER.filter(f => state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'));
+  const base = state.side === 'tree' ? [...FILES].sort((x, y) => x.path.localeCompare(y.path)) : ORDER;
+  return base.filter(f => state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'));
+}
+
+// A renamed file kept its directory; a moved one left it. Git reports both as R.
+function changeKind(f) {
+  if (f.status !== 'R') return f.status;
+  const od = f.old_path.slice(0, f.old_path.lastIndexOf('/')), nd = f.new_path.slice(0, f.new_path.lastIndexOf('/'));
+  return od === nd ? 'R' : 'V';
+}
+const KIND_LABEL = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', V: 'moved' };
+
+function buildTree(files) {
+  const root = { name: '', dirs: new Map(), files: [], depth: 0 };
+  for (const f of files) {
+    const parts = f.path.split('/'); let node = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!node.dirs.has(part)) node.dirs.set(part, { name: part, dirs: new Map(), files: [] });
+      node = node.dirs.get(part);
+    }
+    node.files.push(f);
+  }
+  // Folders with one child folder and no files fold into one row, like compact folders in an editor.
+  const compact = (node, path) => {
+    for (const [name, child] of [...node.dirs]) {
+      let merged = child, label = name, full = path ? `${path}/${name}` : name;
+      while (merged.dirs.size === 1 && merged.files.length === 0) {
+        const [[n, c]] = [...merged.dirs]; label += '/' + n; full += '/' + n; merged = c;
+      }
+      node.dirs.delete(name); node.dirs.set(label, merged); merged.label = label; merged.full = full;
+      compact(merged, full);
+    }
+  };
+  compact(root, '');
+  return root;
+}
+function aggregate(node) {
+  const agg = { a: 0, d: 0, n: 0, kinds: new Set() };
+  for (const f of node.files) { agg.a += f.stats.additions; agg.d += f.stats.deletions; agg.n++; agg.kinds.add(changeKind(f)); }
+  for (const c of node.dirs.values()) { const x = aggregate(c); agg.a += x.a; agg.d += x.d; agg.n += x.n; x.kinds.forEach(k => agg.kinds.add(k)); }
+  node.agg = agg; return agg;
+}
+function renderTreeNode(node, out) {
+  const dirs = [...node.dirs.values()].sort((x, y) => x.label.localeCompare(y.label));
+  for (const d of dirs) {
+    const closed = state.closed.has(d.full);
+    const only = d.agg.kinds.size === 1 ? [...d.agg.kinds][0] : null;
+    const cls = only === 'A' || only === 'D' ? 'st-' + only : '';
+    out.push(`<div class="node"><div class="row dir ${closed ? 'closed' : ''}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
+      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico">▤</span><span class="pill ${cls}"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${d.agg.n}</span>` : ''}</div>`);
+    if (!closed) { out.push('<div class="kids">'); renderTreeNode(d, out); out.push('</div>'); }
+    out.push('</div>');
+  }
+  const files = [...node.files].sort((x, y) => x.base.localeCompare(y.base));
+  for (const f of files) {
+    const k = changeKind(f);
+    const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
+    out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" data-path="${esc(f.path)}" title="${esc(f.ann.summary || f.path)}">
+      <span class="chev"></span><span class="ico">·</span>
+      <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
+      ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
+      <span class="spacer"></span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>`);
+  }
+}
+function allFolders(node, acc) { for (const d of node.dirs.values()) { acc.push(d.full); allFolders(d, acc); } return acc; }
+function renderTree() {
+  const root = buildTree(visibleFiles()); aggregate(root);
+  const counts = {}; for (const f of visibleFiles()) { const k = changeKind(f); counts[k] = (counts[k] || 0) + 1; }
+  const out = [`<div class="tree"><div class="legend">${['A', 'M', 'D', 'R', 'V'].filter(k => counts[k]).map(k => `<span class="pill st-${k}">${KIND_LABEL[k]}</span><span class="n">${counts[k]}</span>`).join('')}</div>`];
+  renderTreeNode(root, out);
+  out.push('</div>');
+  return out.join('');
 }
 
 function renderSide() {
@@ -388,8 +488,15 @@ function renderSide() {
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
       <button data-filter="implementation" class="${state.filter === 'implementation' ? 'on' : ''}">Implementation</button>
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
+      <span class="seg"><button data-side="tree" class="${state.side === 'tree' ? 'on' : ''}">Tree</button><button data-side="groups" class="${state.side === 'groups' ? 'on' : ''}">Reading order</button></span>
+      ${state.side === 'tree' ? `<span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>` : ''}
       <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview</span></div>
     <div class="list">`;
+  if (state.side === 'tree') {
+    h += renderTree() + `</div>`;
+    document.getElementById('side').innerHTML = h + '<div class="grip"></div>';
+    return;
+  }
   for (const g of GROUPS) {
     const files = g.files.filter(f => state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'));
     if (!files.length) continue;
@@ -397,8 +504,9 @@ function renderSide() {
     h += `<div class="group"><h2><span>${esc(g.title)}</span><span class="n">${fmt(sub)}${sub !== raw ? ` <span style="opacity:.6">/ ${fmt(raw)}</span>` : ''}</span></h2>`;
     for (const f of files) {
       const s = f.stats, pct = s.raw ? Math.round(100 * s.substantive / s.raw) : 0;
+      const k = changeKind(f);
       h += `<div class="file ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" data-path="${esc(f.path)}">
-        <div class="row1"><span class="badge ${f.status}">${f.status}</span><span class="name" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir"> ${esc(shortDir(f.dir))}</span></span>
+        <div class="row1"><span class="badge ${k}" title="${KIND_LABEL[k]}">${k === 'V' ? '→' : k}</span><span class="name" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir"> ${esc(shortDir(f.dir))}</span></span>
           <span class="counts">${fileCounts(f)}</span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>
         <div class="sum">${esc(f.ann.summary || '')}</div>
         <div class="bar" title="${s.substantive} substantive of ${s.raw} changed lines"><i class="s" style="width:${pct}%"></i><i class="noise" style="width:${100 - pct}%"></i></div></div>`;
@@ -406,8 +514,15 @@ function renderSide() {
     h += `</div>`;
   }
   h += `</div>`;
-  document.getElementById('side').innerHTML = h;
+  document.getElementById('side').innerHTML = h + '<div class="grip"></div>';
 }
+(function sideResize() {
+  try { const w = localStorage.getItem('dr:side-width'); if (w) document.documentElement.style.setProperty('--side', w + 'px'); } catch {}
+  let dragging = null;
+  document.addEventListener('mousedown', (e) => { const g = e.target.closest('#side .grip'); if (!g) return; dragging = g; g.classList.add('dragging'); e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => { if (!dragging) return; const w = Math.max(260, Math.min(e.clientX, window.innerWidth * 0.7)); document.documentElement.style.setProperty('--side', w + 'px'); });
+  document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; try { localStorage.setItem('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); } catch {} });
+})();
 function shortDir(dir) {
   const parts = dir.split('/').filter(Boolean);
   if (parts.length <= 2) return dir;
@@ -456,8 +571,9 @@ function renderOverview() {
 function renderFile(f) {
   const s = f.stats, idx = ORDER.indexOf(f);
   const noiseHere = NOISE.filter(k => s.by_class[k]);
+  const ck = changeKind(f);
   let h = `<div class="fhead"><div class="top">
-      <span class="badge ${f.status}">${f.status}</span>
+      <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path" title="${esc(f.path)}"><span class="dir">${esc(f.dir)}</span><b>${esc(f.base)}</b></span>
       <span class="kind">${esc(f.kind)}</span><span class="counts mono">${fileCounts(f)}</span>
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
@@ -513,12 +629,15 @@ function go(path, line) {
 }
 
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-show],[data-whole],[data-review],[data-nav],[data-fold],[data-runs],[data-run],[data-line]');
+  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-side],[data-tree],[data-folder],[data-show],[data-whole],[data-review],[data-nav],[data-fold],[data-runs],[data-run],[data-line]');
   if (!t) return;
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); render(); return; }
   if (t.dataset.go) { go('overview'); return; }
   if (t.dataset.path) { e.preventDefault(); go(t.dataset.path, t.dataset.line ? +t.dataset.line : null); return; }
   if (t.dataset.filter) { state.filter = t.dataset.filter; render(); return; }
+  if (t.dataset.side) { state.side = t.dataset.side; try { localStorage.setItem('dr:side', state.side); } catch {} render(); return; }
+  if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
+  if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); renderSide(); return; }
   if (t.dataset.show) { state.show[t.dataset.show] = !state.show[t.dataset.show]; render(); return; }
   if (t.dataset.whole !== undefined) { state.whole = t.dataset.whole === '1'; render(); return; }
   if (t.dataset.nav) { const files = visibleFiles(); const i = files.indexOf(BY_PATH[state.view]); const n = files[i + (+t.dataset.nav)]; if (n) go(n.path); return; }
@@ -543,6 +662,7 @@ window.addEventListener('hashchange', () => {
   if (BY_PATH[m[1]] && (state.view !== m[1] || m[2])) go(m[1], m[2] ? +m[2] : null);
 });
 (function init() {
+  try { state.side = localStorage.getItem('dr:side') || 'tree'; } catch {}
   const h = decodeURIComponent(location.hash.slice(1));
   if (h) { const m = h.match(/^(.*?)(?::(\d+))?$/); if (BY_PATH[m[1]]) { go(m[1], m[2] ? +m[2] : null); return; } }
   render();
