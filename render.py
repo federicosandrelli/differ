@@ -444,6 +444,30 @@ function anchorAfter(h, oldNo) {
   for (let i = h.lines.length - 1; i >= 0; i--) if (h.lines[i][2] != null) return h.lines[i][2];
   return h.new_start;
 }
+// Every matching changed line across the visible files, in sidebar order, for Enter to step through.
+function allHits() {
+  const q = state.q.toLowerCase();
+  if (!q) return [];
+  const out = [];
+  for (const f of visibleFiles()) {
+    for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
+      if (tag === ' ' || !text.toLowerCase().includes(q)) continue;
+      if (f.content_side === 'old') out.push({ path: f.path, line: o });
+      else out.push({ path: f.path, line: n != null ? n : { id: `O${o}`, anchor: anchorAfter(h, o) } });
+    }
+  }
+  return out;
+}
+function stepHit(dir) {
+  const hits = allHits();
+  if (!hits.length) return;
+  state.hitIndex = ((state.hitIndex ?? -1) + dir + hits.length) % hits.length;
+  const hit = hits[state.hitIndex];
+  go(hit.path, hit.line);
+  const i = document.querySelector('#side .search');
+  if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  updateSearchMeta();
+}
 function matches(f) { return !state.q || f.path.toLowerCase().includes(state.q.toLowerCase()) || hits(f) > 0; }
 function markHtml(html, q) {
   if (!q) return html;
@@ -544,13 +568,15 @@ function renderSide() {
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
       <span class="seg"><button data-side="tree" class="${state.side === 'tree' ? 'on' : ''}">Tree</button><button data-side="groups" class="${state.side === 'groups' ? 'on' : ''}">Reading order</button></span>
       ${state.side === 'tree' ? `<span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>` : ''}
-      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview · <kbd>/</kbd> search</span></div>
-    <div class="searchbar"><input type="search" class="search" placeholder="Search file names and changed lines" value="${esc(state.q)}" spellcheck="false"><span class="hint" id="searchmeta"></span></div>
+      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
+    <div class="searchbar"><input type="search" class="search" placeholder="Search file names and changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous"><span class="hint" id="searchmeta"></span></div>
     <div class="list">${importOnlyNotice()}${renderList()}</div><div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
+  const hadFocus = document.activeElement && document.activeElement.classList.contains('search');
   document.getElementById('side').innerHTML = h;
   document.querySelector('#side .list').scrollTop = scroll;
+  if (hadFocus) { const i = document.querySelector('#side .search'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
   updateSearchMeta();
 }
 function importOnlyNotice() {
@@ -562,7 +588,8 @@ function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
   if (!state.q) { el.textContent = ''; return; }
   const files = visibleFiles(); const n = files.reduce((a, f) => a + hits(f), 0);
-  el.textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${n} line${n === 1 ? '' : 's'}`;
+  const pos = state.hitIndex != null && state.hitIndex >= 0 ? `${state.hitIndex + 1} / ${n}` : `${n} line${n === 1 ? '' : 's'}`;
+  el.textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${pos}`;
 }
 function renderList() {
   if (state.side === 'tree') return renderTree();
@@ -723,6 +750,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('input', (e) => {
   if (!e.target.classList.contains('search')) return;
   state.q = e.target.value.trim();
+  state.hitIndex = -1;
   document.querySelector('#side .list').innerHTML = importOnlyNotice() + renderList();
   updateSearchMeta();
   const f = BY_PATH[state.view];
@@ -731,6 +759,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.target.classList && e.target.classList.contains('search')) {
     if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input', { bubbles: true })); e.target.blur(); }
+    if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); }
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
