@@ -426,6 +426,22 @@ function hits(f) {
   hitCache.set(key, n);
   return n;
 }
+function firstHitLine(f) {
+  const q = state.q.toLowerCase();
+  if (!f || !q) return null;
+  for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
+    if (tag !== ' ' && text.toLowerCase().includes(q)) {
+      if (f.content_side === 'old') return o;
+      return n != null ? n : { id: `O${o}`, anchor: anchorAfter(h, o) };
+    }
+  }
+  return null;
+}
+function anchorAfter(h, oldNo) {
+  for (const [, o, n] of h.lines) if (o != null && o >= oldNo && n != null) return n;
+  for (let i = h.lines.length - 1; i >= 0; i--) if (h.lines[i][2] != null) return h.lines[i][2];
+  return h.new_start;
+}
 function matches(f) { return !state.q || f.path.toLowerCase().includes(state.q.toLowerCase()) || hits(f) > 0; }
 function markHtml(html, q) {
   if (!q) return html;
@@ -651,9 +667,10 @@ function go(path, line) {
   const f = BY_PATH[path];
   if (!f) { state.view = 'overview'; location.hash = ''; render(); return; }
   state.view = path;
+  const explicit = line && typeof line === 'object' ? line : null;
+  if (explicit) line = explicit.anchor;
   if (line) {
-    const id = f.content_side === 'old' ? `O${line}` : `L${line}`;
-    state.target = id;
+    state.target = explicit ? explicit.id : (f.content_side === 'old' ? `O${line}` : `L${line}`);
     // unfold around the target line
     const rows = buildRows(f); const blocks = blocksFor(rows);
     for (const b of blocks) if (b.ctx && b.rows.some(r => r.newNo === line)) { const mid = b.rows.slice(RADIUS, b.rows.length - RADIUS); if (mid.length) state.unfolded.add(`${f.path}:${mid[0].newNo}`); }
@@ -670,7 +687,13 @@ document.addEventListener('click', (e) => {
   if (!t) return;
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); render(); return; }
   if (t.dataset.go) { go('overview'); return; }
-  if (t.dataset.path) { e.preventDefault(); go(t.dataset.path, t.dataset.line ? +t.dataset.line : null); return; }
+  if (t.dataset.path) {
+    e.preventDefault();
+    let line = t.dataset.line ? +t.dataset.line : null;
+    if (!line && state.q && t.closest('#side')) line = firstHitLine(BY_PATH[t.dataset.path]);
+    go(t.dataset.path, line);
+    return;
+  }
   if (t.dataset.filter) { state.filter = t.dataset.filter; render(); return; }
   if (t.dataset.side) { state.side = t.dataset.side; try { localStorage.setItem('dr:side', state.side); } catch {} render(); return; }
   if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
