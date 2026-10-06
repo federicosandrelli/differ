@@ -143,13 +143,6 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 .fdesc .links { font-size: 12.5px; color: var(--fg2); } .fdesc .links a { font-family: var(--mono); font-size: 12px; }
 .body { display: flex; align-items: flex-start; }
 .code { flex: 1; min-width: 0; padding: 8px 0 60px; }
-.outline { width: 250px; flex: none; position: sticky; top: 92px; max-height: calc(100vh - 100px); overflow-y: auto; padding: 10px 12px; font-size: 12px; border-left: 1px solid var(--line); }
-.outline h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; color: var(--fg3); letter-spacing: .04em; }
-.outline div { padding: 2px 0 2px calc(var(--d) * 12px); color: var(--fg2); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 11.5px; }
-.outline div:hover { color: var(--accent); }
-.outline div.changed { color: var(--fg); font-weight: 600; }
-.outline div.changed::before { content: "●"; color: var(--accent); font-size: 8px; margin-right: 5px; vertical-align: 1px; }
-
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.5 var(--mono); table-layout: fixed; }
 table.diff td { padding: 0 6px; vertical-align: top; white-space: pre; }
 table.diff td.n { text-align: right; color: var(--fg3); user-select: none; font-size: 11px; padding-right: 8px; }
@@ -591,9 +584,6 @@ function renderFile(f) {
   if (links.length) h += `<div class="links">${links.join(' · ')}</div>`;
   h += `</div>`;
   h += `<div class="body"><div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div>`;
-  if (f.symbols && f.symbols.length) {
-    h += `<div class="outline"><h4>Outline</h4>${f.symbols.map(sym => `<div style="--d:${sym.depth}" class="${sym.changed ? 'changed' : ''}" data-line="${sym.start}" title="${esc(sym.name)}">${sym.kind === 'class' ? '◆ ' : ''}${esc(sym.short)}</div>`).join('')}</div>`;
-  }
   h += `</div>`;
   return h;
 }
@@ -644,7 +634,6 @@ document.addEventListener('click', (e) => {
   if (t.dataset.fold) { state.unfolded.add(t.dataset.fold); render(); return; }
   if (t.dataset.runs) { for (const k of t.dataset.runs.split('|')) state.expanded.add(k); render(); return; }
   if (t.dataset.run) { const k = t.dataset.run; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
-  if (t.dataset.line && t.closest('.outline')) { go(state.view, +t.dataset.line); return; }
 });
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
