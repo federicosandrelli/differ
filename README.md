@@ -17,13 +17,14 @@ What it does, per PR:
   - `moved`: an identical block removed in one place and added in another.
   - `substantive`: everything else.
   It also emits the symbol outline of every Python file and which symbols changed.
-- **Annotations** (`annotations/<pr>.json`): written by a Claude session that read
-  the diff. The PR summary, where to look, file groups in reading order, a one-line
-  summary per file, test-to-implementation links, and line-anchored notes.
-- **Renderer** (`render.py`): one HTML page. Overview with reading order and the
-  rename table; per file, the whole new file with the removed lines interleaved,
-  noise collapsed to one row per class, the outline on the right, notes inline,
-  and a reviewed mark per file kept in `localStorage`.
+- **PR metadata** (`annotations/<pr>.json`): number, title, author, base and head
+  commits and the PR description, from `gh pr view`. The file is also where a
+  session's annotations (summaries, notes, where to look) will go; none are
+  rendered at the moment.
+- **Renderer** (`render.py`): one HTML page. Overview with the PR description,
+  the noise totals and the rename table; a sidebar file tree with change colours, search and a reviewed
+  mark per file kept in `localStorage`; per file, the whole new file with the
+  removed lines interleaved and noise collapsed to one row per class.
 
 ## Run
 

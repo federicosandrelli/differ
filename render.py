@@ -67,22 +67,6 @@ kbd { font: 11px var(--mono); background: var(--bg3); border: 1px solid var(--li
 #side .search:focus { border-color: var(--accent); }
 .tree .cnt.hits { background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
 mark { background: #ffe066; color: #1c1f26; border-radius: 2px; padding: 0 1px; }
-.group { padding: 10px 0 4px; }
-.group h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); margin: 0; padding: 4px 16px; display: flex; justify-content: space-between; }
-.group h2 .n { font-weight: 400; }
-.file { padding: 7px 12px 7px 16px; cursor: pointer; border-left: 3px solid transparent; }
-.file:hover { background: var(--bg3); }
-.file.active { background: var(--accent-bg); border-left-color: var(--accent); }
-.file.reviewed { opacity: .55; }
-.file .row1 { display: flex; align-items: center; gap: 6px; }
-.file .name { font: 12.5px var(--mono); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file .dir { color: var(--fg3); font-size: 11px; }
-.file .name b { font-weight: 600; }
-.file .counts { font: 11px var(--mono); color: var(--fg2); white-space: nowrap; }
-.file .counts .a { color: var(--add-fg); } .file .counts .d { color: var(--del-fg); }
-.file .sum { font-size: 12px; color: var(--fg2); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.file .bar { height: 3px; background: var(--bg3); border-radius: 2px; margin-top: 5px; display: flex; overflow: hidden; }
-.file .bar i { display: block; height: 100%; } .bar .s { background: var(--accent); } .bar .noise { background: var(--fg3); opacity: .5; }
 .badge { font: 10px/16px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--bg3); color: var(--fg2); flex: none; min-width: 16px; text-align: center; }
 .badge.A { background: var(--add-num); color: var(--add-fg); } .badge.D { background: var(--del-num); color: var(--del-fg); }
 .badge.M { background: var(--mod-bg); color: var(--mod-fg); } .badge.R, .badge.V { background: var(--ren-bg); color: var(--ren-fg); }
@@ -110,15 +94,17 @@ mark { background: #ffe066; color: #1c1f26; border-radius: 2px; padding: 0 1px; 
 .tree .leaf.reviewed .pill { opacity: .5; }
 .kind { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); }
 .check { width: 15px; height: 15px; border: 1.5px solid var(--fg3); border-radius: 4px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: transparent; opacity: .35; }
-.file:hover .check, .row:hover .check { opacity: 1; }
+.row:hover .check { opacity: 1; }
 .check:hover { border-color: var(--accent); color: var(--accent); }
-.file.reviewed .check, .leaf.reviewed .check, .check.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
+.leaf.reviewed .check, .check.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
 
 #main { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; }
 .page { max-width: 1100px; margin: 0 auto; padding: 28px 36px 80px; }
 .page h1 { font-size: 22px; margin: 0 0 6px; }
 .page .meta { color: var(--fg2); margin-bottom: 18px; }
 .page p { max-width: 78ch; }
+.prbody { max-width: 78ch; } .prbody h3, .prbody h4 { font-size: 14px; margin: 16px 0 6px; } .prbody ul { padding-left: 20px; } .prbody li { margin: 4px 0; }
+.prbody code { font: 12.5px var(--mono); background: var(--bg3); padding: 0 4px; border-radius: 3px; }
 .page h2 { font-size: 15px; margin: 28px 0 10px; }
 .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
 .stat { background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 130px; }
@@ -131,22 +117,12 @@ table.plain { border-collapse: collapse; width: 100%; font-size: 13px; }
 table.plain th, table.plain td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .mono { font-family: var(--mono); font-size: 12.5px; }
-.card { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 10px 0; background: var(--bg2); }
-.card h3 { margin: 0 0 4px; font-size: 14px; } .card .desc { color: var(--fg2); font-size: 13px; margin-bottom: 8px; }
-.card ul { margin: 0; padding: 0; list-style: none; }
-.card li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 5px 0; border-top: 1px solid var(--line); }
-.card li .sum { grid-column: 1 / -1; color: var(--fg2); font-size: 12.5px; }
-.card li a { word-break: break-all; }
-.focus li { margin: 6px 0; }
 
 .fhead { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 5; }
 .fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 6px; }
 .fhead .path { font: 13px var(--mono); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fhead .path .dir { color: var(--fg3); } .fhead .path b { font-weight: 600; }
 .fhead .tools { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px; flex-wrap: wrap; font-size: 12px; color: var(--fg2); }
-.fdesc { padding: 12px 20px 4px; }
-.fdesc p { margin: 0 0 8px; max-width: 90ch; }
-.fdesc .links { font-size: 12.5px; color: var(--fg2); } .fdesc .links a { font-family: var(--mono); font-size: 12px; }
 .body { display: flex; align-items: flex-start; }
 .code { flex: 1; min-width: 0; padding: 8px 0 60px; }
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.5 var(--mono); table-layout: fixed; }
@@ -169,9 +145,6 @@ tr.collapsed td:hover { color: var(--accent); }
 tr.collapsed td .cls { display: inline-block; min-width: 110px; font-weight: 600; color: var(--fg3); }
 tr.collapsed td code { font-family: var(--mono); font-size: 11.5px; }
 tr.runhead td { background: var(--bg2); color: var(--fg3); font: 11px var(--sans); padding: 2px 12px; cursor: pointer; border-top: 1px dashed var(--line); }
-tr.note td { padding: 6px 12px 10px 70px; white-space: normal; font: 13px/1.45 var(--sans); }
-tr.note .callout { background: var(--note-bg); border: 1px solid var(--note-line); border-left-width: 3px; border-radius: 6px; padding: 8px 12px; max-width: 90ch; }
-tr.note .callout .who { font-size: 11px; color: var(--fg2); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
 tr.symhead td { background: var(--bg2); color: var(--fg3); font: 11px var(--mono); padding: 2px 12px; border-top: 1px solid var(--line); }
 
 .hljs-keyword, .hljs-built_in.hljs-keyword { color: var(--kw); } .hljs-string { color: var(--str); } .hljs-comment { color: var(--cmt); font-style: italic; }
@@ -195,21 +168,12 @@ const NOISE_LABEL = { import: 'imports', rename: 'rename fallout', whitespace: '
 const RADIUS = 4;
 
 for (const f of FILES) {
-  f.ann = ANN.files[f.path] || {};
-  f.kind = f.ann.kind || f.kind;
   f.base = f.path.split('/').pop();
   f.dir = f.path.slice(0, f.path.length - f.base.length);
-  f.testedBy = [];
 }
-for (const f of FILES) for (const t of (f.ann.tests || [])) if (BY_PATH[t]) BY_PATH[t].testedBy.push(f.path);
-const GROUPS = ANN.groups.map(g => ({ ...g, files: g.files.map(p => BY_PATH[p]).filter(Boolean) }));
-const grouped = new Set(GROUPS.flatMap(g => g.files.map(f => f.path)));
-const rest = FILES.filter(f => !grouped.has(f.path));
-if (rest.length) GROUPS.push({ title: 'Other', description: '', files: rest });
-const ORDER = GROUPS.flatMap(g => g.files);
 
 const state = {
-  view: 'overview', filter: 'implementation', whole: false, side: 'tree', closed: new Set(), q: '', showImportOnly: false,
+  view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', showImportOnly: false,
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -260,12 +224,11 @@ function buildRows(f) {
     r.removed.forEach(n => runOfOld.set(n, r)); r.added.forEach(n => runOfNew.set(n, r));
     (r.pair_rename || []).forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
   }
-  const notes = new Map(); for (const n of (f.ann.notes || [])) (notes.get(n.line) || notes.set(n.line, []).get(n.line)).push(n);
   const hl = highlightLines(f);
   const rows = [];
   const raw = f.content.split('\n'); if (raw.length && raw[raw.length - 1] === '') raw.pop();
   if (f.content_side === 'old') {
-    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl[i], text: t, run: runOfOld.get(i + 1), notes: notes.get(i + 1) }));
+    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl[i], text: t, run: runOfOld.get(i + 1) }));
     return flagHits(rows);
   }
   const removedBefore = new Map();
@@ -281,7 +244,7 @@ function buildRows(f) {
   }
   for (let i = 1; i <= raw.length + 1; i++) {
     for (const d of removedBefore.get(i) || []) rows.push(d);
-    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i), notes: notes.get(i) });
+    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i) });
   }
   return flagHits(rows);
 }
@@ -300,7 +263,7 @@ function blocksFor(rows) {
   const blocks = [];
   for (const r of rows) {
     const last = blocks[blocks.length - 1];
-    if (r.type === 'ctx' && !r.notes && !r.hit) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
+    if (r.type === 'ctx' && !r.hit) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
     else if (r.run && last && last.run === r.run) last.rows.push(r);
     else blocks.push({ run: r.run || null, rows: [r] });
   }
@@ -326,12 +289,10 @@ function isCollapsed(f, r) {
 
 function renderRows(f, rows, out) {
   for (const r of rows) {
-    const no = r.type === 'del' ? r.oldNo : r.newNo;
     const id = r.type === 'del' ? `O${r.oldNo}` : `L${r.newNo}`;
     const cls = [r.type, r.dim ? 'dim' : '', state.target === id ? 'target' : ''].join(' ');
     const tag = r.dim ? '<span class="tag">rename</span>' : '';
     out.push(`<tr class="${cls}" id="${id}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
-    for (const n of r.notes || []) out.push(`<tr class="note"><td colspan="4"><div class="callout"><div class="who">Reviewer note · line ${no}</div>${esc(n.text)}</div></td></tr>`);
   }
 }
 
@@ -485,7 +446,7 @@ function importOnly(f) {
 }
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 function visibleFiles() {
-  const base = state.side === 'tree' ? [...FILES].sort((x, y) => x.path.localeCompare(y.path)) : ORDER;
+  const base = [...FILES].sort((x, y) => x.path.localeCompare(y.path));
   return base.filter(f => kindVisible(f) && matches(f) && (state.showImportOnly || state.q || !importOnly(f)));
 }
 
@@ -540,7 +501,7 @@ function renderTreeNode(node, out) {
   for (const f of files) {
     const k = changeKind(f);
     const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
-    out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" data-path="${esc(f.path)}" title="${esc(f.ann.summary || f.path)}">
+    out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" data-path="${esc(f.path)}" title="${esc(f.path)}">
       <span class="chev"></span><span class="ico">·</span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
@@ -566,8 +527,7 @@ function renderSide() {
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
       <button data-filter="implementation" class="${state.filter === 'implementation' ? 'on' : ''}">Implementation</button>
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
-      <span class="seg"><button data-side="tree" class="${state.side === 'tree' ? 'on' : ''}">Tree</button><button data-side="groups" class="${state.side === 'groups' ? 'on' : ''}">Reading order</button></span>
-      ${state.side === 'tree' ? `<span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>` : ''}
+      <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
       <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
     <div class="searchbar"><input type="search" class="search" placeholder="Search file names and changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous"><span class="hint" id="searchmeta"></span></div>
     <div class="list">${importOnlyNotice()}${renderList()}</div><div class="grip"></div>`;
@@ -591,28 +551,7 @@ function updateSearchMeta() {
   const pos = state.hitIndex != null && state.hitIndex >= 0 ? `${state.hitIndex + 1} / ${n}` : `${n} line${n === 1 ? '' : 's'}`;
   el.textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${pos}`;
 }
-function renderList() {
-  if (state.side === 'tree') return renderTree();
-  let h = '';
-  for (const g of GROUPS) {
-    const shown = new Set(visibleFiles().map(f => f.path));
-    const files = g.files.filter(f => shown.has(f.path));
-    if (!files.length) continue;
-    const sub = files.reduce((a, f) => a + f.stats.substantive, 0), raw = files.reduce((a, f) => a + f.stats.raw, 0);
-    h += `<div class="group"><h2><span>${esc(g.title)}</span><span class="n">${fmt(sub)}${sub !== raw ? ` <span style="opacity:.6">/ ${fmt(raw)}</span>` : ''}</span></h2>`;
-    for (const f of files) {
-      const s = f.stats, pct = s.raw ? Math.round(100 * s.substantive / s.raw) : 0;
-      const k = changeKind(f);
-      h += `<div class="file ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" data-path="${esc(f.path)}">
-        <div class="row1"><span class="badge ${k}" title="${KIND_LABEL[k]}">${k === 'V' ? '→' : k}</span><span class="name" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir"> ${esc(shortDir(f.dir))}</span></span>
-          <span class="counts">${fileCounts(f)}</span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>
-        <div class="sum">${esc(f.ann.summary || '')}</div>
-        <div class="bar" title="${s.substantive} substantive of ${s.raw} changed lines"><i class="s" style="width:${pct}%"></i><i class="noise" style="width:${100 - pct}%"></i></div></div>`;
-    }
-    h += `</div>`;
-  }
-  return h;
-}
+function renderList() { return renderTree(); }
 (function sideResize() {
   try { const w = localStorage.getItem('dr:side-width'); if (w) document.documentElement.style.setProperty('--side', w + 'px'); } catch {}
   let dragging = null;
@@ -620,10 +559,29 @@ function renderList() {
   document.addEventListener('mousemove', (e) => { if (!dragging) return; const w = Math.max(260, Math.min(e.clientX, window.innerWidth * 0.7)); document.documentElement.style.setProperty('--side', w + 'px'); });
   document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; try { localStorage.setItem('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); } catch {} });
 })();
-function shortDir(dir) {
-  const parts = dir.split('/').filter(Boolean);
-  if (parts.length <= 2) return dir;
-  return '…/' + parts.slice(-2).join('/') + '/';
+// Enough markdown for a PR description: headings, bullets, paragraphs, links, bold, inline code.
+function renderMarkdown(md) {
+  const inline = (t) => esc(t)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>');
+  const out = []; let para = [], list = null;
+  const flush = () => {
+    if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; }
+    if (list) { out.push(`<ul>${list.map(i => `<li>${inline(i)}</li>`).join('')}</ul>`); list = null; }
+  };
+  for (const raw of md.split('\n')) {
+    const line = raw.trimEnd();
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    const b = line.match(/^\s*[-*]\s+(.*)$/);
+    if (h) { flush(); out.push(`<h${Math.min(h[1].length + 1, 4)}>${inline(h[2])}</h${Math.min(h[1].length + 1, 4)}>`); }
+    else if (b) { if (para.length) flush(); (list = list || []).push(b[1]); }
+    else if (!line.trim()) flush();
+    else { if (list) flush(); para.push(line.trim()); }
+  }
+  flush();
+  return out.join('');
 }
 
 function renderOverview() {
@@ -632,7 +590,7 @@ function renderOverview() {
   const reviewed = FILES.filter(isReviewed).length;
   let h = `<div class="page"><h1>${esc(PR.title)}</h1>
     <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a> · ${esc(PR.author)} · ${PR.commits} commits · <span class="mono">${PR.base.slice(0, 8)}…${PR.head.slice(0, 8)}</span></div>
-    <p>${esc(ANN.summary)}</p>
+    <div class="prbody">${renderMarkdown(PR.body || '')}</div>
     <div class="stats">
       <div class="stat"><b>${fmt(sub)}</b><span>lines to read</span></div>
       <div class="stat"><b>${fmt(raw - sub)}</b><span>lines of noise hidden (${raw ? Math.round(100 * (raw - sub) / raw) : 0}% of ${fmt(raw)})</span></div>
@@ -640,10 +598,7 @@ function renderOverview() {
       <div class="stat"><b>${reviewed} / ${FILES.length}</b><span>files reviewed</span></div>
     </div>
     <div class="chips">${NOISE.filter(k => t[k]).map(k => `<span class="chip ${state.show[k] ? 'on' : ''}" data-show="${k}">${state.show[k] ? 'showing' : 'hiding'} ${NOISE_LABEL[k]} <b>${fmt(t[k])}</b></span>`).join('')}</div>
-    <p class="hint" style="margin-top:6px">Hidden lines are collapsed to one row inside each file, never removed. A row is only collapsed when the classifier can prove what it is: every changed line is inside an import statement, or the removed line becomes the added line exactly by applying a rename that recurs elsewhere in the PR.</p>`;
-  if (ANN.review_focus && ANN.review_focus.length) {
-    h += `<h2>Where to look</h2><ul class="focus">${ANN.review_focus.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
-  }
+    <p class="hint" style="margin-top:6px">Hidden lines are collapsed to one row inside each file. A row is only collapsed when the classifier can prove what it is: every changed line is inside an import statement, or the removed line becomes the added line exactly by applying a rename that recurs elsewhere in the PR.</p>`;
   if (D.renames.length) {
     h += `<h2>Renames</h2><table class="plain"><tr><th>From</th><th>To</th><th>Blocks</th><th>Files</th><th>Origin</th></tr>`;
     for (const r of D.renames) {
@@ -653,20 +608,12 @@ function renderOverview() {
     }
     h += `</table>`;
   }
-  h += `<h2>Reading order</h2>`;
-  GROUPS.forEach((g, i) => {
-    h += `<div class="card"><h3>${i + 1}. ${esc(g.title)}</h3><div class="desc">${esc(g.description || '')}</div><ul>`;
-    for (const f of g.files) {
-      h += `<li><a href="#" data-path="${esc(f.path)}" class="mono"><span class="badge ${f.status}">${f.status}</span> ${esc(f.path)}</a><span class="counts mono">${fileCounts(f)}${f.stats.raw !== f.stats.substantive ? ` <span class="hint">${f.stats.substantive} to read</span>` : ''}</span><span class="sum">${esc(f.ann.summary || '')}</span></li>`;
-    }
-    h += `</ul></div>`;
-  });
   h += `</div>`;
   return h;
 }
 
 function renderFile(f) {
-  const s = f.stats, idx = ORDER.indexOf(f);
+  const s = f.stats, files = visibleFiles(), idx = files.indexOf(f);
   const noiseHere = NOISE.filter(k => s.by_class[k]);
   const ck = changeKind(f);
   let h = `<div class="fhead"><div class="top">
@@ -674,19 +621,13 @@ function renderFile(f) {
       <span class="path" title="${esc(f.path)}"><span class="dir">${esc(f.dir)}</span><b>${esc(f.base)}</b></span>
       <span class="kind">${esc(f.kind)}</span><span class="counts mono">${fileCounts(f)}</span>
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
-      <button data-nav="-1" ${idx <= 0 ? 'disabled' : ''} title="previous file (k)">↑</button><button data-nav="1" ${idx >= ORDER.length - 1 ? 'disabled' : ''} title="next file (j)">↓</button>
+      <button data-nav="-1" ${idx <= 0 ? 'disabled' : ''} title="previous file (k)">↑</button><button data-nav="1" ${idx >= files.length - 1 ? 'disabled' : ''} title="next file (j)">↓</button>
     </div><div class="tools">
       <span class="seg"><button data-whole="0" class="${!state.whole ? 'on' : ''}">Changes</button><button data-whole="1" class="${state.whole ? 'on' : ''}">Whole file</button></span>
       ${f.old_path && f.new_path && f.old_path !== f.new_path ? `<span class="hint">renamed from <span class="mono">${esc(f.old_path)}</span>${f.similarity ? ` (${f.similarity}% similar)` : ''}</span>` : ''}
       ${noiseHere.length ? `<span class="chips">${noiseHere.map(k => `<span class="chip ${state.show[k] ? 'on' : ''}" data-show="${k}">${NOISE_LABEL[k]} <b>${s.by_class[k]}</b></span>`).join('')}</span>` : ''}
       ${s.raw !== s.substantive ? `<span class="hint">${s.substantive} of ${s.raw} changed lines to read</span>` : ''}
     </div></div>`;
-  h += `<div class="fdesc">${f.ann.summary ? `<p>${esc(f.ann.summary)}</p>` : ''}`;
-  const links = [];
-  if (f.ann.tests && f.ann.tests.length) links.push(`Tested by ${f.ann.tests.map(p => BY_PATH[p] ? `<a href="#" data-path="${esc(p)}">${esc(p.split('/').pop())}</a>` : esc(p)).join(', ')}`);
-  if (f.testedBy.length) links.push(`Tests for ${f.testedBy.map(p => `<a href="#" data-path="${esc(p)}">${esc(p.split('/').pop())}</a>`).join(', ')}`);
-  if (links.length) h += `<div class="links">${links.join(' · ')}</div>`;
-  h += `</div>`;
   h += `<div class="body"><div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div>`;
   h += `</div>`;
   return h;
@@ -724,7 +665,7 @@ function go(path, line) {
 }
 
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-side],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-nav],[data-fold],[data-runs],[data-run],[data-line]');
+  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-nav],[data-fold],[data-runs],[data-run],[data-line]');
   if (!t) return;
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); render(); return; }
   if (t.dataset.go) { go('overview'); return; }
@@ -736,7 +677,6 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (t.dataset.filter) { state.filter = t.dataset.filter; render(); return; }
-  if (t.dataset.side) { state.side = t.dataset.side; try { localStorage.setItem('dr:side', state.side); } catch {} render(); return; }
   if (t.dataset.importonly !== undefined) { e.preventDefault(); state.showImportOnly = t.dataset.importonly === '1'; try { localStorage.setItem('dr:import-only', state.showImportOnly ? '1' : '0'); } catch {} renderSide(); return; }
   if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
   if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); renderSide(); return; }
@@ -778,7 +718,7 @@ window.addEventListener('hashchange', () => {
   if (BY_PATH[m[1]] && (state.view !== m[1] || m[2])) go(m[1], m[2] ? +m[2] : null);
 });
 (function init() {
-  try { state.side = localStorage.getItem('dr:side') || 'tree'; state.showImportOnly = localStorage.getItem('dr:import-only') === '1'; } catch {}
+  try { state.showImportOnly = localStorage.getItem('dr:import-only') === '1'; } catch {}
   const h = decodeURIComponent(location.hash.slice(1));
   if (h) { const m = h.match(/^(.*?)(?::(\d+))?$/); if (BY_PATH[m[1]]) { go(m[1], m[2] ? +m[2] : null); return; } }
   render();
