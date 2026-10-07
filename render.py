@@ -441,21 +441,30 @@ function wordDiff(a, b) {
   const n = A.length, m = B.length;
   const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-  const common = L[0][0];
   const words = Math.max(A.filter(t => /\w/.test(t)).length, B.filter(t => /\w/.test(t)).length);
-  if (!words || common < Math.max(1, Math.ceil(words * 0.3))) return null;
+  if (!words) return null;
   const ra = [], rb = [];
-  let i = 0, j = 0, pa = 0, pb = 0;
+  let i = 0, j = 0, pa = 0, pb = 0, commonWords = 0;
   const push = (arr, s, e) => { const last = arr[arr.length - 1]; if (last && last[1] === s) last[1] = e; else arr.push([s, e]); };
   while (i < n && j < m) {
-    if (A[i] === B[j]) { pa += A[i].length; pb += B[j].length; i++; j++; }
+    if (A[i] === B[j]) { if (/\w/.test(A[i])) commonWords++; pa += A[i].length; pb += B[j].length; i++; j++; }
     else if (L[i + 1][j] >= L[i][j + 1]) { push(ra, pa, pa + A[i].length); pa += A[i].length; i++; }
     else { push(rb, pb, pb + B[j].length); pb += B[j].length; j++; }
   }
   while (i < n) { push(ra, pa, pa + A[i].length); pa += A[i].length; i++; }
   while (j < m) { push(rb, pb, pb + B[j].length); pb += B[j].length; j++; }
-  const trim = (arr) => arr.filter(([s, e]) => e > s);
-  return { a: trim(ra), b: trim(rb) };
+  if (commonWords < Math.ceil(words * 0.3)) return null;
+  // Join changed words separated only by spaces, so a rewritten phrase reads as one highlight.
+  const join = (arr, text) => arr.filter(([s, e]) => e > s).reduce((out, r) => {
+    const last = out[out.length - 1];
+    if (last && /^\s*$/.test(text.slice(last[1], r[0]))) last[1] = r[1]; else out.push([r[0], r[1]]);
+    return out;
+  }, []).map(([s, e]) => {
+    while (s < e && /\s/.test(text[s])) s++;
+    while (e > s && /\s/.test(text[e - 1])) e--;
+    return [s, e];
+  }).filter(([s, e]) => e > s);
+  return { a: join(ra, a), b: join(rb, b) };
 }
 // Wrap plain-text ranges of a highlighted line in <span class="ic">, walking only its text nodes.
 function wrapRanges(html, ranges) {
