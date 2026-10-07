@@ -726,6 +726,15 @@ function renderMarkdown(md) {
   flush();
   return out.join('');
 }
+// The old path from the last directory the two paths share, so only the part that changed is spelled out.
+function renamedFrom(f) {
+  if (!f.old_path || !f.new_path || f.old_path === f.new_path) return '';
+  const o = f.old_path.split('/'), n = f.new_path.split('/');
+  let i = 0;
+  while (i < o.length - 1 && i < n.length - 1 && o[i] === n[i]) i++;
+  const tail = o.slice(Math.max(0, i - 1)).join('/');
+  return `<span class="dir" title="${esc(f.old_path)}">renamed from ${i > 1 ? '…/' : ''}${esc(tail)}</span>`;
+}
 function fileCounts(f) { return `<span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span>`; }
 function renderOverview() {
   const t = D.totals, raw = Object.values(t).reduce((a, b) => a + b, 0), sub = t.substantive || 0;
@@ -758,11 +767,10 @@ function renderFile(f) {
   const noiseHere = NOISE.filter(k => s.by_class[k]);
   return `<section class="filesec" id="sec-${f.index}" data-path="${esc(f.path)}"><div class="fhead"><div class="top">
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
-      <span class="path" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir">${esc(f.dir)}</span></span>
+      <span class="path" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir">${esc(f.dir)}</span>${renamedFrom(f)}</span>
       <span class="kind">${esc(f.kind)}</span><span class="counts">${fileCounts(f)}</span>
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
     </div><div class="tools">
-      ${f.old_path && f.new_path && f.old_path !== f.new_path ? `<span class="hint">renamed from <span class="mono">${esc(f.old_path)}</span>${f.similarity ? ` (${f.similarity}% similar)` : ''}</span>` : ''}
       ${noiseHere.length ? `<span class="chips">${noiseHere.map(k => `<span class="chip ${state.show[k] ? 'on' : ''}" data-show="${k}">${NOISE_LABEL[k]} <b>${s.by_class[k]}</b></span>`).join('')}</span>` : ''}
       ${s.raw !== s.substantive ? `<span class="hint">${s.substantive} of ${s.raw} changed lines to read</span>` : ''}
     </div></div>
