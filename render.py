@@ -243,9 +243,16 @@ function hits(f) {
   hitCache.set(key, n);
   return n;
 }
+// The order the tree shows: in every folder, subfolders first, then files.
+function treeOrder(node, out) {
+  for (const d of [...node.dirs.values()].sort((x, y) => x.label.localeCompare(y.label))) treeOrder(d, out);
+  for (const f of [...node.files].sort((x, y) => x.base.localeCompare(y.base))) out.push(f);
+  return out;
+}
 function visibleFiles() {
-  return [...FILES].sort((x, y) => x.path.localeCompare(y.path)).filter(f =>
+  const shown = FILES.filter(f =>
     kindVisible(f) && nameMatches(f) && (!state.q || hits(f) > 0) && (state.showImportOnly || state.q || state.fq || !importOnly(f)));
+  return treeOrder(buildTree(shown), []);
 }
 
 // ---------- search hits, for Enter to step through
