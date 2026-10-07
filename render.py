@@ -152,7 +152,7 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.5 var(--mono); table-layout: fixed; }
 table.diff td { padding: 0 6px; vertical-align: top; white-space: pre; transition: box-shadow .8s ease; }
-table.diff td.n { text-align: right; color: var(--fg3); user-select: none; font-size: 11px; padding-right: 8px; }
+table.diff td.n { text-align: right; color: var(--fg3); user-select: none; font-size: 11px; padding: 0 4px 0 2px; }
 table.diff td.m { text-align: center; color: var(--fg3); user-select: none; padding: 0; }
 table.diff tr.add td { background: var(--add-bg); } table.diff tr.add td.n { background: var(--add-num); } table.diff tr.add td.m { color: var(--add-fg); }
 table.diff tr.del td { background: var(--del-bg); } table.diff tr.del td.n { background: var(--del-num); } table.diff tr.del td.m { color: var(--del-fg); }
@@ -462,7 +462,7 @@ function renderCode(f) {
     if (r && showOriginHead(r)) out.push(`<tr class="runhead"><td colspan="4">rename origin · <code>${esc(r.rename[0])}</code> → <code>${esc(r.rename[1])}</code></td></tr>`);
     renderRows(f, b.rows, out);
   });
-  return `<table class="diff"><colgroup><col style="width:52px"><col style="width:52px"><col style="width:18px"><col></colgroup>${out.join('')}</table>`;
+  return `<table class="diff"><colgroup><col style="width:38px"><col style="width:38px"><col style="width:16px"><col></colgroup>${out.join('')}</table>`;
 }
 
 // ---------- sidebar
