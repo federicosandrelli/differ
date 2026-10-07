@@ -95,6 +95,9 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 .tree .row:hover { background-color: var(--bg3); }
 .tree .row.active { background-color: var(--sel); }
 .tree .row.active .pill { font-weight: 600; outline: 1.5px solid var(--accent); }
+#side .list:focus { outline: none; }
+#side .list:focus .row.cursor { box-shadow: inset 0 0 0 1.5px var(--accent); }
+#side .list:focus .row.cursor.active { box-shadow: none; }
 .tree .chev { width: 14px; flex: none; font-size: 9px; color: var(--fg3); text-align: center; }
 .tree .ico { width: 14px; flex: none; text-align: center; color: var(--fg3); font-size: 11px; }
 .tree .pill { font-family: var(--mono); font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--bg3); color: var(--fg); display: inline-flex; min-width: 0; flex: 0 1 auto; }
@@ -198,7 +201,7 @@ FILES.forEach((f, i) => {
 
 const state = {
   view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', fq: '', hitIndex: -1,
-  showImportOnly: false, theme: 'auto',
+  showImportOnly: false, theme: 'auto', cursor: null,
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -503,14 +506,14 @@ function renderTreeNode(node, depth, out) {
   const dirs = [...node.dirs.values()].sort((x, y) => x.label.localeCompare(y.label));
   for (const d of dirs) {
     const closed = state.closed.has(d.full);
-    out.push(`<div class="row dir" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
+    out.push(`<div class="row dir ${state.cursor === 'd:' + d.full ? 'cursor' : ''}" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
       <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico">▤</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
     if (!closed) renderTreeNode(d, depth + 1, out);
   }
   for (const f of [...node.files].sort((x, y) => x.base.localeCompare(y.base))) {
     const k = changeKind(f);
     const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
-    out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.path)}">
+    out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${state.cursor === 'f:' + f.path ? 'cursor' : ''} ${isReviewed(f) ? 'reviewed' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.path)}">
       <span class="chev"></span><span class="ico">·</span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
@@ -556,18 +559,20 @@ function renderSide() {
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
       <span class="seg"><button data-whole="0" class="${!state.whole ? 'on' : ''}">Changes</button><button data-whole="1" class="${state.whole ? 'on' : ''}">Whole files</button></span>
       <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
-      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole · <kbd>o</kbd> top · <kbd>f</kbd> file · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
+      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>w</kbd> whole · <kbd>o</kbd> top · <kbd>f</kbd> file · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
     <div class="searchbar">
       <input type="search" class="filesearch" placeholder="Filter files by name" value="${esc(state.fq)}" spellcheck="false" title="f">
       <input type="search" class="search" placeholder="Search changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
       <span class="meta" id="searchmeta"></span></div>
-    <div class="list">${renderList()}</div><div class="grip"></div>`;
+    <div class="list" tabindex="0">${renderList()}</div><div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
-  const focused = document.activeElement && (document.activeElement.classList.contains('search') ? '.search' : document.activeElement.classList.contains('filesearch') ? '.filesearch' : null);
+  const ae = document.activeElement;
+  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('filesearch') ? '.filesearch' : ae.classList.contains('list') ? '.list' : null);
   document.getElementById('side').innerHTML = h;
   document.querySelector('#side .list').scrollTop = scroll;
-  if (focused) focusBox(focused);
+  if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
+  else if (focused) focusBox(focused);
   revealActive();
   updateSearchMeta();
 }
@@ -580,6 +585,10 @@ function revealActive() {
 function setActive(path) {
   if (state.view === path) return;
   state.view = path;
+  if (!state.cursor || state.cursor.startsWith('f:')) state.cursor = path === 'overview' ? null : 'f:' + path;
+  for (const el of document.querySelectorAll('#side .row.cursor')) el.classList.remove('cursor');
+  const cur = state.cursor && document.querySelector(`#side .leaf[data-path="${CSS.escape(state.cursor.slice(2))}"]`);
+  if (cur) cur.classList.add('cursor');
   for (const el of document.querySelectorAll('#side .row.active')) el.classList.remove('active');
   const row = path !== 'overview' && document.querySelector(`#side .leaf[data-path="${CSS.escape(path)}"]`);
   if (row) row.classList.add('active');
@@ -721,6 +730,7 @@ document.addEventListener('click', (e) => {
   if (t.dataset.go) { scrollToFile('overview'); return; }
   if (t.dataset.path) {
     e.preventDefault();
+    if (t.closest('#side .tree')) { state.cursor = 'f:' + t.dataset.path; document.querySelector('#side .list').focus({ preventScroll: true }); }
     let line = t.dataset.line ? +t.dataset.line : null;
     if (!line && state.q && t.closest('#side')) line = firstHitLine(BY_PATH[t.dataset.path]);
     go(t.dataset.path, line);
@@ -730,7 +740,7 @@ document.addEventListener('click', (e) => {
   if (t.dataset.theme) { state.theme = t.dataset.theme; lsSet('dr:theme', state.theme); applyTheme(); renderSide(); return; }
   if (t.dataset.importonly !== undefined) { e.preventDefault(); state.showImportOnly = t.dataset.importonly === '1'; lsSet('dr:import-only', state.showImportOnly ? '1' : '0'); render(); return; }
   if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
-  if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); renderSide(); return; }
+  if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.cursor = 'd:' + k; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); document.querySelector('#side .list').focus({ preventScroll: true }); renderSide(); return; }
   if (t.dataset.show) { state.show[t.dataset.show] = !state.show[t.dataset.show]; render(); return; }
   if (t.dataset.whole !== undefined) { state.whole = t.dataset.whole === '1'; render(); return; }
   if (t.dataset.fold) { state.unfolded.add(t.dataset.fold); render(); return; }
@@ -755,7 +765,47 @@ document.addEventListener('input', (e) => {
   else return;
   render();
 });
+function treeRows() { return [...document.querySelectorAll('#side .tree .row')]; }
+function rowKey(el) { return el.dataset.folder !== undefined ? 'd:' + el.dataset.folder : 'f:' + el.dataset.path; }
+function setCursor(el) {
+  state.cursor = rowKey(el);
+  for (const x of document.querySelectorAll('#side .row.cursor')) x.classList.remove('cursor');
+  el.classList.add('cursor');
+  const list = document.querySelector('#side .list'), a = el.getBoundingClientRect(), l = list.getBoundingClientRect();
+  if (a.top < l.top || a.bottom > l.bottom) el.scrollIntoView({ block: 'nearest' });
+  if (el.dataset.path) scrollToFile(el.dataset.path);
+}
+function treeKey(e) {
+  const rows = treeRows(); if (!rows.length) return false;
+  let i = rows.findIndex(r => rowKey(r) === state.cursor);
+  if (i < 0) i = rows.findIndex(r => r.dataset.path === state.view);
+  const cur = rows[i];
+  if (e.key === 'ArrowDown') { setCursor(rows[Math.min(i + 1, rows.length - 1)]); return true; }
+  if (e.key === 'ArrowUp') { setCursor(rows[Math.max(i - 1, 0)]); return true; }
+  if (!cur) return false;
+  const folder = cur.dataset.folder;
+  if (e.key === 'ArrowRight') {
+    if (folder !== undefined && state.closed.has(folder)) { state.closed.delete(folder); renderSide(); }
+    else if (folder !== undefined && rows[i + 1]) setCursor(rows[i + 1]);
+    return true;
+  }
+  if (e.key === 'ArrowLeft') {
+    if (folder !== undefined && !state.closed.has(folder)) { state.closed.add(folder); renderSide(); return true; }
+    const depth = +cur.style.getPropertyValue('--d');
+    for (let j = i - 1; j >= 0; j--) if (rows[j].dataset.folder !== undefined && +rows[j].style.getPropertyValue('--d') < depth) { setCursor(rows[j]); break; }
+    return true;
+  }
+  if (e.key === 'Enter' || e.key === ' ') {
+    if (folder !== undefined) { state.closed.has(folder) ? state.closed.delete(folder) : state.closed.add(folder); renderSide(); }
+    else scrollToFile(cur.dataset.path);
+    return true;
+  }
+  return false;
+}
 document.addEventListener('keydown', (e) => {
+  if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (treeKey(e)) { e.preventDefault(); return; }
+  }
   const inBox = e.target.classList && (e.target.classList.contains('search') || e.target.classList.contains('filesearch'));
   if (inBox) {
     if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input', { bubbles: true })); e.target.blur(); }
