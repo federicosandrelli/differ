@@ -158,11 +158,10 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 
 .filesec { border-top: 6px solid var(--bg3); }
 .fhead { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 5; }
-.fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 6px; }
+.fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; }
 .fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fhead .path .dir { font: 11.5px var(--mono); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fhead .path b { font: 600 16px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fhead .tools { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px; flex-wrap: wrap; font-size: 12px; color: var(--fg2); }
 .code { padding: 8px 0 24px; }
 .empty { color: var(--fg3); padding: 24px; text-align: center; }
 
@@ -763,16 +762,12 @@ function renderOverview() {
   return h + `</div>`;
 }
 function renderFile(f) {
-  const s = f.stats, ck = changeKind(f);
-  const noiseHere = NOISE.filter(k => s.by_class[k]);
+  const ck = changeKind(f);
   return `<section class="filesec" id="sec-${f.index}" data-path="${esc(f.path)}"><div class="fhead"><div class="top">
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir">${esc(f.dir)}</span>${renamedFrom(f)}</span>
       <span class="kind">${esc(f.kind)}</span><span class="counts">${fileCounts(f)}</span>
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
-    </div><div class="tools">
-      ${noiseHere.length ? `<span class="chips">${noiseHere.map(k => `<span class="chip ${state.show[k] ? 'on' : ''}" data-show="${k}">${NOISE_LABEL[k]} <b>${s.by_class[k]}</b></span>`).join('')}</span>` : ''}
-      ${s.raw !== s.substantive ? `<span class="hint">${s.substantive} of ${s.raw} changed lines to read</span>` : ''}
     </div></div>
     <div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div></section>`;
 }
