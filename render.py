@@ -495,12 +495,47 @@ function renderRows(f, rows, out) {
     out.push(`<tr class="${cls}" id="${id}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
   }
 }
+// Every import section folds to one row, changed or not: the file's import lines, with the blank lines between them.
+function importSegments(f, rows) {
+  const newSet = new Set(f.import_lines || []), oldSet = new Set(f.old_import_lines || []);
+  const isImp = (r) => r.type === 'del' ? oldSet.has(r.oldNo) : newSet.has(r.newNo);
+  const isBlank = (r) => !r.text.trim();
+  const segs = [];
+  let i = 0;
+  while (i < rows.length) {
+    const seg = [];
+    if (isImp(rows[i])) {
+      let j = i;
+      while (j < rows.length && (isImp(rows[j]) || isBlank(rows[j]))) seg.push(rows[j++]);
+      while (seg.length && isBlank(seg[seg.length - 1])) { seg.pop(); j--; }
+      segs.push({ imports: true, rows: seg }); i = j;
+    } else {
+      let j = i;
+      while (j < rows.length && !isImp(rows[j])) seg.push(rows[j++]);
+      segs.push({ imports: false, rows: seg }); i = j;
+    }
+  }
+  return segs;
+}
+const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
+const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(r => r.hit);
 function renderCode(f) {
   const rows = buildRows(f);
-  const blocks = mergeCollapsed(f, blocksFor(rows));
+  let blocks = [];
+  for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
+  blocks = mergeCollapsed(f, blocks);
   const symStarts = new Map((f.symbols || []).map(s => [s.start, s]));
   const out = [];
   blocks.forEach((b, bi) => {
+    if (b.imports) {
+      const key = importsKey(f, b), n = b.rows.length;
+      const adds = b.rows.filter(r => r.type === 'add').length, dels = b.rows.filter(r => r.type === 'del').length;
+      const delta = adds || dels ? `<span class="counts"><span class="a">+${adds}</span> <span class="d">−${dels}</span></span>` : 'unchanged';
+      if (!importsOpen(f, b)) { out.push(`<tr class="collapsed" data-run="${esc(key)}"><td colspan="4">▸ <span class="cls">imports</span> ${n} line${n > 1 ? 's' : ''} · ${delta}</td></tr>`); return; }
+      out.push(`<tr class="runhead" data-run="${esc(key)}"><td colspan="4">▾ <span class="cls">imports</span> ${n} line${n > 1 ? 's' : ''} · ${delta}</td></tr>`);
+      renderRows(f, b.rows, out);
+      return;
+    }
     if (b.group) {
       const n = b.group.reduce((a, r) => a + r.removed.length + r.added.length, 0);
       const keys = b.group.map(r => runKey(f, r)).join('|');
@@ -509,7 +544,7 @@ function renderCode(f) {
     }
     if (b.ctx) {
       const rs = b.rows;
-      const visible = (nb) => nb && !nb.group && !(nb.run && isCollapsed(f, nb.run));
+      const visible = (nb) => nb && !nb.group && !(nb.run && isCollapsed(f, nb.run)) && !(nb.imports && !importsOpen(f, nb));
       const leftVisible = bi > 0 && visible(blocks[bi - 1]);
       const rightVisible = bi < blocks.length - 1 && visible(blocks[bi + 1]);
       if (state.whole || (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible))) { renderRows(f, rs, out); return; }
@@ -706,7 +741,7 @@ function renderOverview() {
       <div class="stat"><b>${reviewed} / ${FILES.length}</b><span>files reviewed</span></div>
     </div>
     <div class="chips">${NOISE.filter(k => t[k]).map(k => `<span class="chip ${state.show[k] ? 'on' : ''}" data-show="${k}">${state.show[k] ? 'showing' : 'hiding'} ${NOISE_LABEL[k]} <b>${fmt(t[k])}</b></span>`).join('')}</div>
-    <p class="hint" style="margin-top:6px">Hidden lines are collapsed to one row inside each file. A row is only collapsed when the classifier can prove what it is: every changed line is inside an import statement, or the removed line becomes the added line exactly by applying a rename that recurs elsewhere in the PR.</p>`;
+    <p class="hint" style="margin-top:6px">Import sections are folded to one row in every file, changed or not. Other lines are collapsed only when the classifier can prove what they are: the removed line becomes the added line exactly by applying a rename that recurs elsewhere in the PR.</p>`;
   if (D.renames.length) {
     h += `<h2>Renames</h2><table class="plain"><tr><th>From</th><th>To</th><th>Blocks</th><th>Files</th><th>Origin</th></tr>`;
     for (const r of D.renames) {

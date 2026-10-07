@@ -346,7 +346,7 @@ def main() -> None:
             classify_run(run, side_sets, ordered, rename_info)
         out_files.append({"fd": fd, "symbols": symbols, "content": new_src if fd.new_path else old_src,
                           "content_side": "new" if fd.new_path else "old",
-                          "import_lines": new_imports if fd.new_path else old_imports})
+                          "import_lines": new_imports if fd.new_path else old_imports, "old_import_lines": old_imports})
     detect_moves(files)
 
     rename_usage: dict[tuple[str, str], dict] = {p: {"runs": 0, "files": set(), "origin": None} for p in rename_info}
@@ -404,7 +404,7 @@ def main() -> None:
             "lang": "python" if fd.path.endswith(".py") else ("markdown" if fd.path.endswith(".md") else "text"),
             "content": entry["content"], "content_side": entry["content_side"],
             "hunks": hunks_json, "runs": runs_json, "symbols": entry["symbols"],
-            "import_lines": sorted(entry["import_lines"]),
+            "import_lines": sorted(entry["import_lines"]), "old_import_lines": sorted(entry["old_import_lines"]),
             "stats": {"raw": raw, "substantive": substantive, "by_class": dict(by_class),
                       "additions": sum(len(r.added) for r in fd.runs), "deletions": sum(len(r.removed) for r in fd.runs)},
         })
