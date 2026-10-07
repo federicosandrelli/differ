@@ -111,9 +111,9 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 #side .list:focus { outline: none; }
 #side .list:focus .row.cursor { box-shadow: inset 0 0 0 1.5px var(--sel-fg); }
 #side .list:focus .row.cursor.active { box-shadow: none; }
-.tree .chev { width: 14px; flex: none; font-size: 9px; color: var(--fg3); text-align: center; }
 .tree .ico { width: 16px; flex: none; text-align: center; color: var(--fg3); font-size: 11px; }
 .tree .ico.folder { display: inline-flex; align-items: center; justify-content: center; color: var(--fg2); }
+.tree .row.dir:hover .ico.folder { color: var(--accent); }
 .tree .pill { font-family: var(--mono); font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--bg3); color: var(--fg); display: inline-flex; min-width: 0; flex: 0 1 auto; }
 .tree .pill .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tree .pill s { opacity: .6; margin-right: 6px; flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -614,14 +614,14 @@ function renderTreeNode(node, depth, out) {
   for (const d of dirs) {
     const closed = state.closed.has(d.full);
     out.push(`<div class="row dir ${state.cursor === 'd:' + d.full ? 'cursor' : ''}" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
-      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico folder">${closed ? FOLDER_CLOSED : FOLDER_OPEN}</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
+      <span class="ico folder">${closed ? FOLDER_CLOSED : FOLDER_OPEN}</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
     if (!closed) renderTreeNode(d, depth + 1, out);
   }
   for (const f of [...node.files].sort((x, y) => x.base.localeCompare(y.base))) {
     const k = changeKind(f);
     const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
     out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${state.cursor === 'f:' + f.path ? 'cursor' : ''} ${isReviewed(f) ? 'reviewed' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.path)}">
-      <span class="chev"></span><span class="ico">·</span>
+      <span class="ico"></span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
       ${state.q && hits(f) ? `<span class="cnt hits">${hits(f)}</span>` : ''}
