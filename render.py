@@ -8,27 +8,40 @@ import json
 import sys
 from pathlib import Path
 
+# Greys, git colours and the font stack follow the Claude desktop app's design tokens (its "cds" scale,
+# text-git-added / text-git-removed, and the 20% mix it uses for diff backgrounds). The app has light and dark
+# only; sepia keeps the same structure on warm greys.
+def mix(color: str, pct: int) -> str:
+    return f"color-mix(in srgb, {color} {pct}%, transparent)"
+
+
+def palette(*, bg, bg2, bg3, fg, fg2, fg3, line, accent, accent_bg, sel, sel_fg, add, dele, mod, ren, mark, mark_fg, syntax):
+    return dict(
+        bg=bg, bg2=bg2, bg3=bg3, fg=fg, fg2=fg2, fg3=fg3, line=line, accent=accent, accent_bg=accent_bg, sel=sel, sel_fg=sel_fg,
+        add_bg=mix(add, 16), add_fg=add, add_num=mix(add, 28), add_word=mix(add, 38),
+        del_bg=mix(dele, 16), del_fg=dele, del_num=mix(dele, 28), del_word=mix(dele, 38),
+        mod_bg=mix(mod, 22), mod_fg=mod, ren_bg=mix(ren, 22), ren_fg=ren, mark=mark, mark_fg=mark_fg, **syntax,
+    )
+
+
 PALETTES = {
-    "light": dict(
-        bg="#ffffff", bg2="#f6f7f9", bg3="#eceef2", fg="#1c1f26", fg2="#5b6270", fg3="#8a91a0",
-        line="#e3e6eb", accent="#2f6feb", accent_bg="#e8f0fe", sel="#cddcfb",
-        add_bg="#e6f7ec", add_fg="#166534", add_num="#c6ebd3", del_bg="#fdecec", del_fg="#991b1b", del_num="#f7cfcf",
-        mod_bg="#fff1d6", mod_fg="#9a5b00", ren_bg="#efe6ff", ren_fg="#6d3fc7", mark="#ffe066", mark_fg="#1c1f26",
-        kw="#a626a4", str_="#50a14f", cmt="#9ca3af", num="#986801", fn="#4078f2", cls="#c18401", builtin="#0184bc",
+    "light": palette(
+        bg="#ffffff", bg2="#f9f9f7", bg3="#f0efec", fg="#20201f", fg2="#6d6b67", fg3="#898781", line="#e1e0d9",
+        accent="#b85c38", accent_bg="#f6e6dc", sel="#cddcfb", sel_fg="#2f6feb",
+        add="#1e9e3c", dele="#cd2054", mod="#9a5b00", ren="#6d3fc7", mark="#ffe066", mark_fg="#20201f",
+        syntax=dict(kw="#c2410c", str_="#3f7d2a", cmt="#898781", num="#9a6a10", fn="#20201f", cls="#8a5a00", builtin="#c2410c"),
     ),
-    "sepia": dict(
-        bg="#f6efdc", bg2="#efe6cf", bg3="#e5d9bd", fg="#3b3328", fg2="#6b5f4e", fg3="#9a8c74",
-        line="#dacdb0", accent="#8a5a2b", accent_bg="#ecdcc3", sel="#dcc49a",
-        add_bg="#e6ead0", add_fg="#4a6a1e", add_num="#d1dbb2", del_bg="#f0dacd", del_fg="#8f3a2a", del_num="#e4c3b2",
-        mod_bg="#ecdfb4", mod_fg="#7a5a10", ren_bg="#e4d8e8", ren_fg="#6a4a8a", mark="#f2d25b", mark_fg="#3b3328",
-        kw="#8b3a8b", str_="#5a7a2a", cmt="#a09078", num="#9a6a10", fn="#2a5aa0", cls="#9a6a10", builtin="#2a7a8a",
+    "sepia": palette(
+        bg="#f6efdc", bg2="#efe6cf", bg3="#e5d9bd", fg="#3b3328", fg2="#6b5f4e", fg3="#9a8c74", line="#dacdb0",
+        accent="#a0522d", accent_bg="#ecdcc3", sel="#cfd9ec", sel_fg="#3a5a9a",
+        add="#2f7d2a", dele="#b8324d", mod="#8a6410", ren="#6a4a8a", mark="#f2d25b", mark_fg="#3b3328",
+        syntax=dict(kw="#b2451a", str_="#4f7a2a", cmt="#9a8c74", num="#9a6a10", fn="#3b3328", cls="#8a5a00", builtin="#b2451a"),
     ),
-    "dark": dict(
-        bg="#0f1115", bg2="#161920", bg3="#1f232c", fg="#e6e8ee", fg2="#a3aab8", fg3="#6b7280",
-        line="#262b36", accent="#6ea0ff", accent_bg="#1a2742", sel="#2a4474",
-        add_bg="#10291b", add_fg="#7ee2a4", add_num="#184d2c", del_bg="#351a1d", del_fg="#ff9b9b", del_num="#5a2328",
-        mod_bg="#3a2c10", mod_fg="#f0b45a", ren_bg="#2a1f45", ren_fg="#c4a6ff", mark="#ffe066", mark_fg="#1c1f26",
-        kw="#c678dd", str_="#98c379", cmt="#6b7280", num="#d19a66", fn="#61afef", cls="#e5c07b", builtin="#56b6c2",
+    "dark": palette(
+        bg="#1a1a19", bg2="#151515", bg3="#20201f", fg="#d2d1c7", fg2="#a5a49a", fg3="#898781", line="#2c2c2a",
+        accent="#da7756", accent_bg="#3a2a22", sel="#2a4474", sel_fg="#6ea0ff",
+        add="#32d74b", dele="#ff2c56", mod="#f0b45a", ren="#c4a6ff", mark="#ffe066", mark_fg="#1c1f26",
+        syntax=dict(kw="#f29b7a", str_="#9fcf8a", cmt="#898781", num="#e5c07b", fn="#d2d1c7", cls="#e5c07b", builtin="#f29b7a"),
     ),
 }
 
@@ -57,7 +70,7 @@ TEMPLATE = r"""<!doctype html>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
 __THEMES__
-:root { --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; --dim: 0.45; }
+:root { --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; --dim: 0.45; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); display: flex; }
@@ -94,9 +107,9 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 .tree .row { display: flex; align-items: center; gap: 6px; padding: 2px 10px 2px calc(10px + var(--d) * 19px); white-space: nowrap; cursor: pointer; min-width: 0; background-repeat: no-repeat; }
 .tree .row:hover { background-color: var(--bg3); }
 .tree .row.active { background-color: var(--sel); }
-.tree .row.active .pill { font-weight: 600; outline: 1.5px solid var(--accent); }
+.tree .row.active .pill { font-weight: 600; outline: 1.5px solid var(--sel-fg); }
 #side .list:focus { outline: none; }
-#side .list:focus .row.cursor { box-shadow: inset 0 0 0 1.5px var(--accent); }
+#side .list:focus .row.cursor { box-shadow: inset 0 0 0 1.5px var(--sel-fg); }
 #side .list:focus .row.cursor.active { box-shadow: none; }
 .tree .chev { width: 14px; flex: none; font-size: 9px; color: var(--fg3); text-align: center; }
 .tree .ico { width: 14px; flex: none; text-align: center; color: var(--fg3); font-size: 11px; }
@@ -153,16 +166,20 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 .code { padding: 8px 0 24px; }
 .empty { color: var(--fg3); padding: 24px; text-align: center; }
 
-table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.5 var(--mono); table-layout: fixed; }
+table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.65 var(--mono); table-layout: fixed; color: var(--fg); }
 table.diff td { padding: 0 6px; vertical-align: top; white-space: pre; transition: box-shadow .8s ease; }
 table.diff td.n { text-align: right; color: var(--fg3); user-select: none; font-size: 11px; padding: 0 4px 0 2px; }
 table.diff td.m { text-align: center; color: var(--fg3); user-select: none; padding: 0; }
-table.diff tr.add td { background: var(--add-bg); } table.diff tr.add td.n { background: var(--add-num); } table.diff tr.add td.m { color: var(--add-fg); }
-table.diff tr.del td { background: var(--del-bg); } table.diff tr.del td.n { background: var(--del-num); } table.diff tr.del td.m { color: var(--del-fg); }
+table.diff tr.add td { background: var(--add-bg); } table.diff tr.add td.n { background: var(--add-num); color: var(--add-fg); } table.diff tr.add td.m { color: var(--add-fg); }
+table.diff tr.del td { background: var(--del-bg); } table.diff tr.del td.n { background: var(--del-num); color: var(--del-fg); } table.diff tr.del td.m { color: var(--del-fg); }
+table.diff tr.add td:first-child { box-shadow: inset 3px 0 0 var(--add-fg); }
+table.diff tr.del td:first-child { box-shadow: inset 3px 0 0 var(--del-fg); }
 table.diff tr.ctx td.c { color: var(--fg2); }
+table.diff tr.add .ic { background: var(--add-word); border-radius: 2px; }
+table.diff tr.del .ic { background: var(--del-word); border-radius: 2px; }
 table.diff tr.dim td.c { opacity: var(--dim); }
 table.diff tr.target td { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent); }
-table.diff tr.target td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent); }
+table.diff tr.target td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent) !important; }
 table.diff td.c { white-space: pre-wrap; word-break: break-all; }
 table.diff td.c .tag { float: right; font: 10px var(--sans); color: var(--fg3); background: var(--bg3); border-radius: 3px; padding: 0 5px; margin-left: 8px; opacity: 1; }
 tr.fold td { background: var(--bg2); color: var(--fg3); font: 11.5px var(--sans); padding: 3px 12px; cursor: pointer; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -417,6 +434,58 @@ function mergeCollapsed(f, blocks) {
   return merged;
 }
 
+// Word-level differences between a removed line and its added counterpart, as plain-text ranges.
+function wordDiff(a, b) {
+  const tok = (t) => t.match(/\w+|\s+|[^\w\s]/g) || [];
+  const A = tok(a), B = tok(b);
+  const n = A.length, m = B.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const common = L[0][0];
+  const words = Math.max(A.filter(t => /\w/.test(t)).length, B.filter(t => /\w/.test(t)).length);
+  if (!words || common < Math.max(1, Math.ceil(words * 0.3))) return null;
+  const ra = [], rb = [];
+  let i = 0, j = 0, pa = 0, pb = 0;
+  const push = (arr, s, e) => { const last = arr[arr.length - 1]; if (last && last[1] === s) last[1] = e; else arr.push([s, e]); };
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { pa += A[i].length; pb += B[j].length; i++; j++; }
+    else if (L[i + 1][j] >= L[i][j + 1]) { push(ra, pa, pa + A[i].length); pa += A[i].length; i++; }
+    else { push(rb, pb, pb + B[j].length); pb += B[j].length; j++; }
+  }
+  while (i < n) { push(ra, pa, pa + A[i].length); pa += A[i].length; i++; }
+  while (j < m) { push(rb, pb, pb + B[j].length); pb += B[j].length; j++; }
+  const trim = (arr) => arr.filter(([s, e]) => e > s);
+  return { a: trim(ra), b: trim(rb) };
+}
+// Wrap plain-text ranges of a highlighted line in <span class="ic">, walking only its text nodes.
+function wrapRanges(html, ranges) {
+  if (!ranges || !ranges.length) return html;
+  const ENT = /&(?:amp|lt|gt|quot|#x27|#39);|./gs;
+  let pos = 0, ri = 0;
+  return html.split(/(<[^>]+>)/).map(part => {
+    if (part.startsWith('<') && part.endsWith('>') && part.length > 1 && !part.startsWith('&')) return part;
+    let out = '', open = false;
+    for (const m of part.matchAll(ENT)) {
+      while (ri < ranges.length && pos >= ranges[ri][1]) ri++;
+      const inside = ri < ranges.length && pos >= ranges[ri][0] && pos < ranges[ri][1];
+      if (inside && !open) { out += '<span class="ic">'; open = true; }
+      if (!inside && open) { out += '</span>'; open = false; }
+      out += m[0]; pos++;
+    }
+    if (open) out += '</span>';
+    return out;
+  }).join('');
+}
+function markPairs(rows) {
+  const n = rows.length / 2;
+  for (let i = 0; i < n; i++) {
+    const d = rows[i], a = rows[i + n];
+    if (!d || !a || d.type !== 'del' || a.type !== 'add') return;
+    const diff = wordDiff(d.text, a.text);
+    if (!diff) continue;
+    d.html = wrapRanges(d.html, diff.a); a.html = wrapRanges(a.html, diff.b);
+  }
+}
 const rowId = (f, r) => r.type === 'del' ? `r${f.index}-O${r.oldNo}` : `r${f.index}-L${r.newNo}`;
 function renderRows(f, rows, out) {
   for (const r of rows) {
@@ -463,6 +532,7 @@ function renderCode(f) {
     if (r && isCollapsed(f, r)) { out.push(`<tr class="collapsed" data-run="${esc(runKey(f, r))}"><td colspan="4">▸ ${runSummary(r)}</td></tr>`); return; }
     if (r && NOISE.includes(r.class) && !(r.class === 'rename' && r.origin)) out.push(`<tr class="runhead" data-run="${esc(runKey(f, r))}"><td colspan="4">▾ ${runSummary(r)}</td></tr>`);
     if (r && showOriginHead(r)) out.push(`<tr class="runhead"><td colspan="4">rename origin · <code>${esc(r.rename[0])}</code> → <code>${esc(r.rename[1])}</code></td></tr>`);
+    if (r && r.removed.length === r.added.length && b.rows.length === r.removed.length * 2) markPairs(b.rows);
     renderRows(f, b.rows, out);
   });
   return `<table class="diff"><colgroup><col style="width:38px"><col style="width:38px"><col style="width:16px"><col></colgroup>${out.join('')}</table>`;
