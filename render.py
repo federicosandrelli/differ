@@ -94,7 +94,7 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 #side .head .themes { display: inline-flex; gap: 2px; }
 #side .head .themes button { padding: 1px 6px; font-size: 11px; }
 #side .controls { padding: 8px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
-#side .searchbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#side .searchbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr; gap: 4px; }
 #side .searchbar input { font: 12.5px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; outline: none; min-width: 0; width: 100%; }
 #side .searchbar input:focus { border-color: var(--accent); }
 #side .searchbar .meta { grid-column: 1 / -1; font-size: 11.5px; color: var(--fg3); min-height: 1em; }
@@ -216,7 +216,7 @@ FILES.forEach((f, i) => {
 });
 
 const state = {
-  view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', fq: '', hitIndex: -1,
+  view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', hitIndex: -1,
   showImportOnly: false, theme: 'auto', cursor: null,
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
@@ -243,14 +243,6 @@ function importOnly(f) {
   return f.stats.substantive === 0 && classes.length > 0 && classes.every(c => c === 'import');
 }
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
-function nameMatches(f) {
-  const q = state.fq.toLowerCase();
-  if (!q) return true;
-  if (f.path.toLowerCase().includes(q)) return true;
-  let i = 0;
-  for (const ch of f.base.toLowerCase()) if (ch === q[i]) { i++; if (i === q.length) return true; }
-  return false;
-}
 const hitCache = new Map();
 function hits(f) {
   const q = state.q.toLowerCase();
@@ -270,7 +262,7 @@ function treeOrder(node, out) {
 }
 function visibleFiles() {
   const shown = FILES.filter(f =>
-    kindVisible(f) && nameMatches(f) && (!state.q || hits(f) > 0) && (state.showImportOnly || state.q || state.fq || !importOnly(f)));
+    kindVisible(f) && (!state.q || hits(f) > 0) && (state.showImportOnly || state.q || !importOnly(f)));
   return treeOrder(buildTree(shown), []);
 }
 
@@ -636,20 +628,16 @@ function renderTree() {
 }
 function importOnlyNotice() {
   const n = FILES.filter(f => kindVisible(f) && importOnly(f)).length;
-  if (!n || state.q || state.fq) return '';
+  if (!n || state.q) return '';
   return `<div class="notice">${state.showImportOnly ? `Showing ${n} file${n > 1 ? 's' : ''} with import-only changes` : `${n} file${n > 1 ? 's' : ''} with import-only changes hidden`} · <a href="#" data-importonly="${state.showImportOnly ? '0' : '1'}">${state.showImportOnly ? 'hide' : 'show'}</a></div>`;
 }
 function renderList() { return importOnlyNotice() + renderTree(); }
 function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
+  if (!state.q) { el.textContent = ''; return; }
   const files = visibleFiles();
-  if (!state.q && !state.fq) { el.textContent = ''; return; }
-  const parts = [`${files.length} file${files.length === 1 ? '' : 's'}`];
-  if (state.q) {
-    const n = files.reduce((a, f) => a + hits(f), 0);
-    parts.push(state.hitIndex >= 0 ? `${state.hitIndex + 1} / ${n}` : `${n} line${n === 1 ? '' : 's'}`);
-  }
-  el.textContent = parts.join(' · ');
+  const n = files.reduce((a, f) => a + hits(f), 0);
+  el.textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${state.hitIndex >= 0 ? `${state.hitIndex + 1} / ${n}` : `${n} line${n === 1 ? '' : 's'}`}`;
 }
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 function renderSide() {
@@ -663,16 +651,15 @@ function renderSide() {
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
       <span class="seg"><button data-whole="0" class="${!state.whole ? 'on' : ''}">Changes</button><button data-whole="1" class="${state.whole ? 'on' : ''}">Whole files</button></span>
       <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
-      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>w</kbd> whole · <kbd>o</kbd> top · <kbd>f</kbd> file · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
+      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>w</kbd> whole · <kbd>o</kbd> top · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
     <div class="searchbar">
-      <input type="search" class="filesearch" placeholder="Filter files by name" value="${esc(state.fq)}" spellcheck="false" title="f">
       <input type="search" class="search" placeholder="Search changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
       <span class="meta" id="searchmeta"></span></div>
     <div class="list" tabindex="0">${renderList()}</div><div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
   const ae = document.activeElement;
-  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('filesearch') ? '.filesearch' : ae.classList.contains('list') ? '.list' : null);
+  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : null);
   document.getElementById('side').innerHTML = h;
   document.querySelector('#side .list').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
@@ -776,13 +763,20 @@ function render() {
   renderSide();
   const main = document.getElementById('main');
   const scroll = main.scrollTop;
+  // Keep the place inside the current file, so a change to which files show does not land somewhere else.
+  const curFile = BY_PATH[state.view];
+  const curSec = curFile && document.getElementById(`sec-${curFile.index}`);
+  const within = curSec ? scroll - curSec.offsetTop : null;
   main.innerHTML = renderOverview() + visibleFiles().map(renderFile).join('');
   if (state.target) {
     const el = document.getElementById(state.target);
     if (el) { el.scrollIntoView({ block: 'center' }); setTimeout(() => el.classList.remove('target'), 2500); }
     else main.scrollTop = scroll;
     state.target = null;
-  } else main.scrollTop = scroll;
+  } else {
+    const sec = curFile && document.getElementById(`sec-${curFile.index}`);
+    main.scrollTop = sec && within != null ? sec.offsetTop + Math.max(0, within) : scroll;
+  }
   trackScroll();
 }
 
@@ -868,9 +862,8 @@ function firstHitLine(f) {
 }
 document.addEventListener('input', (e) => {
   const box = e.target;
-  if (box.classList.contains('search')) { state.q = box.value.trim(); state.hitIndex = -1; }
-  else if (box.classList.contains('filesearch')) { state.fq = box.value.trim(); }
-  else return;
+  if (!box.classList.contains('search')) return;
+  state.q = box.value.trim(); state.hitIndex = -1;
   render();
 });
 function treeRows() { return [...document.querySelectorAll('#side .tree .row')]; }
@@ -914,16 +907,13 @@ document.addEventListener('keydown', (e) => {
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
   }
-  const inBox = e.target.classList && (e.target.classList.contains('search') || e.target.classList.contains('filesearch'));
-  if (inBox) {
+  if (e.target.classList && e.target.classList.contains('search')) {
     if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input', { bubbles: true })); e.target.blur(); }
-    if (e.key === 'Enter' && e.target.classList.contains('search')) { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); }
-    if (e.key === 'Enter' && e.target.classList.contains('filesearch')) { e.preventDefault(); const first = visibleFiles()[0]; if (first) scrollToFile(first.path); }
+    if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); }
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
   if (e.key === '/') { e.preventDefault(); focusBox('#side .search'); return; }
-  if (e.key === 'f') { e.preventDefault(); focusBox('#side .filesearch'); return; }
   const files = visibleFiles(); const i = files.findIndex(f => f.path === state.view);
   if (e.key === 'j') { const n = files[i + 1] || files[0]; if (n) scrollToFile(n.path); }
   else if (e.key === 'k') { if (i > 0) scrollToFile(files[i - 1].path); else scrollToFile('overview'); }
