@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a classified diff plus annotations as one HTML page.
+"""Render a classified diff plus PR metadata as one HTML page.
 
 Usage: render.py <classified.json> <annotations.json> <out.html>
 """
@@ -7,6 +7,46 @@ Usage: render.py <classified.json> <annotations.json> <out.html>
 import json
 import sys
 from pathlib import Path
+
+PALETTES = {
+    "light": dict(
+        bg="#ffffff", bg2="#f6f7f9", bg3="#eceef2", fg="#1c1f26", fg2="#5b6270", fg3="#8a91a0",
+        line="#e3e6eb", accent="#2f6feb", accent_bg="#e8f0fe", sel="#cddcfb",
+        add_bg="#e6f7ec", add_fg="#166534", add_num="#c6ebd3", del_bg="#fdecec", del_fg="#991b1b", del_num="#f7cfcf",
+        mod_bg="#fff1d6", mod_fg="#9a5b00", ren_bg="#efe6ff", ren_fg="#6d3fc7", mark="#ffe066", mark_fg="#1c1f26",
+        kw="#a626a4", str_="#50a14f", cmt="#9ca3af", num="#986801", fn="#4078f2", cls="#c18401", builtin="#0184bc",
+    ),
+    "sepia": dict(
+        bg="#f6efdc", bg2="#efe6cf", bg3="#e5d9bd", fg="#3b3328", fg2="#6b5f4e", fg3="#9a8c74",
+        line="#dacdb0", accent="#8a5a2b", accent_bg="#ecdcc3", sel="#dcc49a",
+        add_bg="#e6ead0", add_fg="#4a6a1e", add_num="#d1dbb2", del_bg="#f0dacd", del_fg="#8f3a2a", del_num="#e4c3b2",
+        mod_bg="#ecdfb4", mod_fg="#7a5a10", ren_bg="#e4d8e8", ren_fg="#6a4a8a", mark="#f2d25b", mark_fg="#3b3328",
+        kw="#8b3a8b", str_="#5a7a2a", cmt="#a09078", num="#9a6a10", fn="#2a5aa0", cls="#9a6a10", builtin="#2a7a8a",
+    ),
+    "dark": dict(
+        bg="#0f1115", bg2="#161920", bg3="#1f232c", fg="#e6e8ee", fg2="#a3aab8", fg3="#6b7280",
+        line="#262b36", accent="#6ea0ff", accent_bg="#1a2742", sel="#2a4474",
+        add_bg="#10291b", add_fg="#7ee2a4", add_num="#184d2c", del_bg="#351a1d", del_fg="#ff9b9b", del_num="#5a2328",
+        mod_bg="#3a2c10", mod_fg="#f0b45a", ren_bg="#2a1f45", ren_fg="#c4a6ff", mark="#ffe066", mark_fg="#1c1f26",
+        kw="#c678dd", str_="#98c379", cmt="#6b7280", num="#d19a66", fn="#61afef", cls="#e5c07b", builtin="#56b6c2",
+    ),
+}
+
+
+def vars_block(p: dict) -> str:
+    return "; ".join(f"--{k.rstrip('_').replace('_', '-')}: {v}" for k, v in p.items()) + ";"
+
+
+def theme_css() -> str:
+    light, sepia, dark = (vars_block(PALETTES[k]) for k in ("light", "sepia", "dark"))
+    return f"""
+:root {{ {light} }}
+@media (prefers-color-scheme: dark) {{ :root:not([data-theme]) {{ {dark} }} }}
+:root[data-theme="light"] {{ {light} }}
+:root[data-theme="sepia"] {{ {sepia} }}
+:root[data-theme="dark"] {{ {dark} }}
+"""
+
 
 TEMPLATE = r"""<!doctype html>
 <html lang="en">
@@ -16,31 +56,8 @@ TEMPLATE = r"""<!doctype html>
 <title>__TITLE__</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
-:root {
-  --bg: #ffffff; --bg2: #f6f7f9; --bg3: #eceef2; --fg: #1c1f26; --fg2: #5b6270; --fg3: #8a91a0;
-  --line: #e3e6eb; --accent: #2f6feb; --accent-bg: #e8f0fe;
-  --add-bg: #e6f7ec; --add-fg: #166534; --add-num: #c6ebd3; --del-bg: #fdecec; --del-fg: #991b1b; --del-num: #f7cfcf;
-  --note-bg: #fff8e1; --note-line: #f2d98a; --dim: 0.45;
-  --mod-bg: #fff1d6; --mod-fg: #9a5b00; --ren-bg: #efe6ff; --ren-fg: #6d3fc7;
-  --code: #1c1f26; --kw: #a626a4; --str: #50a14f; --cmt: #9ca3af; --num: #986801; --fn: #4078f2; --cls: #c18401; --builtin: #0184bc;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0f1115; --bg2: #161920; --bg3: #1f232c; --fg: #e6e8ee; --fg2: #a3aab8; --fg3: #6b7280;
-  --line: #262b36; --accent: #6ea0ff; --accent-bg: #1a2742;
-  --add-bg: #10291b; --add-fg: #7ee2a4; --add-num: #184d2c; --del-bg: #351a1d; --del-fg: #ff9b9b; --del-num: #5a2328;
-  --note-bg: #2b2616; --note-line: #5e4d1d;
-  --mod-bg: #3a2c10; --mod-fg: #f0b45a; --ren-bg: #2a1f45; --ren-fg: #c4a6ff;
-  --code: #e6e8ee; --kw: #c678dd; --str: #98c379; --cmt: #6b7280; --num: #d19a66; --fn: #61afef; --cls: #e5c07b; --builtin: #56b6c2;
-}}
-:root[data-theme="dark"] {
-  --bg: #0f1115; --bg2: #161920; --bg3: #1f232c; --fg: #e6e8ee; --fg2: #a3aab8; --fg3: #6b7280;
-  --line: #262b36; --accent: #6ea0ff; --accent-bg: #1a2742;
-  --add-bg: #10291b; --add-fg: #7ee2a4; --add-num: #184d2c; --del-bg: #351a1d; --del-fg: #ff9b9b; --del-num: #5a2328;
-  --note-bg: #2b2616; --note-line: #5e4d1d;
-  --mod-bg: #3a2c10; --mod-fg: #f0b45a; --ren-bg: #2a1f45; --ren-fg: #c4a6ff;
-  --code: #e6e8ee; --kw: #c678dd; --str: #98c379; --cmt: #6b7280; --num: #d19a66; --fn: #61afef; --cls: #e5c07b; --builtin: #56b6c2;
-}
+__THEMES__
+:root { --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; --dim: 0.45; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); display: flex; }
@@ -51,6 +68,8 @@ button:hover { background: var(--bg3); } button.on { background: var(--accent-bg
 .seg button { border: 0; border-radius: 0; padding: 3px 10px; } .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent-bg); color: var(--accent); }
 kbd { font: 11px var(--mono); background: var(--bg3); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.hint { color: var(--fg3); font-size: 12px; }
+mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; padding: 0 1px; }
 
 #side { width: var(--side, 420px); min-width: 260px; max-width: 70vw; flex: none; border-right: 1px solid var(--line); background: var(--bg2); display: flex; flex-direction: column; height: 100vh; position: relative; }
 #side .grip { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 6; }
@@ -58,26 +77,24 @@ kbd { font: 11px var(--mono); background: var(--bg3); border: 1px solid var(--li
 #side .head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
 #side .head h1 { font-size: 14px; margin: 0 0 4px; line-height: 1.3; cursor: pointer; }
 #side .head h1:hover { color: var(--accent); }
-#side .head .meta { color: var(--fg2); font-size: 12px; }
+#side .head .meta { color: var(--fg2); font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#side .head .themes { display: inline-flex; gap: 2px; }
+#side .head .themes button { padding: 1px 6px; font-size: 11px; }
 #side .controls { padding: 8px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
-#side .list { overflow-y: auto; flex: 1; padding-bottom: 24px; }
+#side .searchbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#side .searchbar input { font: 12.5px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; outline: none; min-width: 0; width: 100%; }
+#side .searchbar input:focus { border-color: var(--accent); }
+#side .searchbar .meta { grid-column: 1 / -1; font-size: 11.5px; color: var(--fg3); min-height: 1em; }
 #side .notice { padding: 8px 16px 2px; font-size: 11.5px; color: var(--fg3); }
-#side .searchbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
-#side .search { flex: 1; font: 12.5px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; outline: none; min-width: 0; }
-#side .search:focus { border-color: var(--accent); }
-.tree .cnt.hits { background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
-mark { background: #ffe066; color: #1c1f26; border-radius: 2px; padding: 0 1px; }
-.badge { font: 10px/16px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--bg3); color: var(--fg2); flex: none; min-width: 16px; text-align: center; }
-.badge.A { background: var(--add-num); color: var(--add-fg); } .badge.D { background: var(--del-num); color: var(--del-fg); }
-.badge.M { background: var(--mod-bg); color: var(--mod-fg); } .badge.R, .badge.V { background: var(--ren-bg); color: var(--ren-fg); }
-.st-A { color: var(--add-fg); } .st-D { color: var(--del-fg); } .st-M { color: var(--mod-fg); } .st-R, .st-V { color: var(--ren-fg); }
+#side .list { overflow-y: auto; flex: 1; padding-bottom: 24px; }
 
-.tree { padding: 6px 8px 24px 10px; font-size: 12.5px; }
-.tree .legend { display: flex; gap: 8px 10px; flex-wrap: wrap; padding: 4px 6px 10px; font-size: 11.5px; color: var(--fg2); align-items: center; }
+.tree { padding: 6px 0 24px; font-size: 12.5px; }
+.tree .legend { display: flex; gap: 8px 10px; flex-wrap: wrap; padding: 4px 16px 10px; font-size: 11.5px; color: var(--fg2); align-items: center; }
 .tree .legend .pill { font-size: 11.5px; } .tree .legend .n { margin-left: -4px; font-family: var(--mono); color: var(--fg3); }
-.tree .row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; white-space: nowrap; cursor: pointer; border-radius: 4px; min-width: 0; }
-.tree .row:hover { background: var(--bg3); }
-.tree .row.active { background: var(--accent-bg); }
+.tree .row { display: flex; align-items: center; gap: 6px; padding: 2px 10px 2px calc(10px + var(--d) * 19px); white-space: nowrap; cursor: pointer; min-width: 0; background-repeat: no-repeat; }
+.tree .row:hover { background-color: var(--bg3); }
+.tree .row.active { background-color: var(--sel); }
+.tree .row.active .pill { font-weight: 600; outline: 1.5px solid var(--accent); }
 .tree .chev { width: 14px; flex: none; font-size: 9px; color: var(--fg3); text-align: center; }
 .tree .ico { width: 14px; flex: none; text-align: center; color: var(--fg3); font-size: 11px; }
 .tree .pill { font-family: var(--mono); font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--bg3); color: var(--fg); display: inline-flex; min-width: 0; flex: 0 1 auto; }
@@ -88,24 +105,23 @@ mark { background: #ffe066; color: #1c1f26; border-radius: 2px; padding: 0 1px; 
 .tree .pill.st-R, .tree .pill.st-V { background: var(--ren-bg); color: var(--ren-fg); }
 .tree .pill.test { font-style: italic; }
 .tree .cnt { font-family: var(--mono); font-size: 11.5px; color: var(--fg2); }
+.tree .cnt.hits { background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
 .tree .from { font-family: var(--mono); font-size: 11.5px; color: var(--fg3); overflow: hidden; text-overflow: ellipsis; min-width: 3ch; flex: 0 2 auto; }
 .tree .spacer { flex: 1; }
-.tree .kids { margin-left: 11px; padding-left: 8px; border-left: 1px solid var(--line); }
 .tree .leaf.reviewed .pill { opacity: .5; }
-.kind { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); }
 .check { width: 15px; height: 15px; border: 1.5px solid var(--fg3); border-radius: 4px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: transparent; opacity: .35; }
 .row:hover .check { opacity: 1; }
 .check:hover { border-color: var(--accent); color: var(--accent); }
 .leaf.reviewed .check, .check.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
 
 #main { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; }
-.page { max-width: 1100px; margin: 0 auto; padding: 28px 36px 80px; }
+.page { max-width: 1100px; margin: 0 auto; padding: 28px 36px 40px; }
 .page h1 { font-size: 22px; margin: 0 0 6px; }
 .page .meta { color: var(--fg2); margin-bottom: 18px; }
 .page p { max-width: 78ch; }
+.page h2 { font-size: 15px; margin: 28px 0 10px; }
 .prbody { max-width: 78ch; } .prbody h3, .prbody h4 { font-size: 14px; margin: 16px 0 6px; } .prbody ul { padding-left: 20px; } .prbody li { margin: 4px 0; }
 .prbody code { font: 12.5px var(--mono); background: var(--bg3); padding: 0 4px; border-radius: 3px; }
-.page h2 { font-size: 15px; margin: 28px 0 10px; }
 .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
 .stat { background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 130px; }
 .stat b { display: block; font-size: 20px; font-weight: 600; } .stat span { color: var(--fg2); font-size: 12px; }
@@ -117,23 +133,31 @@ table.plain { border-collapse: collapse; width: 100%; font-size: 13px; }
 table.plain th, table.plain td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .mono { font-family: var(--mono); font-size: 12.5px; }
+.badge { font: 10px/16px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--bg3); color: var(--fg2); flex: none; min-width: 16px; text-align: center; }
+.badge.A { background: var(--add-num); color: var(--add-fg); } .badge.D { background: var(--del-num); color: var(--del-fg); }
+.badge.M { background: var(--mod-bg); color: var(--mod-fg); } .badge.R, .badge.V { background: var(--ren-bg); color: var(--ren-fg); }
+.kind { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); }
+.counts { font: 11px var(--mono); color: var(--fg2); white-space: nowrap; }
+.counts .a { color: var(--add-fg); } .counts .d { color: var(--del-fg); }
 
+.filesec { border-top: 6px solid var(--bg3); }
 .fhead { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 5; }
 .fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 6px; }
-.fhead .path { font: 13px var(--mono); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fhead .path .dir { color: var(--fg3); } .fhead .path b { font-weight: 600; }
+.fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.fhead .path .dir { font: 11.5px var(--mono); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fhead .path b { font: 600 16px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fhead .tools { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px; flex-wrap: wrap; font-size: 12px; color: var(--fg2); }
-.body { display: flex; align-items: flex-start; }
-.code { flex: 1; min-width: 0; padding: 8px 0 60px; }
+.code { padding: 8px 0 24px; }
+.empty { color: var(--fg3); padding: 24px; text-align: center; }
+
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.5 var(--mono); table-layout: fixed; }
-table.diff td { padding: 0 6px; vertical-align: top; white-space: pre; }
+table.diff td { padding: 0 6px; vertical-align: top; white-space: pre; transition: box-shadow .8s ease; }
 table.diff td.n { text-align: right; color: var(--fg3); user-select: none; font-size: 11px; padding-right: 8px; }
 table.diff td.m { text-align: center; color: var(--fg3); user-select: none; padding: 0; }
 table.diff tr.add td { background: var(--add-bg); } table.diff tr.add td.n { background: var(--add-num); } table.diff tr.add td.m { color: var(--add-fg); }
 table.diff tr.del td { background: var(--del-bg); } table.diff tr.del td.n { background: var(--del-num); } table.diff tr.del td.m { color: var(--del-fg); }
 table.diff tr.ctx td.c { color: var(--fg2); }
 table.diff tr.dim td.c { opacity: var(--dim); }
-table.diff td { transition: box-shadow .8s ease; }
 table.diff tr.target td { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent); }
 table.diff tr.target td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent); }
 table.diff td.c { white-space: pre-wrap; word-break: break-all; }
@@ -145,13 +169,10 @@ tr.collapsed td:hover { color: var(--accent); }
 tr.collapsed td .cls { display: inline-block; min-width: 110px; font-weight: 600; color: var(--fg3); }
 tr.collapsed td code { font-family: var(--mono); font-size: 11.5px; }
 tr.runhead td { background: var(--bg2); color: var(--fg3); font: 11px var(--sans); padding: 2px 12px; cursor: pointer; border-top: 1px dashed var(--line); }
-tr.symhead td { background: var(--bg2); color: var(--fg3); font: 11px var(--mono); padding: 2px 12px; border-top: 1px solid var(--line); }
 
 .hljs-keyword, .hljs-built_in.hljs-keyword { color: var(--kw); } .hljs-string { color: var(--str); } .hljs-comment { color: var(--cmt); font-style: italic; }
 .hljs-number, .hljs-literal { color: var(--num); } .hljs-title.function_ { color: var(--fn); } .hljs-title.class_ { color: var(--cls); } .hljs-built_in { color: var(--builtin); }
 .hljs-params { color: inherit; } .hljs-meta { color: var(--num); }
-.empty { color: var(--fg3); padding: 40px; text-align: center; }
-.hint { color: var(--fg3); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -160,42 +181,119 @@ tr.symhead td { background: var(--bg2); color: var(--fg3); font: 11px var(--mono
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const D = JSON.parse(document.getElementById('data').textContent);
-const ANN = D.annotations, PR = ANN.pr;
+const PR = D.annotations.pr;
 const FILES = D.files;
 const BY_PATH = Object.fromEntries(FILES.map(f => [f.path, f]));
 const NOISE = ['import', 'rename', 'whitespace', 'moved'];
 const NOISE_LABEL = { import: 'imports', rename: 'rename fallout', whitespace: 'whitespace', moved: 'moved code' };
+const KIND_LABEL = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', V: 'moved' };
+const THEMES = ['auto', 'light', 'sepia', 'dark'];
 const RADIUS = 4;
 
-for (const f of FILES) {
+FILES.forEach((f, i) => {
+  f.index = i;
   f.base = f.path.split('/').pop();
   f.dir = f.path.slice(0, f.path.length - f.base.length);
-}
+});
 
 const state = {
-  view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', showImportOnly: false,
+  view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', fq: '', hitIndex: -1,
+  showImportOnly: false, theme: 'auto',
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
 const LS = (k) => `dr:${PR.head.slice(0, 12)}:${k}`;
-const isReviewed = (f) => { try { return localStorage.getItem(LS(f.path)) === '1'; } catch { return false; } };
-const setReviewed = (f, v) => { try { v ? localStorage.setItem(LS(f.path), '1') : localStorage.removeItem(LS(f.path)); } catch {} };
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
+const isReviewed = (f) => lsGet(LS(f.path)) === '1';
+const setReviewed = (f, v) => lsSet(LS(f.path), v ? '1' : null);
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const fmt = (n) => n.toLocaleString('en-GB');
+
+// A renamed file kept its directory; a moved one left it. Git reports both as R.
+function changeKind(f) {
+  if (f.status !== 'R') return f.status;
+  const od = f.old_path.slice(0, f.old_path.lastIndexOf('/')), nd = f.new_path.slice(0, f.new_path.lastIndexOf('/'));
+  return od === nd ? 'R' : 'V';
+}
+
+// ---------- which files show
+function importOnly(f) {
+  const classes = Object.keys(f.stats.by_class);
+  return f.stats.substantive === 0 && classes.length > 0 && classes.every(c => c === 'import');
+}
+function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
+function nameMatches(f) {
+  const q = state.fq.toLowerCase();
+  if (!q) return true;
+  if (f.path.toLowerCase().includes(q)) return true;
+  let i = 0;
+  for (const ch of f.base.toLowerCase()) if (ch === q[i]) { i++; if (i === q.length) return true; }
+  return false;
+}
+const hitCache = new Map();
+function hits(f) {
+  const q = state.q.toLowerCase();
+  if (!q) return 0;
+  const key = f.path + '\u0000' + q;
+  if (hitCache.has(key)) return hitCache.get(key);
+  let n = 0;
+  for (const h of f.hunks) for (const [tag, , , text] of h.lines) if (tag !== ' ' && text.toLowerCase().includes(q)) n++;
+  hitCache.set(key, n);
+  return n;
+}
+function visibleFiles() {
+  return [...FILES].sort((x, y) => x.path.localeCompare(y.path)).filter(f =>
+    kindVisible(f) && nameMatches(f) && (!state.q || hits(f) > 0) && (state.showImportOnly || state.q || state.fq || !importOnly(f)));
+}
+
+// ---------- search hits, for Enter to step through
+function allHits() {
+  const q = state.q.toLowerCase();
+  if (!q) return [];
+  const out = [];
+  for (const f of visibleFiles()) {
+    for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
+      if (tag === ' ' || !text.toLowerCase().includes(q)) continue;
+      if (f.content_side === 'old') out.push({ path: f.path, line: o });
+      else out.push({ path: f.path, line: n != null ? n : { oldNo: o, anchor: anchorAfter(h, o) } });
+    }
+  }
+  return out;
+}
+function anchorAfter(h, oldNo) {
+  for (const [, o, n] of h.lines) if (o != null && o >= oldNo && n != null) return n;
+  for (let i = h.lines.length - 1; i >= 0; i--) if (h.lines[i][2] != null) return h.lines[i][2];
+  return h.new_start;
+}
+function stepHit(dir) {
+  const all = allHits();
+  if (!all.length) return;
+  state.hitIndex = ((state.hitIndex ?? -1) + dir + all.length) % all.length;
+  const hit = all[state.hitIndex];
+  go(hit.path, hit.line);
+  focusBox('.search');
+  updateSearchMeta();
+}
+function markHtml(html, q) {
+  if (!q) return html;
+  const needle = esc(q).toLowerCase();
+  return html.split(/(<[^>]+>)/).map(part => {
+    if (part.startsWith('<')) return part;
+    let out = '', i = 0, lower = part.toLowerCase();
+    for (;;) { const j = lower.indexOf(needle, i); if (j < 0) break; out += part.slice(i, j) + '<mark>' + part.slice(j, j + needle.length) + '</mark>'; i = j + needle.length; }
+    return out + part.slice(i);
+  }).join('');
+}
 
 // ---------- syntax highlighting, whole file at once so docstrings keep their state across lines
 const hlCache = new Map();
 function highlightLines(f) {
   if (hlCache.has(f.path)) return hlCache.get(f.path);
-  const text = f.content;
   let lines;
-  if (window.hljs && f.lang === 'python') {
-    const html = hljs.highlight(text, { language: 'python', ignoreIllegals: true }).value;
-    lines = splitHighlighted(html);
-  } else {
-    lines = text.split('\n').map(esc);
-  }
+  if (window.hljs && f.lang === 'python') lines = splitHighlighted(hljs.highlight(f.content, { language: 'python', ignoreIllegals: true }).value);
+  else lines = f.content.split('\n').map(esc);
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
   hlCache.set(f.path, lines);
   return lines;
@@ -218,6 +316,7 @@ function hlOne(text, lang) {
 }
 
 // ---------- rows: the whole new file with removed lines interleaved where they were
+let hitRuns = new Set();
 function buildRows(f) {
   const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
   for (const r of f.runs) {
@@ -248,17 +347,13 @@ function buildRows(f) {
   }
   return flagHits(rows);
 }
-let hitRuns = new Set();
 function flagHits(rows) {
   hitRuns = new Set();
   const q = state.q.toLowerCase();
   if (!q) return rows;
-  for (const r of rows) {
-    if (r.text.toLowerCase().includes(q)) { r.hit = true; r.html = markHtml(r.html, state.q); if (r.run) hitRuns.add(r.run); }
-  }
+  for (const r of rows) if (r.text.toLowerCase().includes(q)) { r.hit = true; r.html = markHtml(r.html, state.q); if (r.run) hitRuns.add(r.run); }
   return rows;
 }
-
 function blocksFor(rows) {
   const blocks = [];
   for (const r of rows) {
@@ -270,7 +365,7 @@ function blocksFor(rows) {
   return blocks;
 }
 
-function runSummary(r, f) {
+function runSummary(r) {
   const n = r.removed.length + r.added.length;
   if (r.class === 'import') return `<span class="cls">imports</span> ${n} import line${n > 1 ? 's' : ''} changed`;
   if (r.class === 'rename') return `<span class="cls">rename fallout</span> <code>${esc(r.rename ? r.rename[0] : '')}</code> → <code>${esc(r.rename ? r.rename[1] : '')}</code> · ${n} line${n > 1 ? 's' : ''}`;
@@ -286,16 +381,6 @@ function isCollapsed(f, r) {
   if (state.show[r.class]) return false;
   return !state.expanded.has(runKey(f, r));
 }
-
-function renderRows(f, rows, out) {
-  for (const r of rows) {
-    const id = r.type === 'del' ? `O${r.oldNo}` : `L${r.newNo}`;
-    const cls = [r.type, r.dim ? 'dim' : '', state.target === id ? 'target' : ''].join(' ');
-    const tag = r.dim ? '<span class="tag">rename</span>' : '';
-    out.push(`<tr class="${cls}" id="${id}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
-  }
-}
-
 const RENAME_RUNS = Object.fromEntries(D.renames.map(r => [r.from + '\u0000' + r.to, r.runs]));
 function showOriginHead(r) { return r.class === 'rename' && r.origin && r.rename && (RENAME_RUNS[r.rename.join('\u0000')] || 0) >= 2; }
 
@@ -322,6 +407,15 @@ function mergeCollapsed(f, blocks) {
   return merged;
 }
 
+const rowId = (f, r) => r.type === 'del' ? `r${f.index}-O${r.oldNo}` : `r${f.index}-L${r.newNo}`;
+function renderRows(f, rows, out) {
+  for (const r of rows) {
+    const id = rowId(f, r);
+    const cls = [r.type, r.dim ? 'dim' : '', state.target === id ? 'target' : ''].join(' ');
+    const tag = r.dim ? '<span class="tag">rename</span>' : '';
+    out.push(`<tr class="${cls}" id="${id}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
+  }
+}
 function renderCode(f) {
   const rows = buildRows(f);
   const blocks = mergeCollapsed(f, blocksFor(rows));
@@ -331,7 +425,6 @@ function renderCode(f) {
     if (b.group) {
       const n = b.group.reduce((a, r) => a + r.removed.length + r.added.length, 0);
       const keys = b.group.map(r => runKey(f, r)).join('|');
-      const label = b.cls === 'rename' ? `rename fallout <code>${esc(b.group[0].rename[0])}</code> → <code>${esc(b.group[0].rename[1])}</code>` : NOISE_LABEL[b.cls];
       out.push(`<tr class="collapsed" data-runs="${esc(keys)}"><td colspan="4">▸ <span class="cls">${esc(NOISE_LABEL[b.cls])}</span> ${n} lines in ${b.group.length} places${b.cls === 'rename' ? ` · <code>${esc(b.group[0].rename[0])}</code> → <code>${esc(b.group[0].rename[1])}</code>` : ''}</td></tr>`);
       return;
     }
@@ -357,109 +450,17 @@ function renderCode(f) {
       return;
     }
     const r = b.run;
-    if (r && isCollapsed(f, r)) {
-      out.push(`<tr class="collapsed" data-run="${esc(runKey(f, r))}"><td colspan="4">▸ ${runSummary(r, f)}</td></tr>`);
-      return;
-    }
-    if (r && NOISE.includes(r.class) && !(r.class === 'rename' && r.origin)) {
-      out.push(`<tr class="runhead" data-run="${esc(runKey(f, r))}"><td colspan="4">▾ ${runSummary(r, f)}</td></tr>`);
-    }
-    if (r && showOriginHead(r)) {
-      out.push(`<tr class="runhead"><td colspan="4">rename origin · <code>${esc(r.rename[0])}</code> → <code>${esc(r.rename[1])}</code></td></tr>`);
-    }
+    if (r && isCollapsed(f, r)) { out.push(`<tr class="collapsed" data-run="${esc(runKey(f, r))}"><td colspan="4">▸ ${runSummary(r)}</td></tr>`); return; }
+    if (r && NOISE.includes(r.class) && !(r.class === 'rename' && r.origin)) out.push(`<tr class="runhead" data-run="${esc(runKey(f, r))}"><td colspan="4">▾ ${runSummary(r)}</td></tr>`);
+    if (r && showOriginHead(r)) out.push(`<tr class="runhead"><td colspan="4">rename origin · <code>${esc(r.rename[0])}</code> → <code>${esc(r.rename[1])}</code></td></tr>`);
     renderRows(f, b.rows, out);
   });
   return `<table class="diff"><colgroup><col style="width:52px"><col style="width:52px"><col style="width:18px"><col></colgroup>${out.join('')}</table>`;
 }
 
-// ---------- views
-function fileCounts(f) {
-  const s = f.stats;
-  return `<span class="a">+${s.additions}</span> <span class="d">−${s.deletions}</span>`;
-}
-// Search matches the path and the changed lines of a file, case-insensitively.
-const hitCache = new Map();
-function hits(f) {
-  const q = state.q.toLowerCase();
-  if (!q) return 0;
-  const key = f.path + '\u0000' + q;
-  if (hitCache.has(key)) return hitCache.get(key);
-  let n = 0;
-  for (const h of f.hunks) for (const [tag, , , text] of h.lines) if (tag !== ' ' && text.toLowerCase().includes(q)) n++;
-  hitCache.set(key, n);
-  return n;
-}
-function firstHitLine(f) {
-  const q = state.q.toLowerCase();
-  if (!f || !q) return null;
-  for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
-    if (tag !== ' ' && text.toLowerCase().includes(q)) {
-      if (f.content_side === 'old') return o;
-      return n != null ? n : { id: `O${o}`, anchor: anchorAfter(h, o) };
-    }
-  }
-  return null;
-}
-function anchorAfter(h, oldNo) {
-  for (const [, o, n] of h.lines) if (o != null && o >= oldNo && n != null) return n;
-  for (let i = h.lines.length - 1; i >= 0; i--) if (h.lines[i][2] != null) return h.lines[i][2];
-  return h.new_start;
-}
-// Every matching changed line across the visible files, in sidebar order, for Enter to step through.
-function allHits() {
-  const q = state.q.toLowerCase();
-  if (!q) return [];
-  const out = [];
-  for (const f of visibleFiles()) {
-    for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
-      if (tag === ' ' || !text.toLowerCase().includes(q)) continue;
-      if (f.content_side === 'old') out.push({ path: f.path, line: o });
-      else out.push({ path: f.path, line: n != null ? n : { id: `O${o}`, anchor: anchorAfter(h, o) } });
-    }
-  }
-  return out;
-}
-function stepHit(dir) {
-  const hits = allHits();
-  if (!hits.length) return;
-  state.hitIndex = ((state.hitIndex ?? -1) + dir + hits.length) % hits.length;
-  const hit = hits[state.hitIndex];
-  go(hit.path, hit.line);
-  const i = document.querySelector('#side .search');
-  if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
-  updateSearchMeta();
-}
-function matches(f) { return !state.q || f.path.toLowerCase().includes(state.q.toLowerCase()) || hits(f) > 0; }
-function markHtml(html, q) {
-  if (!q) return html;
-  const needle = esc(q).toLowerCase();
-  return html.split(/(<[^>]+>)/).map(part => {
-    if (part.startsWith('<')) return part;
-    let out = '', i = 0, lower = part.toLowerCase();
-    for (;;) { const j = lower.indexOf(needle, i); if (j < 0) break; out += part.slice(i, j) + '<mark>' + part.slice(j, j + needle.length) + '</mark>'; i = j + needle.length; }
-    return out + part.slice(i);
-  }).join('');
-}
-function importOnly(f) {
-  const classes = Object.keys(f.stats.by_class);
-  return f.stats.substantive === 0 && classes.length > 0 && classes.every(c => c === 'import');
-}
-function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
-function visibleFiles() {
-  const base = [...FILES].sort((x, y) => x.path.localeCompare(y.path));
-  return base.filter(f => kindVisible(f) && matches(f) && (state.showImportOnly || state.q || !importOnly(f)));
-}
-
-// A renamed file kept its directory; a moved one left it. Git reports both as R.
-function changeKind(f) {
-  if (f.status !== 'R') return f.status;
-  const od = f.old_path.slice(0, f.old_path.lastIndexOf('/')), nd = f.new_path.slice(0, f.new_path.lastIndexOf('/'));
-  return od === nd ? 'R' : 'V';
-}
-const KIND_LABEL = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', V: 'moved' };
-
+// ---------- sidebar
 function buildTree(files) {
-  const root = { name: '', dirs: new Map(), files: [], depth: 0 };
+  const root = { name: '', dirs: new Map(), files: [] };
   for (const f of files) {
     const parts = f.path.split('/'); let node = root;
     for (const part of parts.slice(0, -1)) {
@@ -482,26 +483,27 @@ function buildTree(files) {
   compact(root, '');
   return root;
 }
-function aggregate(node) {
-  const agg = { a: 0, d: 0, n: 0, kinds: new Set() };
-  for (const f of node.files) { agg.a += f.stats.additions; agg.d += f.stats.deletions; agg.n++; agg.kinds.add(changeKind(f)); }
-  for (const c of node.dirs.values()) { const x = aggregate(c); agg.a += x.a; agg.d += x.d; agg.n += x.n; x.kinds.forEach(k => agg.kinds.add(k)); }
-  node.agg = agg; return agg;
+function countFiles(node) { let n = node.files.length; for (const c of node.dirs.values()) n += countFiles(c); return n; }
+function allFolders(node, acc) { for (const d of node.dirs.values()) { acc.push(d.full); allFolders(d, acc); } return acc; }
+// Guide lines are painted as background gradients so a row can span the full sidebar width.
+function guides(depth) {
+  if (!depth) return '';
+  const img = [], pos = [], size = [];
+  for (let k = 0; k < depth; k++) { img.push('linear-gradient(var(--line), var(--line))'); pos.push(`${17 + k * 19}px 0`); size.push('1px 100%'); }
+  return `background-image:${img.join(',')};background-position:${pos.join(',')};background-size:${size.join(',')}`;
 }
-function renderTreeNode(node, out) {
+function renderTreeNode(node, depth, out) {
   const dirs = [...node.dirs.values()].sort((x, y) => x.label.localeCompare(y.label));
   for (const d of dirs) {
     const closed = state.closed.has(d.full);
-    out.push(`<div class="node"><div class="row dir ${closed ? 'closed' : ''}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
-      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico">▤</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${d.agg.n}</span>` : ''}</div>`);
-    if (!closed) { out.push('<div class="kids">'); renderTreeNode(d, out); out.push('</div>'); }
-    out.push('</div>');
+    out.push(`<div class="row dir" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
+      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico">▤</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
+    if (!closed) renderTreeNode(d, depth + 1, out);
   }
-  const files = [...node.files].sort((x, y) => x.base.localeCompare(y.base));
-  for (const f of files) {
+  for (const f of [...node.files].sort((x, y) => x.base.localeCompare(y.base))) {
     const k = changeKind(f);
     const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
-    out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" data-path="${esc(f.path)}" title="${esc(f.path)}">
+    out.push(`<div class="row leaf ${state.view === f.path ? 'active' : ''} ${isReviewed(f) ? 'reviewed' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.path)}">
       <span class="chev"></span><span class="ico">·</span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
@@ -509,56 +511,76 @@ function renderTreeNode(node, out) {
       <span class="spacer"></span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>`);
   }
 }
-function allFolders(node, acc) { for (const d of node.dirs.values()) { acc.push(d.full); allFolders(d, acc); } return acc; }
 function renderTree() {
-  const root = buildTree(visibleFiles()); aggregate(root);
-  const counts = {}; for (const f of visibleFiles()) { const k = changeKind(f); counts[k] = (counts[k] || 0) + 1; }
+  const files = visibleFiles();
+  const root = buildTree(files);
+  const counts = {}; for (const f of files) { const k = changeKind(f); counts[k] = (counts[k] || 0) + 1; }
   const out = [`<div class="tree"><div class="legend">${['A', 'M', 'D', 'R', 'V'].filter(k => counts[k]).map(k => `<span class="pill st-${k}">${KIND_LABEL[k]}</span><span class="n">${counts[k]}</span>`).join('')}</div>`];
-  renderTreeNode(root, out);
+  renderTreeNode(root, 0, out);
   out.push('</div>');
   return out.join('');
 }
-
+function importOnlyNotice() {
+  const n = FILES.filter(f => kindVisible(f) && importOnly(f)).length;
+  if (!n || state.q || state.fq) return '';
+  return `<div class="notice">${state.showImportOnly ? `Showing ${n} file${n > 1 ? 's' : ''} with import-only changes` : `${n} file${n > 1 ? 's' : ''} with import-only changes hidden`} · <a href="#" data-importonly="${state.showImportOnly ? '0' : '1'}">${state.showImportOnly ? 'hide' : 'show'}</a></div>`;
+}
+function renderList() { return importOnlyNotice() + renderTree(); }
+function updateSearchMeta() {
+  const el = document.getElementById('searchmeta'); if (!el) return;
+  const files = visibleFiles();
+  if (!state.q && !state.fq) { el.textContent = ''; return; }
+  const parts = [`${files.length} file${files.length === 1 ? '' : 's'}`];
+  if (state.q) {
+    const n = files.reduce((a, f) => a + hits(f), 0);
+    parts.push(state.hitIndex >= 0 ? `${state.hitIndex + 1} / ${n}` : `${n} line${n === 1 ? '' : 's'}`);
+  }
+  el.textContent = parts.join(' · ');
+}
+function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;
-  let h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
-    <div class="meta">${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></div></div>
+  const h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
+    <div class="meta"><span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>
+      <span class="themes">${THEMES.map(t => `<button data-theme="${t}" class="${state.theme === t ? 'on' : ''}">${t}</button>`).join('')}</span></div></div>
     <div class="controls"><span class="seg">
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
       <button data-filter="implementation" class="${state.filter === 'implementation' ? 'on' : ''}">Implementation</button>
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
+      <span class="seg"><button data-whole="0" class="${!state.whole ? 'on' : ''}">Changes</button><button data-whole="1" class="${state.whole ? 'on' : ''}">Whole files</button></span>
       <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
-      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole file · <kbd>o</kbd> overview · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
-    <div class="searchbar"><input type="search" class="search" placeholder="Search file names and changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous"><span class="hint" id="searchmeta"></span></div>
-    <div class="list">${importOnlyNotice()}${renderList()}</div><div class="grip"></div>`;
+      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>w</kbd> whole · <kbd>o</kbd> top · <kbd>f</kbd> file · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
+    <div class="searchbar">
+      <input type="search" class="filesearch" placeholder="Filter files by name" value="${esc(state.fq)}" spellcheck="false" title="f">
+      <input type="search" class="search" placeholder="Search changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
+      <span class="meta" id="searchmeta"></span></div>
+    <div class="list">${renderList()}</div><div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
-  const hadFocus = document.activeElement && document.activeElement.classList.contains('search');
+  const focused = document.activeElement && (document.activeElement.classList.contains('search') ? '.search' : document.activeElement.classList.contains('filesearch') ? '.filesearch' : null);
   document.getElementById('side').innerHTML = h;
   document.querySelector('#side .list').scrollTop = scroll;
-  if (hadFocus) { const i = document.querySelector('#side .search'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  if (focused) focusBox(focused);
+  revealActive();
   updateSearchMeta();
 }
-function importOnlyNotice() {
-  const n = FILES.filter(f => kindVisible(f) && importOnly(f)).length;
-  if (!n || state.q) return '';
-  return `<div class="notice">${state.showImportOnly ? `Showing ${n} file${n > 1 ? 's' : ''} with import-only changes` : `${n} file${n > 1 ? 's' : ''} with import-only changes hidden`} · <a href="#" data-importonly="${state.showImportOnly ? '0' : '1'}">${state.showImportOnly ? 'hide' : 'show'}</a></div>`;
+function revealActive() {
+  const active = document.querySelector('#side .row.active');
+  if (!active) return;
+  const list = document.querySelector('#side .list'), a = active.getBoundingClientRect(), l = list.getBoundingClientRect();
+  if (a.top < l.top || a.bottom > l.bottom) active.scrollIntoView({ block: 'center' });
 }
-function updateSearchMeta() {
-  const el = document.getElementById('searchmeta'); if (!el) return;
-  if (!state.q) { el.textContent = ''; return; }
-  const files = visibleFiles(); const n = files.reduce((a, f) => a + hits(f), 0);
-  const pos = state.hitIndex != null && state.hitIndex >= 0 ? `${state.hitIndex + 1} / ${n}` : `${n} line${n === 1 ? '' : 's'}`;
-  el.textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${pos}`;
+function setActive(path) {
+  if (state.view === path) return;
+  state.view = path;
+  for (const el of document.querySelectorAll('#side .row.active')) el.classList.remove('active');
+  const row = path !== 'overview' && document.querySelector(`#side .leaf[data-path="${CSS.escape(path)}"]`);
+  if (row) row.classList.add('active');
+  revealActive();
+  history.replaceState(null, '', path === 'overview' ? '#' : `#${encodeURIComponent(path)}`);
 }
-function renderList() { return renderTree(); }
-(function sideResize() {
-  try { const w = localStorage.getItem('dr:side-width'); if (w) document.documentElement.style.setProperty('--side', w + 'px'); } catch {}
-  let dragging = null;
-  document.addEventListener('mousedown', (e) => { const g = e.target.closest('#side .grip'); if (!g) return; dragging = g; g.classList.add('dragging'); e.preventDefault(); });
-  document.addEventListener('mousemove', (e) => { if (!dragging) return; const w = Math.max(260, Math.min(e.clientX, window.innerWidth * 0.7)); document.documentElement.style.setProperty('--side', w + 'px'); });
-  document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; try { localStorage.setItem('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); } catch {} });
-})();
+
+// ---------- main: the overview and then every visible file, one long page
 // Enough markdown for a PR description: headings, bullets, paragraphs, links, bold, inline code.
 function renderMarkdown(md) {
   const inline = (t) => esc(t)
@@ -575,7 +597,7 @@ function renderMarkdown(md) {
     const line = raw.trimEnd();
     const h = line.match(/^(#{1,6})\s+(.*)$/);
     const b = line.match(/^\s*[-*]\s+(.*)$/);
-    if (h) { flush(); out.push(`<h${Math.min(h[1].length + 1, 4)}>${inline(h[2])}</h${Math.min(h[1].length + 1, 4)}>`); }
+    if (h) { flush(); const lvl = Math.min(h[1].length + 1, 4); out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`); }
     else if (b) { if (para.length) flush(); (list = list || []).push(b[1]); }
     else if (!line.trim()) flush();
     else { if (list) flush(); para.push(line.trim()); }
@@ -583,12 +605,12 @@ function renderMarkdown(md) {
   flush();
   return out.join('');
 }
-
+function fileCounts(f) { return `<span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span>`; }
 function renderOverview() {
   const t = D.totals, raw = Object.values(t).reduce((a, b) => a + b, 0), sub = t.substantive || 0;
   const impl = FILES.filter(f => f.kind === 'implementation'), tests = FILES.filter(f => f.kind === 'test');
   const reviewed = FILES.filter(isReviewed).length;
-  let h = `<div class="page"><h1>${esc(PR.title)}</h1>
+  let h = `<div class="page" id="overview"><h1>${esc(PR.title)}</h1>
     <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a> · ${esc(PR.author)} · ${PR.commits} commits · <span class="mono">${PR.base.slice(0, 8)}…${PR.head.slice(0, 8)}</span></div>
     <div class="prbody">${renderMarkdown(PR.body || '')}</div>
     <div class="stats">
@@ -608,67 +630,88 @@ function renderOverview() {
     }
     h += `</table>`;
   }
-  h += `</div>`;
-  return h;
+  return h + `</div>`;
 }
-
 function renderFile(f) {
-  const s = f.stats, files = visibleFiles(), idx = files.indexOf(f);
+  const s = f.stats, ck = changeKind(f);
   const noiseHere = NOISE.filter(k => s.by_class[k]);
-  const ck = changeKind(f);
-  let h = `<div class="fhead"><div class="top">
+  return `<section class="filesec" id="sec-${f.index}" data-path="${esc(f.path)}"><div class="fhead"><div class="top">
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
-      <span class="path" title="${esc(f.path)}"><span class="dir">${esc(f.dir)}</span><b>${esc(f.base)}</b></span>
-      <span class="kind">${esc(f.kind)}</span><span class="counts mono">${fileCounts(f)}</span>
+      <span class="path" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir">${esc(f.dir)}</span></span>
+      <span class="kind">${esc(f.kind)}</span><span class="counts">${fileCounts(f)}</span>
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
-      <button data-nav="-1" ${idx <= 0 ? 'disabled' : ''} title="previous file (k)">↑</button><button data-nav="1" ${idx >= files.length - 1 ? 'disabled' : ''} title="next file (j)">↓</button>
     </div><div class="tools">
-      <span class="seg"><button data-whole="0" class="${!state.whole ? 'on' : ''}">Changes</button><button data-whole="1" class="${state.whole ? 'on' : ''}">Whole file</button></span>
       ${f.old_path && f.new_path && f.old_path !== f.new_path ? `<span class="hint">renamed from <span class="mono">${esc(f.old_path)}</span>${f.similarity ? ` (${f.similarity}% similar)` : ''}</span>` : ''}
       ${noiseHere.length ? `<span class="chips">${noiseHere.map(k => `<span class="chip ${state.show[k] ? 'on' : ''}" data-show="${k}">${NOISE_LABEL[k]} <b>${s.by_class[k]}</b></span>`).join('')}</span>` : ''}
       ${s.raw !== s.substantive ? `<span class="hint">${s.substantive} of ${s.raw} changed lines to read</span>` : ''}
-    </div></div>`;
-  h += `<div class="body"><div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div>`;
-  h += `</div>`;
-  return h;
+    </div></div>
+    <div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div></section>`;
 }
 
 function render() {
   renderSide();
   const main = document.getElementById('main');
-  const f = BY_PATH[state.view];
-  main.innerHTML = f ? renderFile(f) : renderOverview();
+  const scroll = main.scrollTop;
+  main.innerHTML = renderOverview() + visibleFiles().map(renderFile).join('');
   if (state.target) {
     const el = document.getElementById(state.target);
     if (el) { el.scrollIntoView({ block: 'center' }); setTimeout(() => el.classList.remove('target'), 2500); }
+    else main.scrollTop = scroll;
     state.target = null;
-  } else if (!f) main.scrollTop = 0;
+  } else main.scrollTop = scroll;
+  trackScroll();
 }
 
+// The sidebar follows the file under the top of the main pane.
+let scrollPending = false;
+function trackScroll() {
+  const main = document.getElementById('main');
+  const top = main.getBoundingClientRect().top + 60;
+  let current = 'overview';
+  for (const sec of main.querySelectorAll('.filesec')) { if (sec.getBoundingClientRect().top <= top) current = sec.dataset.path; else break; }
+  setActive(current);
+}
+document.getElementById('main').addEventListener('scroll', () => {
+  if (scrollPending) return;
+  scrollPending = true;
+  requestAnimationFrame(() => { scrollPending = false; trackScroll(); });
+});
+
+function scrollToFile(path, line) {
+  const main = document.getElementById('main');
+  if (path === 'overview') { main.scrollTop = 0; setActive('overview'); return; }
+  const f = BY_PATH[path]; if (!f) return;
+  const sec = document.getElementById(`sec-${f.index}`); if (!sec) return;
+  main.scrollTop = sec.offsetTop;
+  setActive(path);
+}
 function go(path, line) {
   const f = BY_PATH[path];
-  if (!f) { state.view = 'overview'; location.hash = ''; render(); return; }
-  state.view = path;
-  const explicit = line && typeof line === 'object' ? line : null;
-  if (explicit) line = explicit.anchor;
-  if (line) {
-    state.target = explicit ? explicit.id : (f.content_side === 'old' ? `O${line}` : `L${line}`);
-    // unfold around the target line
-    const rows = buildRows(f); const blocks = blocksFor(rows);
-    for (const b of blocks) if (b.ctx && b.rows.some(r => r.newNo === line)) { const mid = b.rows.slice(RADIUS, b.rows.length - RADIUS); if (mid.length) state.unfolded.add(`${f.path}:${mid[0].newNo}`); }
-  } else {
-    state.target = null;
+  if (!f) { scrollToFile('overview'); return; }
+  if (!visibleFiles().includes(f)) {
+    if (!kindVisible(f)) state.filter = 'all';
+    if (importOnly(f)) state.showImportOnly = true;
+    render();
   }
-  history.replaceState(null, '', `#${encodeURIComponent(path)}${line ? ':' + line : ''}`);
+  if (line == null) { scrollToFile(path); return; }
+  const explicit = typeof line === 'object' ? line : null;
+  const anchor = explicit ? explicit.anchor : line;
+  state.target = explicit ? `r${f.index}-O${explicit.oldNo}` : (f.content_side === 'old' ? `r${f.index}-O${line}` : `r${f.index}-L${line}`);
+  const blocks = blocksFor(buildRows(f));
+  for (const b of blocks) if (b.ctx && b.rows.some(r => r.newNo === anchor)) { const mid = b.rows.slice(RADIUS, b.rows.length - RADIUS); if (mid.length) state.unfolded.add(`${f.path}:${mid[0].newNo}`); }
   render();
-  if (!line) document.getElementById('main').scrollTop = 0;
+  setActive(path);
+}
+function applyTheme() {
+  if (state.theme === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = state.theme;
 }
 
+// ---------- events
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-nav],[data-fold],[data-runs],[data-run],[data-line]');
+  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
   if (!t) return;
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); render(); return; }
-  if (t.dataset.go) { go('overview'); return; }
+  if (t.dataset.go) { scrollToFile('overview'); return; }
   if (t.dataset.path) {
     e.preventDefault();
     let line = t.dataset.line ? +t.dataset.line : null;
@@ -677,51 +720,72 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (t.dataset.filter) { state.filter = t.dataset.filter; render(); return; }
-  if (t.dataset.importonly !== undefined) { e.preventDefault(); state.showImportOnly = t.dataset.importonly === '1'; try { localStorage.setItem('dr:import-only', state.showImportOnly ? '1' : '0'); } catch {} renderSide(); return; }
+  if (t.dataset.theme) { state.theme = t.dataset.theme; lsSet('dr:theme', state.theme); applyTheme(); renderSide(); return; }
+  if (t.dataset.importonly !== undefined) { e.preventDefault(); state.showImportOnly = t.dataset.importonly === '1'; lsSet('dr:import-only', state.showImportOnly ? '1' : '0'); render(); return; }
   if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
   if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); renderSide(); return; }
   if (t.dataset.show) { state.show[t.dataset.show] = !state.show[t.dataset.show]; render(); return; }
   if (t.dataset.whole !== undefined) { state.whole = t.dataset.whole === '1'; render(); return; }
-  if (t.dataset.nav) { const files = visibleFiles(); const i = files.indexOf(BY_PATH[state.view]); const n = files[i + (+t.dataset.nav)]; if (n) go(n.path); return; }
   if (t.dataset.fold) { state.unfolded.add(t.dataset.fold); render(); return; }
   if (t.dataset.runs) { for (const k of t.dataset.runs.split('|')) state.expanded.add(k); render(); return; }
   if (t.dataset.run) { const k = t.dataset.run; state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k); render(); return; }
 });
+function firstHitLine(f) {
+  const q = state.q.toLowerCase();
+  if (!f || !q) return null;
+  for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
+    if (tag !== ' ' && text.toLowerCase().includes(q)) {
+      if (f.content_side === 'old') return o;
+      return n != null ? n : { oldNo: o, anchor: anchorAfter(h, o) };
+    }
+  }
+  return null;
+}
 document.addEventListener('input', (e) => {
-  if (!e.target.classList.contains('search')) return;
-  state.q = e.target.value.trim();
-  state.hitIndex = -1;
-  document.querySelector('#side .list').innerHTML = importOnlyNotice() + renderList();
-  updateSearchMeta();
-  const f = BY_PATH[state.view];
-  if (f) { hlCache.delete(f.path); document.getElementById('main').innerHTML = renderFile(f); }
+  const box = e.target;
+  if (box.classList.contains('search')) { state.q = box.value.trim(); state.hitIndex = -1; }
+  else if (box.classList.contains('filesearch')) { state.fq = box.value.trim(); }
+  else return;
+  render();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.target.classList && e.target.classList.contains('search')) {
+  const inBox = e.target.classList && (e.target.classList.contains('search') || e.target.classList.contains('filesearch'));
+  if (inBox) {
     if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input', { bubbles: true })); e.target.blur(); }
-    if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); }
+    if (e.key === 'Enter' && e.target.classList.contains('search')) { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); }
+    if (e.key === 'Enter' && e.target.classList.contains('filesearch')) { e.preventDefault(); const first = visibleFiles()[0]; if (first) scrollToFile(first.path); }
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
-  if (e.key === '/') { e.preventDefault(); const i = document.querySelector('#side .search'); if (i) { i.focus(); i.select(); } return; }
-  const files = visibleFiles(); const i = files.indexOf(BY_PATH[state.view]);
-  if (e.key === 'j') { const n = files[i + 1] || files[0]; if (n) go(n.path); }
-  else if (e.key === 'k') { const n = i > 0 ? files[i - 1] : null; if (n) go(n.path); else go('overview'); }
-  else if (e.key === 'o') go('overview');
+  if (e.key === '/') { e.preventDefault(); focusBox('#side .search'); return; }
+  if (e.key === 'f') { e.preventDefault(); focusBox('#side .filesearch'); return; }
+  const files = visibleFiles(); const i = files.findIndex(f => f.path === state.view);
+  if (e.key === 'j') { const n = files[i + 1] || files[0]; if (n) scrollToFile(n.path); }
+  else if (e.key === 'k') { if (i > 0) scrollToFile(files[i - 1].path); else scrollToFile('overview'); }
+  else if (e.key === 'o') scrollToFile('overview');
   else if (e.key === 'w') { state.whole = !state.whole; render(); }
   else if (e.key === 'r' && BY_PATH[state.view]) { const f = BY_PATH[state.view]; setReviewed(f, !isReviewed(f)); render(); }
 });
 window.addEventListener('hashchange', () => {
   const h = decodeURIComponent(location.hash.slice(1));
   const m = h.match(/^(.*?)(?::(\d+))?$/);
-  if (!h) { if (state.view !== 'overview') go('overview'); return; }
+  if (!h) { if (state.view !== 'overview') scrollToFile('overview'); return; }
   if (BY_PATH[m[1]] && (state.view !== m[1] || m[2])) go(m[1], m[2] ? +m[2] : null);
 });
+(function sideResize() {
+  const w = lsGet('dr:side-width'); if (w) document.documentElement.style.setProperty('--side', w + 'px');
+  let dragging = null;
+  document.addEventListener('mousedown', (e) => { const g = e.target.closest('#side .grip'); if (!g) return; dragging = g; g.classList.add('dragging'); e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => { if (!dragging) return; const w = Math.max(260, Math.min(e.clientX, window.innerWidth * 0.7)); document.documentElement.style.setProperty('--side', w + 'px'); });
+  document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; lsSet('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); });
+})();
 (function init() {
-  try { state.showImportOnly = localStorage.getItem('dr:import-only') === '1'; } catch {}
+  state.showImportOnly = lsGet('dr:import-only') === '1';
+  state.theme = THEMES.includes(lsGet('dr:theme')) ? lsGet('dr:theme') : 'auto';
+  applyTheme();
   const h = decodeURIComponent(location.hash.slice(1));
-  if (h) { const m = h.match(/^(.*?)(?::(\d+))?$/); if (BY_PATH[m[1]]) { go(m[1], m[2] ? +m[2] : null); return; } }
   render();
+  if (h) { const m = h.match(/^(.*?)(?::(\d+))?$/); if (BY_PATH[m[1]]) go(m[1], m[2] ? +m[2] : null); }
 })();
 </script>
 </body>
@@ -735,7 +799,7 @@ def main() -> None:
     data = {**classified, "annotations": annotations}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{annotations['pr']['number']} {annotations['pr']['title']}"
-    html = TEMPLATE.replace("__TITLE__", title).replace("__DATA__", payload)
+    html = TEMPLATE.replace("__TITLE__", title).replace("__THEMES__", theme_css()).replace("__DATA__", payload)
     Path(sys.argv[3]).write_text(html)
     print(f"wrote {sys.argv[3]} ({len(html) // 1024} KB)")
 
