@@ -27,19 +27,19 @@ def palette(*, bg, bg2, bg3, fg, fg2, fg3, line, accent, accent_bg, sel, sel_fg,
 PALETTES = {
     "light": palette(
         bg="#ffffff", bg2="#f9f9f7", bg3="#f0efec", fg="#20201f", fg2="#6d6b67", fg3="#898781", line="#e1e0d9",
-        accent="#b85c38", accent_bg="#f6e6dc", sel="#cddcfb", sel_fg="#2f6feb",
+        accent="#2f6feb", accent_bg="#e8f0fe", sel="#cddcfb", sel_fg="#2f6feb",
         add="#1e9e3c", dele="#cd2054", mod="#9a5b00", ren="#6d3fc7", mark="#ffe066", mark_fg="#20201f",
         syntax=dict(kw="#c2410c", str_="#3f7d2a", cmt="#898781", num="#9a6a10", fn="#20201f", cls="#8a5a00", builtin="#c2410c"),
     ),
     "sepia": palette(
         bg="#f6efdc", bg2="#efe6cf", bg3="#e5d9bd", fg="#3b3328", fg2="#6b5f4e", fg3="#9a8c74", line="#dacdb0",
-        accent="#a0522d", accent_bg="#ecdcc3", sel="#cfd9ec", sel_fg="#3a5a9a",
+        accent="#3a5a9a", accent_bg="#dfe4ec", sel="#cfd9ec", sel_fg="#3a5a9a",
         add="#2f7d2a", dele="#b8324d", mod="#8a6410", ren="#6a4a8a", mark="#f2d25b", mark_fg="#3b3328",
         syntax=dict(kw="#b2451a", str_="#4f7a2a", cmt="#9a8c74", num="#9a6a10", fn="#3b3328", cls="#8a5a00", builtin="#b2451a"),
     ),
     "dark": palette(
         bg="#1a1a19", bg2="#151515", bg3="#20201f", fg="#d2d1c7", fg2="#a5a49a", fg3="#898781", line="#2c2c2a",
-        accent="#da7756", accent_bg="#3a2a22", sel="#2a4474", sel_fg="#6ea0ff",
+        accent="#6ea0ff", accent_bg="#1a2742", sel="#2a4474", sel_fg="#6ea0ff",
         add="#32d74b", dele="#ff2c56", mod="#f0b45a", ren="#c4a6ff", mark="#ffe066", mark_fg="#1c1f26",
         syntax=dict(kw="#f29b7a", str_="#9fcf8a", cmt="#898781", num="#e5c07b", fn="#d2d1c7", cls="#e5c07b", builtin="#f29b7a"),
     ),
@@ -112,7 +112,8 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 #side .list:focus .row.cursor { box-shadow: inset 0 0 0 1.5px var(--sel-fg); }
 #side .list:focus .row.cursor.active { box-shadow: none; }
 .tree .chev { width: 14px; flex: none; font-size: 9px; color: var(--fg3); text-align: center; }
-.tree .ico { width: 14px; flex: none; text-align: center; color: var(--fg3); font-size: 11px; }
+.tree .ico { width: 16px; flex: none; text-align: center; color: var(--fg3); font-size: 11px; }
+.tree .ico.folder { display: inline-flex; align-items: center; justify-content: center; color: var(--fg2); }
 .tree .pill { font-family: var(--mono); font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--bg3); color: var(--fg); display: inline-flex; min-width: 0; flex: 0 1 auto; }
 .tree .pill .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tree .pill s { opacity: .6; margin-right: 6px; flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -158,7 +159,14 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 
 .filesec { border-top: 6px solid var(--bg3); }
 .fhead { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 5; }
-.fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; }
+.fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; cursor: pointer; }
+.fhead .top .chev { width: 22px; height: 22px; flex: none; color: var(--fg2); display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; transition: transform .12s ease; }
+.fhead .top .chev.open { transform: rotate(90deg); }
+.fhead .top:hover .chev { background: var(--bg3); }
+.fhead .top:hover .chev { color: var(--accent); }
+.filesec.closed .fhead { border-bottom: 0; }
+.filesec.closed .fhead .top { padding: 8px 20px; }
+.filesec.closed .path b { font-size: 13px; color: var(--fg2); }
 .fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fhead .path .dir { font: 11.5px var(--mono); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fhead .path b { font: 600 16px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -217,7 +225,7 @@ FILES.forEach((f, i) => {
 
 const state = {
   view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', hitIndex: -1,
-  showImportOnly: false, theme: 'auto', cursor: null,
+  showImportOnly: false, theme: 'auto', cursor: null, openOverride: new Map(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -598,12 +606,15 @@ function guides(depth) {
   for (let k = 0; k < depth; k++) { img.push('linear-gradient(var(--line), var(--line))'); pos.push(`${17 + k * 19}px 0`); size.push('1px 100%'); }
   return `background-image:${img.join(',')};background-position:${pos.join(',')};background-size:${size.join(',')}`;
 }
+// Outline folder icons drawn inline, closed and open, so the page needs no icon font.
+const FOLDER_CLOSED = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const FOLDER_OPEN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 19l2.757-7.351A1 1 0 0 1 8.693 11H21a1 1 0 0 1 .986 1.164l-.996 5.211A2 2 0 0 1 19.026 19H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function renderTreeNode(node, depth, out) {
   const dirs = [...node.dirs.values()].sort((x, y) => x.label.localeCompare(y.label));
   for (const d of dirs) {
     const closed = state.closed.has(d.full);
     out.push(`<div class="row dir ${state.cursor === 'd:' + d.full ? 'cursor' : ''}" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
-      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico">▤</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
+      <span class="chev">${closed ? '▶' : '▼'}</span><span class="ico folder">${closed ? FOLDER_CLOSED : FOLDER_OPEN}</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
     if (!closed) renderTreeNode(d, depth + 1, out);
   }
   for (const f of [...node.files].sort((x, y) => x.base.localeCompare(y.base))) {
@@ -651,7 +662,7 @@ function renderSide() {
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
       <span class="seg"><button data-whole="0" class="${!state.whole ? 'on' : ''}">Changes</button><button data-whole="1" class="${state.whole ? 'on' : ''}">Whole files</button></span>
       <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
-      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>w</kbd> whole · <kbd>o</kbd> top · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
+      <span class="hint"><kbd>j</kbd>/<kbd>k</kbd> files · <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>w</kbd> whole · <kbd>c</kbd> collapse · <kbd>r</kbd> reviewed · <kbd>o</kbd> top · <kbd>/</kbd> search · <kbd>⏎</kbd> next hit</span></div>
     <div class="searchbar">
       <input type="search" class="search" placeholder="Search changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
       <span class="meta" id="searchmeta"></span></div>
@@ -748,15 +759,17 @@ function renderOverview() {
   }
   return h + `</div>`;
 }
+const sectionOpen = (f) => state.openOverride.has(f.path) ? state.openOverride.get(f.path) : !isReviewed(f);
 function renderFile(f) {
-  const ck = changeKind(f);
-  return `<section class="filesec" id="sec-${f.index}" data-path="${esc(f.path)}"><div class="fhead"><div class="top">
+  const ck = changeKind(f), open = sectionOpen(f);
+  return `<section class="filesec ${open ? '' : 'closed'}" id="sec-${f.index}" data-path="${esc(f.path)}"><div class="fhead"><div class="top" data-toggle="${esc(f.path)}">
+      <span class="chev ${open ? 'open' : ''}" title="${open ? 'Collapse' : 'Expand'}"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir">${esc(f.dir)}</span>${renamedFrom(f)}</span>
       <span class="kind">${esc(f.kind)}</span><span class="counts">${fileCounts(f)}</span>
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
     </div></div>
-    <div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div></section>`;
+    ${open ? `<div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div>` : ''}</section>`;
 }
 
 function render() {
@@ -806,11 +819,14 @@ function scrollToFile(path, line) {
 function go(path, line) {
   const f = BY_PATH[path];
   if (!f) { scrollToFile('overview'); return; }
+  let dirty = false;
   if (!visibleFiles().includes(f)) {
     if (!kindVisible(f)) state.filter = 'all';
     if (importOnly(f)) state.showImportOnly = true;
-    render();
+    dirty = true;
   }
+  if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }
+  if (dirty) render();
   if (line == null) { scrollToFile(path); return; }
   const explicit = typeof line === 'object' ? line : null;
   const anchor = explicit ? explicit.anchor : line;
@@ -826,9 +842,10 @@ function applyTheme() {
 
 // ---------- events
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-filter],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
   if (!t) return;
-  if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); render(); return; }
+  if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); render(); return; }
+  if (t.dataset.toggle !== undefined && !e.target.closest('button, a')) { const f = BY_PATH[t.dataset.toggle]; state.openOverride.set(f.path, !sectionOpen(f)); render(); return; }
   if (t.dataset.go) { scrollToFile('overview'); return; }
   if (t.dataset.path) {
     e.preventDefault();
@@ -919,7 +936,8 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'k') { if (i > 0) scrollToFile(files[i - 1].path); else scrollToFile('overview'); }
   else if (e.key === 'o') scrollToFile('overview');
   else if (e.key === 'w') { state.whole = !state.whole; render(); }
-  else if (e.key === 'r' && BY_PATH[state.view]) { const f = BY_PATH[state.view]; setReviewed(f, !isReviewed(f)); render(); }
+  else if (e.key === 'r' && BY_PATH[state.view]) { const f = BY_PATH[state.view]; setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); render(); }
+  else if (e.key === 'c' && BY_PATH[state.view]) { const f = BY_PATH[state.view]; state.openOverride.set(f.path, !sectionOpen(f)); render(); }
 });
 window.addEventListener('hashchange', () => {
   const h = decodeURIComponent(location.hash.slice(1));
