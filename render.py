@@ -226,7 +226,7 @@ FILES.forEach((f, i) => {
 
 const state = {
   view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', hitIndex: -1,
-  showImportOnly: false, theme: 'auto', cursor: null, openOverride: new Map(),
+  showImportOnly: false, showGenerated: false, theme: 'auto', cursor: null, openOverride: new Map(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -249,7 +249,7 @@ function changeKind(f) {
 // ---------- which files show
 function importOnly(f) {
   const classes = Object.keys(f.stats.by_class);
-  return f.stats.substantive === 0 && classes.length > 0 && classes.every(c => c === 'import');
+  return !f.generated && f.stats.substantive === 0 && classes.length > 0 && classes.every(c => c === 'import');
 }
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 const hitCache = new Map();
@@ -271,7 +271,8 @@ function treeOrder(node, out) {
 }
 function visibleFiles() {
   const shown = FILES.filter(f =>
-    kindVisible(f) && (!state.q || hits(f) > 0) && (state.showImportOnly || state.q || !importOnly(f)));
+    kindVisible(f) && (!state.q || hits(f) > 0) && (state.showImportOnly || state.q || !importOnly(f)) &&
+    (state.showGenerated || !f.generated));
   return treeOrder(buildTree(shown), []);
 }
 
@@ -647,12 +648,17 @@ function renderTree() {
   out.push('</div>');
   return out.join('');
 }
-function importOnlyNotice() {
-  const n = FILES.filter(f => kindVisible(f) && importOnly(f)).length;
-  if (!n || state.q) return '';
-  return `<div class="notice">${state.showImportOnly ? `Showing ${n} file${n > 1 ? 's' : ''} with import-only changes` : `${n} file${n > 1 ? 's' : ''} with import-only changes hidden`} · <a href="#" data-importonly="${state.showImportOnly ? '0' : '1'}">${state.showImportOnly ? 'hide' : 'show'}</a></div>`;
+function hiddenNotice(n, what, toggle, showing) {
+  if (!n) return '';
+  const files = `${n} ${what.replace('file', n > 1 ? 'files' : 'file')}`;
+  return `<div class="notice">${showing ? `Showing ${files}` : `${files} hidden`} · <a href="#" ${toggle}="${showing ? '0' : '1'}">${showing ? 'hide' : 'show'}</a></div>`;
 }
-function renderList() { return importOnlyNotice() + renderTree(); }
+function renderList() {
+  const importOnlyCount = state.q ? 0 : FILES.filter(f => kindVisible(f) && importOnly(f)).length;
+  const generatedCount = FILES.filter(f => kindVisible(f) && f.generated).length;
+  return hiddenNotice(importOnlyCount, 'file with import-only changes', 'data-importonly', state.showImportOnly) +
+    hiddenNotice(generatedCount, 'generated file', 'data-generated', state.showGenerated) + renderTree();
+}
 function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
   if (!state.q) { el.textContent = ''; return; }
@@ -744,7 +750,8 @@ function renamedFrom(f) {
 }
 function fileCounts(f) { return `<span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span>`; }
 function renderOverview() {
-  const t = D.totals, raw = Object.values(t).reduce((a, b) => a + b, 0), sub = t.substantive || 0;
+  const t = D.totals, raw = Object.values(t).reduce((a, b) => a + b, 0);
+  const sub = FILES.filter(f => !f.generated).reduce((a, f) => a + f.stats.substantive, 0);
   const impl = FILES.filter(f => f.kind === 'implementation'), tests = FILES.filter(f => f.kind === 'test');
   const reviewed = FILES.filter(isReviewed).length;
   let h = `<div class="page" id="overview"><h1>${esc(PR.title)}</h1>
@@ -833,6 +840,7 @@ function go(path, line) {
   if (!visibleFiles().includes(f)) {
     if (!kindVisible(f)) state.filter = 'all';
     if (importOnly(f)) state.showImportOnly = true;
+    if (f.generated) state.showGenerated = true;
     dirty = true;
   }
   if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }
@@ -852,7 +860,7 @@ function applyTheme() {
 
 // ---------- events
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-importonly],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-importonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
   if (!t) return;
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); render(); return; }
   if (t.dataset.toggle !== undefined && !e.target.closest('button, a')) { const f = BY_PATH[t.dataset.toggle]; state.openOverride.set(f.path, !sectionOpen(f)); render(); return; }
@@ -867,6 +875,7 @@ document.addEventListener('click', (e) => {
   }
   if (t.dataset.filter) { state.filter = t.dataset.filter; render(); return; }
   if (t.dataset.theme) { state.theme = t.dataset.theme; lsSet('dr:theme', state.theme); applyTheme(); renderSide(); return; }
+  if (t.dataset.generated !== undefined) { e.preventDefault(); state.showGenerated = t.dataset.generated === '1'; lsSet('dr:generated', state.showGenerated ? '1' : '0'); render(); return; }
   if (t.dataset.importonly !== undefined) { e.preventDefault(); state.showImportOnly = t.dataset.importonly === '1'; lsSet('dr:import-only', state.showImportOnly ? '1' : '0'); render(); return; }
   if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
   if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.cursor = 'd:' + k; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); document.querySelector('#side .list').focus({ preventScroll: true }); renderSide(); return; }
@@ -964,6 +973,7 @@ window.addEventListener('hashchange', () => {
 })();
 (function init() {
   state.showImportOnly = lsGet('dr:import-only') === '1';
+  state.showGenerated = lsGet('dr:generated') === '1';
   state.theme = THEMES.includes(lsGet('dr:theme')) ? lsGet('dr:theme') : 'auto';
   applyTheme();
   const h = decodeURIComponent(location.hash.slice(1));

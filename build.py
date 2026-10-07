@@ -113,6 +113,11 @@ def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
             target = out / side / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(run_bytes(git + ["show", f"{sha}:{path}"]))
+    paths = "".join(parts[-1] + "\n" for parts in entries)
+    attrs = subprocess.run(git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"],
+                           input=paths, capture_output=True, text=True)
+    generated = [line.split(": ")[0] for line in attrs.stdout.splitlines() if line.endswith(("set", "true"))]
+    (out / "generated.txt").write_text("".join(path + "\n" for path in generated))
 
 
 def build(ref: str, log: Log = print) -> Path:
