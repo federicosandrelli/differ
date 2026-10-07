@@ -325,6 +325,16 @@ def file_kind(path: str) -> str:
     return "implementation"
 
 
+def read_source(path: Path) -> str:
+    """The file as text, or empty for a binary file, which the page shows without lines."""
+    if not path.exists():
+        return ""
+    data = path.read_bytes()
+    if b"\0" in data[:8192]:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
 def main() -> None:
     root = Path(sys.argv[1])
     files = parse_patch((root / "diff.patch").read_text())
@@ -335,8 +345,8 @@ def main() -> None:
 
     out_files = []
     for fi, fd in enumerate(files):
-        old_src = (root / "old" / fd.old_path).read_text() if fd.old_path else ""
-        new_src = (root / "new" / fd.new_path).read_text() if fd.new_path else ""
+        old_src = read_source(root / "old" / fd.old_path) if fd.old_path else ""
+        new_src = read_source(root / "new" / fd.new_path) if fd.new_path else ""
         is_py = fd.path.endswith(".py")
         old_imports, old_docs, _ = python_line_sets(old_src) if is_py else (set(), set(), [])
         new_imports, new_docs, symbols = python_line_sets(new_src if fd.new_path else old_src) if is_py else (set(), set(), [])

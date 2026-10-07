@@ -88,6 +88,7 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 #side .grip { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 6; }
 #side .grip:hover, #side .grip.dragging { background: var(--accent); opacity: .4; }
 #side .head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+#side .head .back { display: inline-block; font-size: 12px; margin-bottom: 6px; }
 #side .head h1 { font-size: 14px; margin: 0 0 4px; line-height: 1.3; cursor: pointer; }
 #side .head h1:hover { color: var(--accent); }
 #side .head .meta { color: var(--fg2); font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -653,7 +654,7 @@ function updateSearchMeta() {
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;
-  const h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
+  const h = `<div class="head">${location.protocol.startsWith('http') ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta"><span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>
       <span class="themes">${THEMES.map(t => `<button data-theme="${t}" class="${state.theme === t ? 'on' : ''}">${t}</button>`).join('')}</span></div></div>
     <div class="controls"><span class="seg">
