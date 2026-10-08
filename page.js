@@ -772,7 +772,7 @@ window.addEventListener('hashchange', () => {
 (function init() {
   state.showNoiseOnly = lsGet('dr:noise-only') === '1';
   state.showGenerated = lsGet('dr:generated') === '1';
-  state.theme = THEMES.includes(lsGet('dr:theme')) ? lsGet('dr:theme') : 'auto';
+  state.theme = THEMES.includes(lsGet('dr:theme')) ? lsGet('dr:theme') : 'dark';
   applyTheme();
   const h = decodeURIComponent(location.hash.slice(1));
   render();

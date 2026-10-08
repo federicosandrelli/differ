@@ -78,6 +78,7 @@ TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
+<script>try { const t = localStorage.getItem('dr:theme') || 'dark'; if (t !== 'auto') document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
 __THEMES__

@@ -720,7 +720,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "diff-review"
+name = "differ"
 version = "0.1.0"
 dependencies = [
  "fix-path-env",

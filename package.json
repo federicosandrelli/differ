@@ -1,5 +1,5 @@
 {
-  "name": "diff-review",
+  "name": "differ",
   "private": true,
   "scripts": {
     "tauri": "tauri"

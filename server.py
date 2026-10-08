@@ -157,13 +157,13 @@ button {{ font: 14px var(--sans); color: #fff; background: var(--accent); border
 .themes button.on {{ background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }}
 html.app body {{ padding-top: 28px; }}
 </style>
-<script>try {{ const t = localStorage.getItem('dr:theme'); if (t && t !== 'auto') document.documentElement.dataset.theme = t; }} catch (e) {{}}</script>
+<script>try {{ const t = localStorage.getItem('dr:theme') || 'dark'; if (t !== 'auto') document.documentElement.dataset.theme = t; }} catch (e) {{}}</script>
 </head><body><main><div class="themes">
 <button data-theme="auto">auto</button><button data-theme="light">light</button><button data-theme="sepia">sepia</button><button data-theme="dark">dark</button>
 </div>{body}</main>
 <script>
 (function () {{
-  const get = () => {{ try {{ return localStorage.getItem('dr:theme') || 'auto'; }} catch (e) {{ return 'auto'; }} }};
+  const get = () => {{ try {{ return localStorage.getItem('dr:theme') || 'dark'; }} catch (e) {{ return 'dark'; }} }};
   const apply = (t) => {{
     if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
     for (const b of document.querySelectorAll('.themes button')) b.classList.toggle('on', b.dataset.theme === t);

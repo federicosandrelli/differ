@@ -6,7 +6,7 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::{Manager, RunEvent, TitleBarStyle, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl, WebviewWindowBuilder};
 
 struct Sidecar(Mutex<Option<Child>>);
 
@@ -19,7 +19,14 @@ document.addEventListener('click', e => {
   if (a && a.href) { e.preventDefault(); location.href = a.href; }
 }, true);"#;
 
-fn free_port() -> std::io::Result<u16> {
+// The page keeps its settings (theme, reviewed marks, sidebar width) in localStorage, which the webview
+// scopes to the origin, so the server needs the same port on every launch for them to survive.
+const APP_PORT: u16 = 8766;
+
+fn pick_port() -> std::io::Result<u16> {
+    if TcpListener::bind(("127.0.0.1", APP_PORT)).is_ok() {
+        return Ok(APP_PORT);
+    }
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
 
@@ -47,7 +54,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let port = free_port()?;
+            let port = pick_port()?;
             let child = Command::new("python3")
                 .arg(server_script(app)?)
                 .arg(port.to_string())
@@ -58,7 +65,8 @@ fn main() {
             let server: Url = format!("http://127.0.0.1:{port}/").parse().unwrap();
             let local = server.clone();
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("Diff Review")
+                .title("differ")
+                .theme(Some(Theme::Dark))
                 .inner_size(1440.0, 900.0)
                 .title_bar_style(TitleBarStyle::Overlay)
                 .hidden_title(true)

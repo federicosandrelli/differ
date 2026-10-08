@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Diff Review",
+  "productName": "differ",
   "version": "0.1.0",
-  "identifier": "com.federicosandrelli.diff-review",
+  "identifier": "com.federicosandrelli.differ",
   "build": {
     "frontendDist": "../web"
   },

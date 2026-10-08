@@ -1,4 +1,4 @@
-# diff-review
+# differ
 
 A pull request viewer for agent-written code. It shows a PR as one page: the
 file tree on the left, every changed file in one scrolling pane on the right,
@@ -27,14 +27,16 @@ Requirements: Python 3.10+, git, and the GitHub CLI (`gh`) signed in.
 ## Desktop app
 
 The same pages in a native window. The Tauri shell in `src-tauri/` starts
-`server.py` on a free port as a child process, opens the window on it, and
-stops the server when the app quits (the server also exits on its own if the
-app dies). Links to GitHub open in the system browser.
+`server.py` as a child process on port 8766 (or a free port when that one is
+taken), opens the window on it, and stops the server when the app quits (the
+server also exits on its own if the app dies). The page keeps its settings in
+the webview's `localStorage`, so the fixed port is what makes them survive a
+relaunch. Links to GitHub open in the system browser.
 
 ```sh
 npm install          # the Tauri CLI
 npx tauri dev        # run from source
-npx tauri build      # Diff Review.app and a .dmg under src-tauri/target/release/bundle/
+npx tauri build      # differ.app and a .dmg under src-tauri/target/release/bundle/
 ```
 
 The app needs Rust (`cargo`) to build, and `python3` 3.10+ on the login
