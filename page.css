@@ -75,9 +75,10 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 .chip { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; cursor: pointer; color: var(--fg2); }
 .chip.on { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
 .chip b { font-weight: 600; }
-table.plain { border-collapse: collapse; width: 100%; font-size: 13px; overflow-wrap: anywhere; }
-table.plain th, table.plain td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.scrollx { overflow-x: auto; }
+table.plain { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.plain th, table.plain td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .mono { font-family: var(--mono); font-size: 12.5px; }
 .badge { font: 10px/16px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--bg3); color: var(--fg2); flex: none; min-width: 16px; text-align: center; }
 .badge.A { background: var(--add-num); color: var(--add-fg); } .badge.D { background: var(--del-num); color: var(--del-fg); }
