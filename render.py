@@ -15,9 +15,15 @@ def mix(color: str, pct: int) -> str:
     return f"color-mix(in srgb, {color} {pct}%, transparent)"
 
 
-def palette(*, bg, bg2, bg3, fg, fg2, fg3, line, accent, accent_bg, sel, sel_fg, add, dele, mod, ren, mark, mark_fg, syntax):
+def shade(color: str, pct: int, toward: int) -> str:
+    """Mix a hex colour pct% towards black (0) or white (255)."""
+    channels = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return "#" + "".join(f"{round(c + (toward - c) * pct / 100):02x}" for c in channels)
+
+
+def palette(*, bg, bg2, bg3, fg, fg2, fg3, line, accent, accent_bg, sel, sel_fg, add, dele, mod, ren, mark, mark_fg, syntax, header_toward):
     return dict(
-        bg=bg, bg2=bg2, bg3=bg3, fg=fg, fg2=fg2, fg3=fg3, line=line, accent=accent, accent_bg=accent_bg, sel=sel, sel_fg=sel_fg,
+        fhead=shade(bg, 11, header_toward), bg=bg, bg2=bg2, bg3=bg3, fg=fg, fg2=fg2, fg3=fg3, line=line, accent=accent, accent_bg=accent_bg, sel=sel, sel_fg=sel_fg,
         add_bg=mix(add, 16), add_fg=add, add_num=mix(add, 28), add_word=mix(add, 38),
         del_bg=mix(dele, 16), del_fg=dele, del_num=mix(dele, 28), del_word=mix(dele, 38),
         mod_bg=mix(mod, 22), mod_fg=mod, ren_bg=mix(ren, 22), ren_fg=ren, mark=mark, mark_fg=mark_fg, **syntax,
@@ -29,18 +35,21 @@ PALETTES = {
         bg="#ffffff", bg2="#f9f9f7", bg3="#f0efec", fg="#20201f", fg2="#6d6b67", fg3="#898781", line="#e1e0d9",
         accent="#2f6feb", accent_bg="#e8f0fe", sel="#cddcfb", sel_fg="#2f6feb",
         add="#1e9e3c", dele="#cd2054", mod="#9a5b00", ren="#6d3fc7", mark="#ffe066", mark_fg="#20201f",
+        header_toward=0,
         syntax=dict(kw="#c2410c", str_="#3f7d2a", cmt="#898781", num="#9a6a10", fn="#20201f", cls="#8a5a00", builtin="#c2410c"),
     ),
     "sepia": palette(
         bg="#f6efdc", bg2="#efe6cf", bg3="#e5d9bd", fg="#3b3328", fg2="#6b5f4e", fg3="#9a8c74", line="#dacdb0",
         accent="#3a5a9a", accent_bg="#dfe4ec", sel="#cfd9ec", sel_fg="#3a5a9a",
         add="#2f7d2a", dele="#b8324d", mod="#8a6410", ren="#6a4a8a", mark="#f2d25b", mark_fg="#3b3328",
+        header_toward=0,
         syntax=dict(kw="#b2451a", str_="#4f7a2a", cmt="#9a8c74", num="#9a6a10", fn="#3b3328", cls="#8a5a00", builtin="#b2451a"),
     ),
     "dark": palette(
         bg="#1a1a19", bg2="#151515", bg3="#20201f", fg="#d2d1c7", fg2="#a5a49a", fg3="#898781", line="#2c2c2a",
         accent="#6ea0ff", accent_bg="#1a2742", sel="#2a4474", sel_fg="#6ea0ff",
         add="#32d74b", dele="#ff2c56", mod="#f0b45a", ren="#c4a6ff", mark="#ffe066", mark_fg="#1c1f26",
+        header_toward=255,
         syntax=dict(kw="#f29b7a", str_="#9fcf8a", cmt="#898781", num="#e5c07b", fn="#d2d1c7", cls="#e5c07b", builtin="#f29b7a"),
     ),
 }
@@ -158,8 +167,8 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 .counts { font: 11px var(--mono); color: var(--fg2); white-space: nowrap; }
 .counts .a { color: var(--add-fg); } .counts .d { color: var(--del-fg); }
 
-.filesec { border-top: 6px solid var(--bg3); }
-.fhead { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 5; }
+.filesec { margin: 16px 20px; border: 1px solid var(--line); border-radius: 8px; overflow: clip; }
+.fhead { position: sticky; top: 0; background: var(--fhead); border-bottom: 1px solid var(--line); z-index: 5; }
 .fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; cursor: pointer; }
 .fhead .top .chev { width: 22px; height: 22px; flex: none; color: var(--fg2); display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; transition: transform .12s ease; }
 .fhead .top .chev.open { transform: rotate(90deg); }
@@ -167,11 +176,11 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 .fhead .top:hover .chev { color: var(--accent); }
 .filesec.closed .fhead { border-bottom: 0; }
 .filesec.closed .fhead .top { padding: 8px 20px; }
-.filesec.closed .path b { font-size: 13px; color: var(--fg2); }
+.filesec.closed .path b { color: var(--fg2); }
 .fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fhead .path .dir { font: 11.5px var(--mono); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fhead .path b { font: 600 16px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.code { padding: 8px 0 24px; }
+.fhead .path b { font: 600 14.5px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code { padding: 6px 0; }
 .empty { color: var(--fg3); padding: 24px; text-align: center; }
 
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.65 var(--mono); table-layout: fixed; color: var(--fg); }
@@ -226,7 +235,7 @@ FILES.forEach((f, i) => {
 
 const state = {
   view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', hitIndex: -1,
-  showImportOnly: false, showGenerated: false, theme: 'auto', cursor: null, openOverride: new Map(),
+  showNoiseOnly: false, showGenerated: false, theme: 'auto', cursor: null, openOverride: new Map(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
 };
@@ -247,9 +256,9 @@ function changeKind(f) {
 }
 
 // ---------- which files show
-function importOnly(f) {
-  const classes = Object.keys(f.stats.by_class);
-  return !f.generated && f.stats.substantive === 0 && classes.length > 0 && classes.every(c => c === 'import');
+// Every change block in the file is folded: imports, rename fallout, whitespace or moved code.
+function noiseOnly(f) {
+  return !f.generated && f.stats.substantive === 0 && f.stats.raw > 0;
 }
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 const hitCache = new Map();
@@ -271,7 +280,7 @@ function treeOrder(node, out) {
 }
 function visibleFiles() {
   const shown = FILES.filter(f =>
-    kindVisible(f) && (!state.q || hits(f) > 0) && (state.showImportOnly || state.q || !importOnly(f)) &&
+    kindVisible(f) && (!state.q || hits(f) > 0) && (state.showNoiseOnly || state.q || !noiseOnly(f)) &&
     (state.showGenerated || !f.generated));
   return treeOrder(buildTree(shown), []);
 }
@@ -654,9 +663,9 @@ function hiddenNotice(n, what, toggle, showing) {
   return `<div class="notice">${showing ? `Showing ${files}` : `${files} hidden`} · <a href="#" ${toggle}="${showing ? '0' : '1'}">${showing ? 'hide' : 'show'}</a></div>`;
 }
 function renderList() {
-  const importOnlyCount = state.q ? 0 : FILES.filter(f => kindVisible(f) && importOnly(f)).length;
+  const noiseOnlyCount = state.q ? 0 : FILES.filter(f => kindVisible(f) && noiseOnly(f)).length;
   const generatedCount = FILES.filter(f => kindVisible(f) && f.generated).length;
-  return hiddenNotice(importOnlyCount, 'file with import-only changes', 'data-importonly', state.showImportOnly) +
+  return hiddenNotice(noiseOnlyCount, 'file with only noise', 'data-noiseonly', state.showNoiseOnly) +
     hiddenNotice(generatedCount, 'generated file', 'data-generated', state.showGenerated) + renderTree();
 }
 function updateSearchMeta() {
@@ -830,7 +839,7 @@ function scrollToFile(path, line) {
   if (path === 'overview') { main.scrollTop = 0; setActive('overview'); return; }
   const f = BY_PATH[path]; if (!f) return;
   const sec = document.getElementById(`sec-${f.index}`); if (!sec) return;
-  main.scrollTop = sec.offsetTop;
+  main.scrollTop = sec.offsetTop - 16;
   setActive(path);
 }
 function go(path, line) {
@@ -839,7 +848,7 @@ function go(path, line) {
   let dirty = false;
   if (!visibleFiles().includes(f)) {
     if (!kindVisible(f)) state.filter = 'all';
-    if (importOnly(f)) state.showImportOnly = true;
+    if (noiseOnly(f)) state.showNoiseOnly = true;
     if (f.generated) state.showGenerated = true;
     dirty = true;
   }
@@ -860,7 +869,7 @@ function applyTheme() {
 
 // ---------- events
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-importonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
   if (!t) return;
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); render(); return; }
   if (t.dataset.toggle !== undefined && !e.target.closest('button, a')) { const f = BY_PATH[t.dataset.toggle]; state.openOverride.set(f.path, !sectionOpen(f)); render(); return; }
@@ -876,7 +885,7 @@ document.addEventListener('click', (e) => {
   if (t.dataset.filter) { state.filter = t.dataset.filter; render(); return; }
   if (t.dataset.theme) { state.theme = t.dataset.theme; lsSet('dr:theme', state.theme); applyTheme(); renderSide(); return; }
   if (t.dataset.generated !== undefined) { e.preventDefault(); state.showGenerated = t.dataset.generated === '1'; lsSet('dr:generated', state.showGenerated ? '1' : '0'); render(); return; }
-  if (t.dataset.importonly !== undefined) { e.preventDefault(); state.showImportOnly = t.dataset.importonly === '1'; lsSet('dr:import-only', state.showImportOnly ? '1' : '0'); render(); return; }
+  if (t.dataset.noiseonly !== undefined) { e.preventDefault(); state.showNoiseOnly = t.dataset.noiseonly === '1'; lsSet('dr:noise-only', state.showNoiseOnly ? '1' : '0'); render(); return; }
   if (t.dataset.tree) { state.closed = new Set(t.dataset.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
   if (t.dataset.folder !== undefined) { const k = t.dataset.folder; state.cursor = 'd:' + k; state.closed.has(k) ? state.closed.delete(k) : state.closed.add(k); document.querySelector('#side .list').focus({ preventScroll: true }); renderSide(); return; }
   if (t.dataset.show) { state.show[t.dataset.show] = !state.show[t.dataset.show]; render(); return; }
@@ -972,7 +981,7 @@ window.addEventListener('hashchange', () => {
   document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; lsSet('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); });
 })();
 (function init() {
-  state.showImportOnly = lsGet('dr:import-only') === '1';
+  state.showNoiseOnly = lsGet('dr:noise-only') === '1';
   state.showGenerated = lsGet('dr:generated') === '1';
   state.theme = THEMES.includes(lsGet('dr:theme')) ? lsGet('dr:theme') : 'auto';
   applyTheme();
