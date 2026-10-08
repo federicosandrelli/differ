@@ -90,8 +90,8 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 /* The header sticks, so it carries its own border and top corners and the code box the bottom ones: WebKit drops a
    rounded overflow clip once a sticky descendant composites, so nothing rounded may wrap the sticky header. */
 .filesec { margin: 16px 20px; }
-.fhead { position: sticky; top: 0; z-index: 5; }
-.fhead::before { content: ""; position: absolute; inset: 0 0 auto; height: 8px; background: var(--bg); z-index: -1; }
+.fhead { position: sticky; top: 12px; z-index: 5; }
+.fhead::before { content: ""; position: absolute; inset: -12px 0 auto; height: 20px; background: var(--bg); z-index: -1; }
 .fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; cursor: pointer; background: var(--fhead); border: 1px solid var(--line); border-radius: 8px 8px 0 0; }
 .fhead .top .chev { width: 22px; height: 22px; flex: none; color: var(--fg2); display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; transition: transform .12s ease; }
 .fhead .top .chev.open { transform: rotate(90deg); }
