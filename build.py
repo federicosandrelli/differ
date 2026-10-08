@@ -62,6 +62,14 @@ def page_path(owner: str, repo: str, number: int, head: str) -> Path:
     return CACHE / "pages" / owner / repo / str(number) / f"{head[:12]}.html"
 
 
+SOURCES = [ROOT / name for name in ("build.py", "classify.py", "render.py", "page.css", "page.js")]
+
+
+def page_current(page: Path) -> bool:
+    """Whether the page exists and was built after the last change to the code that renders pages."""
+    return page.exists() and page.stat().st_mtime >= max(src.stat().st_mtime for src in SOURCES)
+
+
 def ensure_repo(owner: str, repo: str, log: Log) -> Path:
     mirror = CACHE / "repos" / owner / f"{repo}.git"
     if not mirror.exists():
@@ -124,7 +132,7 @@ def build(ref: str, log: Log = print) -> Path:
     meta = pr_metadata(owner, repo, number)
     head = meta["headRefOid"]
     target = page_path(owner, repo, number, head)
-    if target.exists():
+    if page_current(target):
         log("Already built for this head commit")
         return target
 

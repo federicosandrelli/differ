@@ -277,7 +277,7 @@ class Handler(BaseHTTPRequestHandler):
                 if refresh and page.exists():
                     page.unlink()
                     return self.redirect(url.path)
-                if page.exists():
+                if build.page_current(page):
                     return self.send(200, page.read_bytes())
                 start_job(key)
                 return self.send(200, progress_page(key))
