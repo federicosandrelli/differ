@@ -246,7 +246,8 @@ def apply_renames(line: str, renames: list[tuple[str, str]]) -> str:
     return line
 
 
-DEF_RE = r"^\s*(?:class|async def|def)\s+{name}\b|^\s*{name}\s*(?::|=)"
+# A keyword argument (name=value, no spaces) is not a definition; an assignment (name = value) is.
+DEF_RE = r"^\s*(?:class|async def|def)\s+{name}\b|^\s*{name}(?::|\s=\s)"
 
 
 def is_definition(line: str, name: str) -> bool:
@@ -381,7 +382,7 @@ def main() -> None:
     detect_moves(files)
 
     rename_usage: dict[tuple[str, str], dict] = {p: {"runs": 0, "files": set(), "origin": None} for p in rename_info}
-    for entry in out_files:
+    for entry in sorted(out_files, key=lambda e: file_kind(e["fd"].path) == "test"):
         fd = entry["fd"]
         if fd.status == "R":
             for pair in rename_info:
@@ -411,7 +412,7 @@ def main() -> None:
             n = len(run.removed) + len(run.added)
             raw += n
             by_class[run.cls] += n
-            if run.cls == "substantive":
+            if run.cls == "substantive" or (run.cls == "rename" and run.origin):
                 substantive += n
             if run.rename:
                 u = rename_usage[run.rename]

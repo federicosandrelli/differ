@@ -358,6 +358,7 @@ function buildRows(f) {
   const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
   for (const r of f.runs) {
     r.removed.forEach(n => runOfOld.set(n, r)); r.added.forEach(n => runOfNew.set(n, r));
+    if (r.class === 'rename' && r.origin) continue;
     (r.pair_rename || []).forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
   }
   const hl = highlightLines(f);
