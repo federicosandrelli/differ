@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -35,19 +36,16 @@ def parse_ref(text: str) -> tuple[str, str, int]:
     return m.group(1), m.group(2), int(m.group(3))
 
 
-def run(args: list[str], cwd: Path | None = None) -> str:
-    r = subprocess.run(args, cwd=cwd, capture_output=True)
-    if r.returncode:
-        err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
-        raise BuildError(f"`{' '.join(args[:4])}` failed: {err[:600]}")
-    return r.stdout.decode(errors="replace")
-
-
 def run_bytes(args: list[str]) -> bytes:
     r = subprocess.run(args, capture_output=True)
     if r.returncode:
-        raise BuildError(f"`{' '.join(args[:4])}` failed: {r.stderr.decode(errors='replace').strip()[:600]}")
+        err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
+        raise BuildError(f"`{' '.join(args[:4])}` failed: {err[:600]}")
     return r.stdout
+
+
+def run(args: list[str]) -> str:
+    return run_bytes(args).decode(errors="replace")
 
 
 def pr_metadata(owner: str, repo: str, number: int) -> dict:
@@ -135,8 +133,7 @@ def build(ref: str, log: Log = print) -> Path:
     merge_base = run(["git", "-C", str(repo_dir), "merge-base", meta["baseRefOid"], head]).strip()
 
     work = CACHE / "work" / owner / repo / str(number) / head[:12]
-    if work.exists():
-        subprocess.run(["rm", "-rf", str(work)], check=True)
+    shutil.rmtree(work, ignore_errors=True)
     (work / "old").mkdir(parents=True)
     (work / "new").mkdir(parents=True)
     export(repo_dir, merge_base, head, work, log)

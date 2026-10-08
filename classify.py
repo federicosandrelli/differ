@@ -21,7 +21,6 @@ from pathlib import Path
 TOKEN = re.compile(r"[\w.]")
 IDENT = re.compile(r"^[\w.]+$")
 HAS_LETTER = re.compile(r"[A-Za-z]")
-CONTEXT_RADIUS = 4
 
 
 @dataclass
@@ -35,7 +34,6 @@ class Run:
     pair_rename: list[bool] = field(default_factory=list)
     anchor_new: int = 0
     moved_to: dict | None = None
-    file_index: int = -1
 
 
 @dataclass
@@ -51,7 +49,6 @@ class FileDiff:
     old_path: str | None
     new_path: str | None
     status: str
-    similarity: int | None = None
     hunks: list[Hunk] = field(default_factory=list)
     runs: list[Run] = field(default_factory=list)
 
@@ -82,7 +79,6 @@ def parse_patch(text: str) -> list[FileDiff]:
                 current.status = "D"
                 current.new_path = None
             elif raw.startswith("similarity index"):
-                current.similarity = int(raw.split()[2].rstrip("%"))
                 current.status = "R"
             if not raw.startswith("@@"):
                 continue
@@ -131,23 +127,14 @@ def build_runs(fd: FileDiff) -> None:
 
 # ---------------------------------------------------------------- python structure
 
-def python_line_sets(source: str) -> tuple[set[int], set[int], list[dict]]:
-    """Return (import lines, docstring lines, symbols) for a Python source."""
+def python_structure(source: str) -> tuple[set[int], list[dict]]:
+    """Return (import line numbers, symbols) for a Python source; both empty when it does not parse."""
     imports: set[int] = set()
-    docstrings: set[int] = set()
     symbols: list[dict] = []
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return imports, docstrings, symbols
-
-    def doc_lines(node):
-        body = getattr(node, "body", None)
-        if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant) \
-                and isinstance(body[0].value.value, str):
-            docstrings.update(range(body[0].lineno, body[0].end_lineno + 1))
-
-    doc_lines(tree)
+        return imports, symbols
 
     def visit(node, depth, parent_name):
         for child in ast.iter_child_nodes(node):
@@ -159,12 +146,11 @@ def python_line_sets(source: str) -> tuple[set[int], set[int], list[dict]]:
                 name = f"{parent_name}.{child.name}" if parent_name else child.name
                 symbols.append({"name": name, "short": child.name, "kind": kind, "start": start,
                                 "end": child.end_lineno, "depth": depth})
-                doc_lines(child)
                 visit(child, depth + 1, name)
             elif isinstance(child, (ast.If, ast.Try, ast.With, ast.For, ast.While)):
                 visit(child, depth, parent_name)
     visit(tree, 0, "")
-    return imports, docstrings, symbols
+    return imports, symbols
 
 
 # ---------------------------------------------------------------- renames
@@ -246,7 +232,8 @@ def apply_renames(line: str, renames: list[tuple[str, str]]) -> str:
     return line
 
 
-# A keyword argument (name=value, no spaces) is not a definition; an assignment (name = value) is.
+# A definition is a class, a def, an annotation, or an assignment with spaces round the equals sign.
+# A keyword argument (name=value) has none, so it does not match.
 DEF_RE = r"^\s*(?:class|async def|def)\s+{name}\b|^\s*{name}(?::|\s=\s)"
 
 
@@ -257,7 +244,8 @@ def is_definition(line: str, name: str) -> bool:
 
 # ---------------------------------------------------------------- classification
 
-def classify_run(run: Run, side_sets: dict, renames: list[tuple[str, str]], rename_info: dict) -> None:
+def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames: list[tuple[str, str]],
+                 rename_info: dict) -> None:
     removed = [t for _, t in run.removed]
     added = [t for _, t in run.added]
     changed = removed + added
@@ -268,13 +256,9 @@ def classify_run(run: Run, side_sets: dict, renames: list[tuple[str, str]], rena
     if paired and all(re.sub(r"\s+", "", o) == re.sub(r"\s+", "", n) for o, n in zip(removed, added)):
         run.cls = "whitespace"
         return
-    old_imports, _ = side_sets["old"]
-    new_imports, _ = side_sets["new"]
     if changed and all(no in old_imports for no, _ in run.removed) and all(no in new_imports for no, _ in run.added):
         run.cls = "import"
         return
-
-
     if paired:
         flags = [apply_renames(o, renames) == n for o, n in zip(removed, added)]
         run.pair_rename = flags
@@ -346,13 +330,102 @@ def is_generated(path: str, source: str, marked: set[str]) -> bool:
 
 
 def read_source(path: Path) -> str:
-    """The file as text, or empty for a binary file, which the page shows without lines."""
+    """The file as text, or empty for a missing or binary file."""
     if not path.exists():
         return ""
     data = path.read_bytes()
     if b"\0" in data[:8192]:
         return ""
     return data.decode("utf-8", errors="replace")
+
+
+def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list[dict]:
+    """Classify every run and return one entry per file with its content, symbols and import lines."""
+    ordered = sorted(rename_info, key=lambda p: -len(p[0]))
+    entries = []
+    for fd in files:
+        old_src = read_source(root / "old" / fd.old_path) if fd.old_path else ""
+        new_src = read_source(root / "new" / fd.new_path) if fd.new_path else ""
+        content, content_side = (new_src, "new") if fd.new_path else (old_src, "old")
+        if fd.path.endswith(".py"):
+            old_imports, _ = python_structure(old_src)
+            imports, symbols = python_structure(content)
+        else:
+            old_imports, imports, symbols = set(), set(), []
+        for run in fd.runs:
+            classify_run(run, old_imports, imports if content_side == "new" else old_imports, ordered, rename_info)
+        entries.append({"fd": fd, "symbols": symbols, "content": content, "content_side": content_side,
+                        "import_lines": imports, "old_import_lines": old_imports})
+    return entries
+
+
+def find_origins(entries: list[dict], rename_info: dict) -> dict[tuple[str, str], dict]:
+    """Where each rename is defined: the first class, def, annotation or assignment of the new name,
+    with implementation files searched before tests."""
+    origins: dict[tuple[str, str], dict] = {pair: None for pair in rename_info}
+    for entry in sorted(entries, key=lambda e: file_kind(e["fd"].path) == "test"):
+        fd = entry["fd"]
+        if fd.status == "R":
+            for pair in rename_info:
+                if rename_info[pair]["seed"] and origins[pair] is None:
+                    origins[pair] = {"path": fd.path, "line": 1, "text": f"renamed from {fd.old_path}"}
+        for run in fd.runs:
+            for (a, b), origin in origins.items():
+                if origin is not None:
+                    continue
+                for no, text in run.added:
+                    if is_definition(text, b):
+                        origins[(a, b)] = {"path": fd.path, "line": no, "text": text.strip()}
+                        break
+                else:
+                    for no, text in run.removed:
+                        if is_definition(text, a):
+                            origins[(a, b)] = {"path": fd.path, "line": run.anchor_new, "text": text.strip()}
+                            break
+    return origins
+
+
+def file_json(entry: dict, marked: set[str]) -> dict:
+    fd: FileDiff = entry["fd"]
+    by_class: Counter = Counter()
+    substantive = 0
+    runs_json = []
+    for run in fd.runs:
+        n = len(run.removed) + len(run.added)
+        by_class[run.cls] += n
+        if run.cls == "substantive" or (run.cls == "rename" and run.origin):
+            substantive += n
+        runs_json.append({
+            "index": run.index, "class": run.cls,
+            "removed": [no for no, _ in run.removed], "added": [no for no, _ in run.added],
+            "rename": list(run.rename) if run.rename else None, "origin": run.origin,
+            "pair_rename": run.pair_rename, "anchor_new": run.anchor_new, "moved_to": run.moved_to,
+        })
+    hunks_json = [{"old_start": h.old_start, "new_start": h.new_start, "header": h.header,
+                   "lines": [[t, o, n, x] for t, o, n, x in h.lines]} for h in fd.hunks]
+    return {
+        "path": fd.path, "old_path": fd.old_path, "new_path": fd.new_path, "status": fd.status,
+        "kind": file_kind(fd.path), "generated": is_generated(fd.path, entry["content"], marked),
+        "lang": "python" if fd.path.endswith(".py") else ("markdown" if fd.path.endswith(".md") else "text"),
+        "content": entry["content"], "content_side": entry["content_side"],
+        "hunks": hunks_json, "runs": runs_json, "symbols": entry["symbols"],
+        "import_lines": sorted(entry["import_lines"]), "old_import_lines": sorted(entry["old_import_lines"]),
+        "stats": {"raw": sum(by_class.values()), "substantive": substantive, "by_class": dict(by_class),
+                  "additions": sum(len(r.added) for r in fd.runs), "deletions": sum(len(r.removed) for r in fd.runs)},
+    }
+
+
+def renames_json(files: list[FileDiff], rename_info: dict, origins: dict) -> list[dict]:
+    """Every rename applied in at least one run, most used first."""
+    usage: dict[tuple[str, str], dict] = {pair: {"runs": 0, "files": set()} for pair in rename_info}
+    for fd in files:
+        for run in fd.runs:
+            if run.rename:
+                usage[run.rename]["runs"] += 1
+                usage[run.rename]["files"].add(fd.path)
+    out = [{**info, "runs": usage[pair]["runs"], "files": sorted(usage[pair]["files"]), "origin": origins[pair]}
+           for pair, info in rename_info.items() if usage[pair]["runs"]]
+    return sorted(out, key=lambda r: -r["runs"])
 
 
 def main() -> None:
@@ -363,98 +436,15 @@ def main() -> None:
     marked_file = root / "generated.txt"
     marked = set(marked_file.read_text().split("\n")) - {""} if marked_file.exists() else set()
     rename_info = collect_renames(files)
-    ordered = sorted(rename_info, key=lambda p: -len(p[0]))
-
-    out_files = []
-    for fi, fd in enumerate(files):
-        old_src = read_source(root / "old" / fd.old_path) if fd.old_path else ""
-        new_src = read_source(root / "new" / fd.new_path) if fd.new_path else ""
-        is_py = fd.path.endswith(".py")
-        old_imports, old_docs, _ = python_line_sets(old_src) if is_py else (set(), set(), [])
-        new_imports, new_docs, symbols = python_line_sets(new_src if fd.new_path else old_src) if is_py else (set(), set(), [])
-        side_sets = {"old": (old_imports, old_docs), "new": (new_imports, new_docs)}
-        for run in fd.runs:
-            run.file_index = fi
-            classify_run(run, side_sets, ordered, rename_info)
-        out_files.append({"fd": fd, "symbols": symbols, "content": new_src if fd.new_path else old_src,
-                          "content_side": "new" if fd.new_path else "old",
-                          "import_lines": new_imports if fd.new_path else old_imports, "old_import_lines": old_imports})
+    entries = classify_files(root, files, rename_info)
     detect_moves(files)
-
-    rename_usage: dict[tuple[str, str], dict] = {p: {"runs": 0, "files": set(), "origin": None} for p in rename_info}
-    for entry in sorted(out_files, key=lambda e: file_kind(e["fd"].path) == "test"):
-        fd = entry["fd"]
-        if fd.status == "R":
-            for pair in rename_info:
-                if rename_info[pair]["seed"] and rename_usage[pair]["origin"] is None:
-                    rename_usage[pair]["origin"] = {"path": fd.path, "line": 1, "text": f"renamed from {fd.old_path}"}
-        for run in fd.runs:
-            for (a, b), u in rename_usage.items():
-                if u["origin"] is not None:
-                    continue
-                for no, text in run.added:
-                    if is_definition(text, b):
-                        u["origin"] = {"path": fd.path, "line": no, "text": text.strip()}
-                        break
-                else:
-                    for no, text in run.removed:
-                        if is_definition(text, a):
-                            u["origin"] = {"path": fd.path, "line": run.anchor_new, "text": text.strip()}
-                            break
-    result_files = []
-    for entry in out_files:
-        fd: FileDiff = entry["fd"]
-        by_class = Counter()
-        raw = 0
-        substantive = 0
-        runs_json = []
-        for run in fd.runs:
-            n = len(run.removed) + len(run.added)
-            raw += n
-            by_class[run.cls] += n
-            if run.cls == "substantive" or (run.cls == "rename" and run.origin):
-                substantive += n
-            if run.rename:
-                u = rename_usage[run.rename]
-                u["runs"] += 1
-                u["files"].add(fd.path)
-            runs_json.append({
-                "index": run.index, "class": run.cls,
-                "removed": [no for no, _ in run.removed], "added": [no for no, _ in run.added],
-                "rename": list(run.rename) if run.rename else None, "origin": run.origin,
-                "pair_rename": run.pair_rename, "anchor_new": run.anchor_new, "moved_to": run.moved_to,
-            })
-        changed_new = {no for run in fd.runs for no in (n for n, _ in run.added)}
-        anchors = {run.anchor_new for run in fd.runs}
-        for sym in entry["symbols"]:
-            sym["changed"] = any(sym["start"] <= a <= sym["end"] for a in anchors | changed_new)
-        hunks_json = [{"old_start": h.old_start, "new_start": h.new_start, "header": h.header,
-                       "lines": [[t, o, n, x] for t, o, n, x in h.lines]} for h in fd.hunks]
-        result_files.append({
-            "path": fd.path, "old_path": fd.old_path, "new_path": fd.new_path, "status": fd.status,
-            "similarity": fd.similarity, "kind": file_kind(fd.path),
-            "generated": is_generated(fd.path, entry["content"], marked),
-            "lang": "python" if fd.path.endswith(".py") else ("markdown" if fd.path.endswith(".md") else "text"),
-            "content": entry["content"], "content_side": entry["content_side"],
-            "hunks": hunks_json, "runs": runs_json, "symbols": entry["symbols"],
-            "import_lines": sorted(entry["import_lines"]), "old_import_lines": sorted(entry["old_import_lines"]),
-            "stats": {"raw": raw, "substantive": substantive, "by_class": dict(by_class),
-                      "additions": sum(len(r.added) for r in fd.runs), "deletions": sum(len(r.removed) for r in fd.runs)},
-        })
-
-    renames_json = []
-    for pair, info in rename_info.items():
-        u = rename_usage[pair]
-        if u["runs"] == 0:
-            continue
-        renames_json.append({**info, "runs": u["runs"], "files": sorted(u["files"]), "origin": u["origin"]})
-    renames_json.sort(key=lambda r: -r["runs"])
-
-    totals = Counter()
+    origins = find_origins(entries, rename_info)
+    result_files = [file_json(entry, marked) for entry in entries]
+    totals: Counter = Counter()
     for f in result_files:
-        for k, v in f["stats"]["by_class"].items():
-            totals[k] += v
-    json.dump({"files": result_files, "renames": renames_json, "totals": dict(totals)}, sys.stdout)
+        totals.update(f["stats"]["by_class"])
+    json.dump({"files": result_files, "renames": renames_json(files, rename_info, origins), "totals": dict(totals)},
+              sys.stdout)
 
 
 if __name__ == "__main__":

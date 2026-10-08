@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import socket
 import subprocess
@@ -41,7 +42,7 @@ class Job:
 
 jobs: dict[tuple[str, str, int], Job] = {}
 heads: dict[tuple[str, str, int], tuple[float, str]] = {}
-lists: dict[str, tuple[float, list]] = {}
+lists: dict[str, tuple[float, list | str]] = {}
 lock = threading.Lock()
 
 
@@ -76,7 +77,8 @@ def start_job(key: tuple[str, str, int]) -> Job:
     return job
 
 
-def search(query: str) -> list:
+def search(query: str) -> list | str:
+    """Open pull requests matching a gh search query, newest first, or the error text when gh fails."""
     now = time.time()
     with lock:
         cached = lists.get(query)
@@ -86,13 +88,17 @@ def search(query: str) -> list:
         out = subprocess.run(["gh", "search", "prs", *query.split(), "--state=open", "--limit", "40",
                               "--json", "number,title,repository,author,updatedAt,url,isDraft"],
                              capture_output=True, text=True, timeout=30)
-        rows = json.loads(out.stdout) if out.returncode == 0 else []
-    except (subprocess.TimeoutExpired, json.JSONDecodeError):
-        rows = []
-    rows.sort(key=lambda r: r.get("updatedAt", ""), reverse=True)
+        if out.returncode:
+            result: list | str = out.stderr.strip() or f"gh search prs exited with {out.returncode}"
+        else:
+            result = sorted(json.loads(out.stdout), key=lambda r: r.get("updatedAt", ""), reverse=True)
+    except subprocess.TimeoutExpired:
+        result = "gh search prs took longer than 30 seconds"
+    except json.JSONDecodeError as exc:
+        result = f"gh search prs returned invalid JSON: {exc}"
     with lock:
-        lists[query] = (now, rows)
-    return rows
+        lists[query] = (now, result)
+    return result
 
 
 def recent_pages() -> list[dict]:
@@ -149,6 +155,7 @@ button {{ font: 14px var(--sans); color: #fff; background: var(--accent); border
 .themes button {{ font: 11px var(--sans); color: var(--fg2); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }}
 .themes button:hover {{ background: var(--bg3); }}
 .themes button.on {{ background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }}
+html.app body {{ padding-top: 28px; }}
 </style>
 <script>try {{ const t = localStorage.getItem('dr:theme'); if (t && t !== 'auto') document.documentElement.dataset.theme = t; }} catch (e) {{}}</script>
 </head><body><main><div class="themes">
@@ -160,6 +167,8 @@ button {{ font: 14px var(--sans); color: #fff; background: var(--accent); border
   const apply = (t) => {{
     if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
     for (const b of document.querySelectorAll('.themes button')) b.classList.toggle('on', b.dataset.theme === t);
+    const win = window.__TAURI__ && window.__TAURI__.window;
+    if (win) win.getCurrentWindow().setTheme(t === 'auto' ? null : t === 'dark' ? 'dark' : 'light').catch(() => {{}});
   }};
   for (const b of document.querySelectorAll('.themes button')) b.addEventListener('click', () => {{
     try {{ localStorage.setItem('dr:theme', b.dataset.theme); }} catch (e) {{}}
@@ -180,7 +189,9 @@ def pr_item(owner: str, repo: str, number: int, title: str, meta: str, when: str
             f'<span class="w">{html.escape(when)}</span><span class="m">{html.escape(meta)}</span></a>')
 
 
-def search_items(rows: list) -> str:
+def search_items(rows: list | str) -> str:
+    if isinstance(rows, str):
+        return f'<div class="empty err">{html.escape(rows)}</div>'
     if not rows:
         return '<div class="empty">Nothing here.</div>'
     out = []
@@ -254,7 +265,8 @@ class Handler(BaseHTTPRequestHandler):
                 owner, repo, number = build.parse_ref((query.get("pr") or [""])[0])
                 return self.redirect(f"/{owner}/{repo}/pull/{number}")
             if m := STATUS.match(url.path):
-                job = jobs.get((m.group(1), m.group(2), int(m.group(3))))
+                with lock:
+                    job = jobs.get((m.group(1), m.group(2), int(m.group(3))))
                 data = {"state": job.state, "log": job.log, "error": job.error} if job else {"state": "none", "log": [], "error": ""}
                 return self.send(200, json.dumps(data).encode(), "application/json")
             if m := PAGE.match(url.path):
@@ -287,10 +299,20 @@ def port_taken(port: int) -> str | None:
     return None
 
 
+def exit_with_parent() -> None:
+    """Exit once the parent process is gone, checked once a second."""
+    parent = os.getppid()
+    while os.getppid() == parent:
+        time.sleep(1)
+    os._exit(0)
+
+
 def main() -> None:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
     if taken := port_taken(port):
         sys.exit(f"Port {port} is already in use on {taken}. Stop that process or pass another port: server.py <port>")
+    if "--exit-with-parent" in sys.argv:
+        threading.Thread(target=exit_with_parent, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"Serving pull request reviews on http://localhost:{port}/")
     server.serve_forever()
