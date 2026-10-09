@@ -18,10 +18,7 @@
     "targets": ["app", "dmg"],
     "icon": ["icons/icon.icns", "icons/icon.png"],
     "resources": {
-      "../server.py": "python/server.py",
-      "../build.py": "python/build.py",
-      "../classify.py": "python/classify.py",
-      "../render.py": "python/render.py",
+      "../*.py": "python/",
       "../page/*": "python/page/"
     }
   }
