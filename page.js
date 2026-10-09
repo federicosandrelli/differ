@@ -19,7 +19,13 @@ const state = {
   showNoiseOnly: false, showGenerated: false, theme: 'auto', cursor: null, openOverride: new Map(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(), target: null,
+  compose: null, replyOpen: new Map(), openThreads: new Set(), showOutdated: new Set(),
+  reviewPanel: false, reviewText: '', convText: '', busy: false, focus: null,
 };
+// Comments live on GitHub and change independently of the page, so they load after it, from the server.
+const API = location.protocol.startsWith('http') ? `/api/${PR.repo}/${PR.number}` : null;
+const C = { loaded: false, error: '', viewer: '', head: '', pending: null, threads: [], reviews: [], comments: [] };
+const THREADS = { byFile: new Map(), orphans: [] };
 const LS = (k) => `dr:${PR.head.slice(0, 12)}:${k}`;
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
@@ -28,6 +34,11 @@ const setReviewed = (f, v) => lsSet(LS(f.path), v ? '1' : null);
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const fmt = (n) => n.toLocaleString('en-GB');
+function ago(iso) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60]]) if (s >= n) return `${Math.floor(s / n)}${u} ago`;
+  return 'just now';
+}
 
 // A renamed file kept its directory; a moved one left it. Git reports both as R.
 function changeKind(f) {
@@ -146,7 +157,7 @@ function buildRows(f) {
   const raw = f.content.split('\n'); if (raw.length && raw[raw.length - 1] === '') raw.pop();
   if (f.content_side === 'old') {
     raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl[i], text: t, run: runOfOld.get(i + 1) }));
-    return flagHits(rows);
+    return flagHits(attachThreads(f, rows));
   }
   const removedBefore = new Map();
   for (const h of f.hunks) {
@@ -163,8 +174,22 @@ function buildRows(f) {
     for (const d of removedBefore.get(i) || []) rows.push(d);
     if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i) });
   }
-  return flagHits(rows);
+  return flagHits(attachThreads(f, rows));
 }
+// A row's key on its own side: O<old line> for removed lines, L<new line> for the rest.
+const rowKeyOf = (r) => r.type === 'del' ? `O${r.oldNo}` : `L${r.newNo}`;
+function attachThreads(f, rows) {
+  const entry = THREADS.byFile.get(f.path), c = state.compose && state.compose.path === f.path ? state.compose : null;
+  if (!entry && !c) return rows;
+  for (const r of rows) {
+    if (entry) { const ts = entry.rows.get(rowKeyOf(r)); if (ts) r.threads = ts; }
+    if (!c) continue;
+    const n = c.side === 'RIGHT' ? (r.type !== 'del' ? r.newNo : null) : (r.type === 'del' ? r.oldNo : null);
+    if (n != null && n >= c.startLine && n <= c.line) { r.sel = true; if (n === c.line) r.compose = true; }
+  }
+  return rows;
+}
+const pinned = (r) => r.hit || r.threads || r.compose;
 function flagHits(rows) {
   const q = state.q.toLowerCase();
   if (!q) return rows;
@@ -175,7 +200,7 @@ function blocksFor(rows) {
   const blocks = [];
   for (const r of rows) {
     const last = blocks[blocks.length - 1];
-    if (r.type === 'ctx' && !r.hit) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
+    if (r.type === 'ctx' && !pinned(r)) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
     else if (r.run && last && last.run === r.run) last.rows.push(r);
     else blocks.push({ run: r.run || null, rows: [r] });
   }
@@ -195,7 +220,7 @@ const runKey = (f, r) => `${f.path}#${r.index}`;
 function isCollapsed(f, b) {
   const r = b.run;
   if (!r || !NOISE.includes(r.class)) return false;
-  if (b.rows.some(row => row.hit)) return false;
+  if (b.rows.some(pinned)) return false;
   if (r.class === 'rename' && r.origin) return false;
   if (state.show[r.class]) return false;
   return !state.expanded.has(runKey(f, r));
@@ -291,9 +316,12 @@ const rowId = (f, r) => r.type === 'del' ? `r${f.index}-O${r.oldNo}` : `r${f.ind
 function renderRows(f, rows, out) {
   for (const r of rows) {
     const id = rowId(f, r);
-    const cls = [r.type, r.dim ? 'dim' : '', state.target === id ? 'target' : ''].join(' ');
+    const cls = [r.type, r.dim ? 'dim' : '', state.target === id ? 'target' : '', r.sel ? 'sel' : ''].join(' ');
     const tag = r.dim ? '<span class="tag">rename</span>' : '';
-    out.push(`<tr class="${cls}" id="${id}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
+    const plus = API ? `<button class="plus" data-comment="${esc(f.path)}" data-side="${r.type === 'del' ? 'LEFT' : 'RIGHT'}" data-line="${r.type === 'del' ? r.oldNo : r.newNo}" title="Comment on this line (shift-click to extend)">+</button>` : '';
+    out.push(`<tr class="${cls}" id="${id}"><td class="n">${plus}${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
+    if (r.threads) for (const t of r.threads) out.push(`<tr class="thread"><td colspan="4">${threadHtml(f, t)}</td></tr>`);
+    if (r.compose) out.push(`<tr class="compose"><td colspan="4">${composeHtml(f, state.compose)}</td></tr>`);
   }
 }
 // Every import section folds to one row, changed or not: the file's import lines, with the blank lines between them.
@@ -319,7 +347,7 @@ function importSegments(f, rows) {
   return segs;
 }
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
-const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(r => r.hit);
+const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 function renderCode(f) {
   const rows = buildRows(f);
   let blocks = [];
@@ -427,6 +455,7 @@ function renderTreeNode(node, depth, out) {
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
       ${state.q && hits(f) ? `<span class="cnt hits">${hits(f)}</span>` : ''}
+      ${threadCount(f) ? `<span class="cnt bubble" title="${threadCount(f)} unresolved thread${threadCount(f) > 1 ? 's' : ''}">${threadCount(f)}</span>` : ''}
       <span class="spacer"></span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>`);
   }
 }
@@ -461,8 +490,9 @@ function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;
   const h = `<div class="head">${location.protocol.startsWith('http') ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
-    <div class="meta"><span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>
+    <div class="meta"><span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a>${API ? ` · <a href="#" data-review-panel class="${state.reviewPanel ? 'on' : ''}">Review${pendingCount() ? ` (${pendingCount()})` : ''}</a>` : ''}</span>
       <span class="themes">${THEMES.map(t => `<button data-theme="${t}" class="${state.theme === t ? 'on' : ''}">${t}</button>`).join('')}</span></div></div>
+    ${commentNotices()}${state.reviewPanel ? reviewPanelHtml() : ''}
     <div class="controls"><span class="seg">
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
       <button data-filter="implementation" class="${state.filter === 'implementation' ? 'on' : ''}">Implementation</button>
@@ -482,6 +512,7 @@ function renderSide() {
   document.querySelector('#side .list').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
   else if (focused) focusBox(focused);
+  restoreFocus();
   revealActive();
   updateSearchMeta();
 }
@@ -507,7 +538,7 @@ function setActive(path) {
 
 // ---------- main: the overview and then every visible file, one long page
 // Enough markdown for a PR description: headings, bullets, paragraphs, links, bold, inline code.
-function renderMarkdown(md) {
+function renderMarkdown(md, ctx) {
   const inline = (t) => esc(t)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -518,8 +549,18 @@ function renderMarkdown(md) {
     if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; }
     if (list) { out.push(`<ul>${list.map(i => `<li>${inline(i)}</li>`).join('')}</ul>`); list = null; }
   };
-  for (const raw of md.split('\n')) {
+  const lines = md.split('\n');
+  for (let li = 0; li < lines.length; li++) {
+    const raw = lines[li];
     const line = raw.trimEnd();
+    const fence = line.match(/^\s*```\s*(\S*)\s*$/);
+    if (fence) {
+      flush();
+      const code = [];
+      for (li++; li < lines.length && !/^\s*```\s*$/.test(lines[li]); li++) code.push(lines[li]);
+      out.push(fence[1] === 'suggestion' ? suggestionHtml(code, ctx) : `<pre><code>${esc(code.join('\n'))}</code></pre>`);
+      continue;
+    }
     const h = line.match(/^(#{1,6})\s+(.*)$/);
     const b = line.match(/^\s*[-*]\s+(.*)$/);
     if (h) { flush(); const lvl = Math.min(h[1].length + 1, 4); out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`); }
@@ -565,19 +606,19 @@ function renderOverview() {
     }
     h += `</table></div>`;
   }
-  return h + `</div>`;
+  return h + conversationHtml() + `</div>`;
 }
 const sectionOpen = (f) => state.openOverride.has(f.path) ? state.openOverride.get(f.path) : !isReviewed(f);
 function renderFile(f) {
   const ck = changeKind(f), open = sectionOpen(f);
-  return `<section class="filesec ${open ? '' : 'closed'}" id="sec-${f.index}" data-path="${esc(f.path)}"><div class="fhead"><div class="top" data-toggle="${esc(f.path)}">
+  return `<section class="filesec ${open ? '' : 'closed'}" id="sec-${f.index}" data-file="${esc(f.path)}"><div class="fhead"><div class="top" data-toggle="${esc(f.path)}">
       <span class="chev ${open ? 'open' : ''}" title="${open ? 'Collapse' : 'Expand'}"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir">${esc(f.dir)}</span>${renamedFrom(f)}</span>
       <span class="kind">${esc(f.kind)}</span><span class="counts">${fileCounts(f)}</span>
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
     </div></div>
-    ${open ? `<div class="code">${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div>` : ''}</section>`;
+    ${open ? `<div class="code">${outdatedHtml(f)}${f.runs.length ? renderCode(f) : '<div class="empty">No changes</div>'}</div>` : ''}</section>`;
 }
 
 function render() {
@@ -598,7 +639,16 @@ function render() {
     const sec = curFile && document.getElementById(`sec-${curFile.index}`);
     main.scrollTop = sec && within != null ? sec.offsetTop + Math.max(0, within) : scroll;
   }
+  restoreFocus();
   trackScroll();
+}
+function restoreFocus() {
+  if (!state.focus) return;
+  const el = document.querySelector(state.focus);
+  if (!el) return;
+  state.focus = null;
+  el.focus({ preventScroll: true });
+  if (el.setSelectionRange) el.setSelectionRange(el.value.length, el.value.length);
 }
 
 // The sidebar follows the file under the top of the main pane.
@@ -607,7 +657,7 @@ function trackScroll() {
   const main = document.getElementById('main');
   const top = main.getBoundingClientRect().top + 60;
   let current = 'overview';
-  for (const sec of main.querySelectorAll('.filesec')) { if (sec.getBoundingClientRect().top <= top) current = sec.dataset.path; else break; }
+  for (const sec of main.querySelectorAll('.filesec')) { if (sec.getBoundingClientRect().top <= top) current = sec.dataset.file; else break; }
   setActive(current);
 }
 document.getElementById('main').addEventListener('scroll', () => {
@@ -656,10 +706,247 @@ function syncWindowTheme(theme) {
   win.getCurrentWindow().setTheme(theme === 'auto' ? null : theme === 'dark' ? 'dark' : 'light').catch(() => {});
 }
 
+// ---------- comments: review threads from GitHub, placed on the lines they refer to
+async function loadComments() {
+  if (!API) return;
+  try {
+    const r = await fetch(`${API}/comments`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    Object.assign(C, d, { loaded: true, error: '' });
+    C.loadedAt = Date.now();
+  } catch (e) { C.error = e.message; }
+  indexThreads();
+  render();
+}
+async function post(action, body) {
+  state.busy = true; render();
+  try {
+    const r = await fetch(`${API}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    state.busy = false;
+    await loadComments();
+    return true;
+  } catch (e) { C.error = e.message; state.busy = false; render(); return false; }
+}
+// The new-side line number of an unchanged old-side line: the hunks give the pairing inside them and the offset outside.
+function oldToNew(f, o) {
+  let delta = 0;
+  for (const h of f.hunks) {
+    if (o < h.old_start) return o + delta;
+    let lastO = h.old_start - 1, lastN = h.new_start - 1;
+    for (const [tag, ho, hn] of h.lines) {
+      if (tag === ' ' && ho === o) return hn;
+      if (ho != null) lastO = ho;
+      if (hn != null) lastN = hn;
+    }
+    delta = lastN - lastO;
+  }
+  return o + delta;
+}
+function rowKeyFor(f, side, line) {
+  if (side === 'RIGHT' && f.content_side !== 'old') return `L${line}`;
+  if (f.content_side === 'old') return `O${line}`;
+  for (const h of f.hunks) for (const [tag, o] of h.lines) if (tag === '-' && o === line) return `O${line}`;
+  return `L${oldToNew(f, line)}`;
+}
+function indexThreads() {
+  THREADS.byFile = new Map(); THREADS.orphans = [];
+  for (const t of C.threads) {
+    const f = BY_PATH[t.path];
+    if (!f) { THREADS.orphans.push(t); continue; }
+    const entry = THREADS.byFile.get(t.path) || THREADS.byFile.set(t.path, { rows: new Map(), outdated: [] }).get(t.path);
+    if (t.outdated || t.line == null) { entry.outdated.push(t); continue; }
+    const key = rowKeyFor(f, t.side, t.line);
+    (entry.rows.get(key) || entry.rows.set(key, []).get(key)).push(t);
+  }
+}
+function threadCount(f) {
+  const e = THREADS.byFile.get(f.path);
+  if (!e) return 0;
+  let n = e.outdated.filter(t => !t.resolved).length;
+  for (const ts of e.rows.values()) n += ts.filter(t => !t.resolved).length;
+  return n;
+}
+function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filter(c => c.pending).length, 0); }
+const excerpt = (s) => { const t = s.replace(/```[\s\S]*?```/g, '').replace(/\s+/g, ' ').trim(); return t.length > 90 ? t.slice(0, 90) + '…' : t; };
+const lineRange = (a, b) => a && a !== b ? `${a}–${b}` : `${b}`;
+const btn = (attrs, label, primary) => `<button ${attrs} class="${primary ? 'primary' : ''}" ${state.busy ? 'disabled' : ''}>${label}</button>`;
+
+function commentHtml(c, ctx) {
+  return `<div class="comment ${c.pending ? 'pending' : ''}"><div class="chead"><b>${esc(c.author)}</b><span class="hint">${ago(c.created)}</span>
+    ${c.pending ? '<span class="pend">pending</span>' : ''}<span class="spacer"></span>
+    ${c.pending ? `<a href="#" data-delete="${esc(c.id)}">delete</a>` : ''}<a href="${c.url}" target="_blank" title="Open on GitHub">↗</a></div>
+    <div class="cbody">${renderMarkdown(c.body, ctx)}</div></div>`;
+}
+function threadHtml(f, t) {
+  const n = t.comments.length, first = t.comments[0];
+  if (t.resolved && !state.openThreads.has(t.id)) {
+    return `<div class="thread folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${n} comment${n > 1 ? 's' : ''}</div>`;
+  }
+  const head = t.outdated ? `<div class="thead">Outdated · was on line${t.original_start_line && t.original_start_line !== t.original_line ? 's' : ''} ${lineRange(t.original_start_line, t.original_line)}${t.side === 'LEFT' ? ' of the old file' : ''}</div>`
+    : t.start_line && t.start_line !== t.line ? `<div class="thead">Lines ${lineRange(t.start_line, t.line)}</div>` : '';
+  const reply = state.replyOpen.has(t.id) ? replyHtml(t) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
+    ${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
+    ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
+  return `<div class="thread ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
+}
+function replyHtml(t) {
+  return `<div class="form reply"><textarea data-reply-text="${esc(t.id)}" placeholder="Reply">${esc(state.replyOpen.get(t.id) || '')}</textarea>
+    <div class="actions"><span class="spacer"></span>${btn(`data-reply-cancel="${esc(t.id)}"`, 'Cancel')}
+    ${btn(`data-reply-send="${esc(t.id)}" data-mode="single"`, 'Add single comment')}${btn(`data-reply-send="${esc(t.id)}" data-mode="review"`, C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
+}
+function composeHtml(f, c) {
+  const where = `line${c.startLine !== c.line ? 's' : ''} ${lineRange(c.startLine, c.line)}${c.side === 'LEFT' ? ' of the old file' : ''}`;
+  return `<div class="form compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
+    <textarea data-compose-text placeholder="Leave a comment">${esc(c.text)}</textarea>
+    <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
+    ${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
+}
+// A suggestion shows as the lines it replaces, from the file, over the lines it proposes.
+function suggestionHtml(code, ctx) {
+  const t = ctx && ctx.thread, f = ctx && ctx.file;
+  const rows = [];
+  if (t && f && t.side === 'RIGHT' && !t.outdated && t.line != null && f.content_side !== 'old') {
+    const src = f.content.split('\n');
+    for (let n = t.start_line || t.line; n <= t.line; n++) if (src[n - 1] !== undefined) rows.push(`<tr class="del"><td class="n">${n}</td><td class="m">−</td><td class="c">${hlOne(src[n - 1], f.lang)}</td></tr>`);
+  }
+  for (const l of code) rows.push(`<tr class="add"><td class="n"></td><td class="m">+</td><td class="c">${hlOne(l, f && f.lang)}</td></tr>`);
+  return `<div class="suggestion"><div class="shead">Suggested change</div><table class="diff"><colgroup><col style="width:38px"><col style="width:16px"><col></colgroup>${rows.join('')}</table></div>`;
+}
+function suggestionTemplate(f, c) {
+  const src = f.content.split('\n');
+  const lines = [];
+  for (let n = c.startLine; n <= c.line; n++) if (src[n - 1] !== undefined) lines.push(src[n - 1]);
+  return '```suggestion\n' + lines.join('\n') + '\n```\n';
+}
+function outdatedHtml(f) {
+  const e = THREADS.byFile.get(f.path);
+  if (!e || !e.outdated.length) return '';
+  const open = state.showOutdated.has(f.path), n = e.outdated.length;
+  return `<div class="outdated"><a href="#" data-outdated="${esc(f.path)}">${open ? '▾' : '▸'} ${n} outdated thread${n > 1 ? 's' : ''}</a>${open ? e.outdated.map(t => threadHtml(f, t)).join('') : ''}</div>`;
+}
+function commentNotices() {
+  if (!API) return '';
+  if (C.error) return `<div class="notice err">Comments: ${esc(C.error)} · <a href="#" data-comments-reload>retry</a></div>`;
+  if (!C.loaded) return '<div class="notice">Loading comments…</div>';
+  const stale = C.head && !PR.head.startsWith(C.head) && !C.head.startsWith(PR.head);
+  return stale ? `<div class="notice err">The pull request has new commits · <a href="?refresh=1">rebuild the page</a></div>` : '';
+}
+function reviewPanelHtml() {
+  const n = pendingCount();
+  return `<div class="form review"><textarea data-review-text placeholder="${n ? 'Review summary (optional)' : 'Review summary'}">${esc(state.reviewText)}</textarea>
+    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn('data-submit="REQUEST_CHANGES"', 'Request changes')}${btn('data-submit="COMMENT"', 'Comment', true)}
+    <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
+    <div class="hint">${n ? `${n} pending comment${n > 1 ? 's' : ''} go out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
+}
+const REVIEW_VERB = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', COMMENTED: 'commented', DISMISSED: 'review dismissed' };
+function conversationHtml() {
+  if (!API) return '';
+  const items = [...C.comments.map(c => ({ ...c, verb: 'commented' })),
+    ...C.reviews.filter(r => r.body || r.state !== 'COMMENTED').map(r => ({ ...r, verb: REVIEW_VERB[r.state] || r.state.toLowerCase() }))]
+    .sort((a, b) => a.created.localeCompare(b.created));
+  let h = `<h2>Conversation</h2>`;
+  if (!C.loaded) h += '<p class="hint">Loading…</p>';
+  else if (!items.length) h += '<p class="hint">No comments yet.</p>';
+  for (const it of items) {
+    h += `<div class="comment ${it.state === 'APPROVED' ? 'approved' : it.state === 'CHANGES_REQUESTED' ? 'changes' : ''}"><div class="chead"><b>${esc(it.author)}</b> ${esc(it.verb)}<span class="hint">${ago(it.created)}</span><span class="spacer"></span><a href="${it.url}" target="_blank" title="Open on GitHub">↗</a></div>
+      ${it.body ? `<div class="cbody">${renderMarkdown(it.body)}</div>` : ''}</div>`;
+  }
+  h += `<div class="form conv"><textarea data-conv-text placeholder="Leave a comment on the pull request">${esc(state.convText)}</textarea>
+    <div class="actions"><span class="spacer"></span>${btn('data-conv-send', 'Comment', true)}</div></div>`;
+  const threads = C.threads;
+  if (threads.length) {
+    const open = threads.filter(t => !t.resolved).length;
+    h += `<h2>Review threads</h2><p class="hint">${open} unresolved · ${threads.length - open} resolved</p><div class="scrollx"><table class="plain threads">`;
+    for (const t of [...threads].sort((a, b) => a.resolved - b.resolved || a.path.localeCompare(b.path) || (a.line || 0) - (b.line || 0))) {
+      const f = BY_PATH[t.path], c = t.comments[0];
+      const where = `${esc(t.path.split('/').pop())}:${lineRange(t.start_line, t.line ?? t.original_line)}`;
+      h += `<tr class="${t.resolved ? 'resolved' : ''}"><td>${f ? `<a href="#" data-thread-go="${esc(t.id)}" class="mono">${where}</a>` : `<span class="mono" title="not in this diff">${where}</span>`}</td>
+        <td class="hint">${t.resolved ? 'resolved' : t.outdated ? 'outdated' : c.pending ? 'pending' : ''}</td><td>${esc(c.author)}</td><td class="wrap">${esc(excerpt(c.body))}${t.comments.length > 1 ? ` <span class="hint">+${t.comments.length - 1}</span>` : ''}</td></tr>`;
+    }
+    h += '</table></div>';
+  }
+  return h;
+}
+function goThread(t) {
+  const f = BY_PATH[t.path];
+  if (!f) return;
+  if (t.outdated || t.line == null) { state.showOutdated.add(f.path); go(t.path); return; }
+  const key = rowKeyFor(f, t.side, t.line), n = +key.slice(1);
+  go(t.path, key[0] === 'O' && f.content_side !== 'old' ? { oldNo: n, anchor: oldToNew(f, n) } : n);
+}
+function openCompose(path, side, line, extend) {
+  const c = state.compose;
+  if (extend && c && c.path === path && c.side === side) { c.startLine = Math.min(c.startLine, c.line, line); c.line = Math.max(c.startLine, c.line, line); }
+  else state.compose = { path, side, line, startLine: line, text: c && c.path === path ? c.text : '' };
+  state.focus = '[data-compose-text]';
+  render();
+}
+function textareaKey(e) {
+  const form = e.target.closest('.form');
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary'); if (b && !b.disabled) b.click(); e.preventDefault(); }
+  else if (e.key === 'Escape') { const b = form && form.querySelector('[data-compose-cancel],[data-reply-cancel]'); if (b) b.click(); else e.target.blur(); }
+}
+async function commentClick(t, e) {
+  const d = t.dataset;
+  if (d.comment !== undefined) { e.preventDefault(); openCompose(d.comment, d.side, +d.line, e.shiftKey); return true; }
+  if (d.composeCancel !== undefined) { state.compose = null; render(); return true; }
+  if (d.suggest !== undefined) {
+    const c = state.compose, f = BY_PATH[c.path];
+    c.text = (c.text && !c.text.endsWith('\n') ? c.text + '\n' : c.text) + suggestionTemplate(f, c);
+    state.focus = '[data-compose-text]'; render(); return true;
+  }
+  if (d.composeSend !== undefined) {
+    const c = state.compose;
+    if (!c.text.trim()) { state.focus = '[data-compose-text]'; render(); return true; }
+    const body = { path: c.path, body: c.text, line: c.line, side: c.side, mode: d.composeSend };
+    if (c.startLine !== c.line) { body.start_line = c.startLine; body.start_side = c.side; }
+    if (await post('comment', body)) { state.compose = null; render(); }
+    return true;
+  }
+  if (d.reply !== undefined) { state.replyOpen.set(d.reply, ''); state.focus = `[data-reply-text="${CSS.escape(d.reply)}"]`; render(); return true; }
+  if (d.replyCancel !== undefined) { state.replyOpen.delete(d.replyCancel); render(); return true; }
+  if (d.replySend !== undefined) {
+    const text = state.replyOpen.get(d.replySend) || '';
+    if (!text.trim()) return true;
+    if (await post('reply', { thread: d.replySend, body: text, mode: d.mode })) { state.replyOpen.delete(d.replySend); render(); }
+    return true;
+  }
+  if (d.resolve !== undefined) { await post('resolve', { thread: d.resolve, resolved: d.resolved === '1' }); return true; }
+  if (d.delete !== undefined) { e.preventDefault(); await post('delete', { comment: d.delete }); return true; }
+  if (d.threadOpen !== undefined) { state.openThreads.add(d.threadOpen); render(); return true; }
+  if (d.threadClose !== undefined) { state.openThreads.delete(d.threadClose); render(); return true; }
+  if (d.threadGo !== undefined) { e.preventDefault(); const th = C.threads.find(x => x.id === d.threadGo); if (th) goThread(th); return true; }
+  if (d.outdated !== undefined) { e.preventDefault(); state.showOutdated.has(d.outdated) ? state.showOutdated.delete(d.outdated) : state.showOutdated.add(d.outdated); render(); return true; }
+  if (d.reviewPanel !== undefined) { e.preventDefault(); state.reviewPanel = !state.reviewPanel; if (state.reviewPanel) state.focus = '[data-review-text]'; renderSide(); return true; }
+  if (d.submit !== undefined) {
+    if (!pendingCount() && !C.pending && !state.reviewText.trim() && d.submit === 'COMMENT') { state.focus = '[data-review-text]'; renderSide(); return true; }
+    if (await post('submit', { event: d.submit, body: state.reviewText })) { state.reviewText = ''; state.reviewPanel = false; renderSide(); }
+    return true;
+  }
+  if (d.discard !== undefined) {
+    const n = pendingCount();
+    if (confirm(n ? `Discard the pending review and its ${n} comment${n > 1 ? 's' : ''}?` : 'Discard the pending review?')) await post('discard', {});
+    return true;
+  }
+  if (d.convSend !== undefined) {
+    if (!state.convText.trim()) { state.focus = '[data-conv-text]'; render(); return true; }
+    if (await post('conversation', { body: state.convText })) { state.convText = ''; render(); }
+    return true;
+  }
+  if (d.commentsReload !== undefined) { e.preventDefault(); C.error = ''; render(); loadComments(); return true; }
+  return false;
+}
+
 // ---------- events
+const COMMENT_ATTRS = '[data-comment],[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload]';
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme]');
+  if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme],' + COMMENT_ATTRS);
   if (!t) return;
+  if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   if (t.dataset.review !== undefined) { e.preventDefault(); e.stopPropagation(); const f = BY_PATH[t.dataset.review]; setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); render(); return; }
   if (t.dataset.toggle !== undefined && !e.target.closest('button, a')) { const f = BY_PATH[t.dataset.toggle]; state.openOverride.set(f.path, !sectionOpen(f)); render(); return; }
   if (t.dataset.go) { scrollToFile('overview'); return; }
@@ -695,7 +982,11 @@ function firstHitLine(f) {
   return null;
 }
 document.addEventListener('input', (e) => {
-  const box = e.target;
+  const box = e.target, d = box.dataset;
+  if (d.composeText !== undefined && state.compose) { state.compose.text = box.value; return; }
+  if (d.replyText !== undefined) { state.replyOpen.set(d.replyText, box.value); return; }
+  if (d.reviewText !== undefined) { state.reviewText = box.value; return; }
+  if (d.convText !== undefined) { state.convText = box.value; return; }
   if (!box.classList.contains('search')) return;
   state.q = box.value.trim(); state.hitIndex = -1;
   render();
@@ -738,6 +1029,7 @@ function treeKey(e) {
   return false;
 }
 document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
   }
@@ -777,4 +1069,6 @@ window.addEventListener('hashchange', () => {
   const h = decodeURIComponent(location.hash.slice(1));
   render();
   if (h) { const m = h.match(/^(.*?)(?::(\d+))?$/); if (BY_PATH[m[1]]) go(m[1], m[2] ? +m[2] : null); }
+  loadComments();
+  window.addEventListener('focus', () => { if (C.loaded && !state.busy && Date.now() - C.loadedAt > 30000) loadComments(); });
 })();

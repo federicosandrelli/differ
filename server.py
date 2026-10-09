@@ -6,6 +6,8 @@ Usage: server.py [port]   (default 8765)
   /                                  pull requests waiting for your review, yours, and recent pages
   /<owner>/<repo>/pull/<number>      the review page, rebuilt when the head commit changes
   /open?pr=<url or owner/repo#n>     redirects to the page above
+  /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
+  /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard, conversation
 """
 
 from __future__ import annotations
@@ -25,10 +27,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import build
+import comments
 import render
 
 PAGE = re.compile(r"^/([\w.-]+)/([\w.-]+)/pull/(\d+)/?$")
 STATUS = re.compile(r"^/status/([\w.-]+)/([\w.-]+)/(\d+)$")
+API = re.compile(r"^/api/([\w.-]+)/([\w.-]+)/(\d+)/(\w+)$")
 HEAD_TTL = 20
 LIST_TTL = 60
 
@@ -281,9 +285,47 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, page.read_bytes())
                 start_job(key)
                 return self.send(200, progress_page(key))
+            if (m := API.match(url.path)) and m.group(4) == "comments":
+                return self.send_json(comments.fetch(m.group(1), m.group(2), int(m.group(3))))
             return self.send(404, error_page(f"No page at {url.path}"))
         except build.BuildError as exc:
             return self.send(400, error_page(str(exc)))
+        except comments.CommentError as exc:
+            return self.send_json({"error": str(exc)}, 502)
+
+    def send_json(self, data: dict, code: int = 200) -> None:
+        self.send(code, json.dumps(data).encode(), "application/json")
+
+    def do_POST(self) -> None:
+        m = API.match(urlparse(self.path).path)
+        if not m:
+            return self.send(404, error_page(f"No page at {self.path}"))
+        owner, repo, number, action = m.group(1), m.group(2), int(m.group(3)), m.group(4)
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+            if action == "comment":
+                result = comments.add_thread(owner, repo, number, path=body["path"], body=body["body"], line=int(body["line"]),
+                                             side=body.get("side", "RIGHT"), start_line=body.get("start_line"),
+                                             start_side=body.get("start_side"), mode=body.get("mode", "review"))
+            elif action == "reply":
+                result = comments.reply(owner, repo, number, thread_id=body["thread"], body=body["body"], mode=body.get("mode", "review"))
+            elif action == "resolve":
+                result = comments.resolve(body["thread"], bool(body.get("resolved", True)))
+            elif action == "delete":
+                result = comments.delete_comment(body["comment"])
+            elif action == "submit":
+                result = comments.submit(owner, repo, number, event=body["event"], body=body.get("body", ""))
+            elif action == "discard":
+                result = comments.discard(owner, repo, number)
+            elif action == "conversation":
+                result = comments.add_conversation_comment(owner, repo, number, body=body["body"])
+            else:
+                return self.send_json({"error": f"Unknown action {action}"}, 404)
+            return self.send_json(result)
+        except (KeyError, ValueError, json.JSONDecodeError) as exc:
+            return self.send_json({"error": f"Bad request: {exc}"}, 400)
+        except comments.CommentError as exc:
+            return self.send_json({"error": str(exc)}, 502)
 
     def log_message(self, fmt: str, *args) -> None:
         sys.stderr.write(f"{self.address_string()} {fmt % args}\n")

@@ -24,6 +24,26 @@ python3 build.py https://github.com/owner/repo/pull/123
 
 Requirements: Python 3.10+, git, and the GitHub CLI (`gh`) signed in.
 
+## Comments
+
+The page shows the pull request's review threads under the lines they refer
+to, with resolved threads folded to one line and outdated ones listed at the
+top of their file. The overview has the conversation (comments and submitted
+reviews) and a table of every thread. The tree counts unresolved threads per
+file.
+
+Hover a line and click `+` to comment on it; shift-click another line number
+to comment on a range. "Suggest a change" inserts a `suggestion` block with
+the selected lines, which the page renders as a diff. A comment can go into a
+pending review ("Start a review" / "Add review comment") or out at once ("Add
+single comment"); threads take replies the same way, and can be resolved.
+"Review" in the sidebar submits the pending review as approve, request changes
+or comment, or discards it. Cmd+Enter sends a form, Escape closes it.
+
+Comments load from GitHub after the page, through `/api/...` on the server, so
+they need the server (not a page opened from disk). They refresh after every
+change and when the window regains focus after 30 seconds away.
+
 ## Desktop app
 
 The same pages in a native window. The Tauri shell in `src-tauri/` starts
@@ -80,7 +100,9 @@ shell's PATH to run: it ships the Python files, not an interpreter.
   change colours and search, a reviewed mark per file kept in `localStorage`,
   and every file with its removed lines interleaved.
 - `server.py` serves the start page and the pages, building them in the
-  background with a progress page.
+  background with a progress page, and the comments API.
+- `comments.py` reads and writes review threads, reviews and conversation
+  comments through GitHub's GraphQL API (`gh api graphql`).
 
 Keys in the page: `j` / `k` next and previous file, arrow keys in the tree,
 `/` search and Enter for the next hit, `c` collapse a file, `r` mark reviewed,
