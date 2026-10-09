@@ -22,8 +22,7 @@
       "../build.py": "python/build.py",
       "../classify.py": "python/classify.py",
       "../render.py": "python/render.py",
-      "../page.css": "python/page.css",
-      "../page.js": "python/page.js"
+      "../page/*": "python/page/"
     }
   }
 }

@@ -329,6 +329,24 @@ def is_generated(path: str, source: str, marked: set[str]) -> bool:
     return any(GENERATED_MARKER.search(line) for line in source.splitlines()[:5])
 
 
+LANGUAGES = {
+    ".py": "python", ".pyi": "python", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".jsx": "javascript",
+    ".ts": "typescript", ".tsx": "typescript", ".rs": "rust", ".go": "go", ".rb": "ruby", ".java": "java", ".kt": "kotlin",
+    ".swift": "swift", ".c": "c", ".h": "c", ".cpp": "cpp", ".hpp": "cpp", ".cs": "csharp", ".php": "php", ".lua": "lua",
+    ".sh": "bash", ".bash": "bash", ".zsh": "bash", ".sql": "sql", ".json": "json", ".yml": "yaml", ".yaml": "yaml",
+    ".toml": "ini", ".ini": "ini", ".cfg": "ini", ".css": "css", ".scss": "scss", ".html": "xml", ".xml": "xml",
+    ".svg": "xml", ".md": "markdown", ".diff": "diff", ".patch": "diff", ".graphql": "graphql", ".r": "r", ".pl": "perl",
+}
+SPECIAL_FILES = {"Makefile": "makefile", "Dockerfile": "dockerfile"}
+
+
+def language(path: str) -> str:
+    """The highlight.js language name for a path, or "text"."""
+    name = path.rsplit("/", 1)[-1]
+    suffix = name[name.rfind("."):].lower() if "." in name else ""
+    return SPECIAL_FILES.get(name) or LANGUAGES.get(suffix, "text")
+
+
 def read_source(path: Path) -> str:
     """The file as text, or empty for a missing or binary file."""
     if not path.exists():
@@ -406,7 +424,7 @@ def file_json(entry: dict, marked: set[str]) -> dict:
     return {
         "path": fd.path, "old_path": fd.old_path, "new_path": fd.new_path, "status": fd.status,
         "kind": file_kind(fd.path), "generated": is_generated(fd.path, entry["content"], marked),
-        "lang": "python" if fd.path.endswith(".py") else ("markdown" if fd.path.endswith(".md") else "text"),
+        "lang": language(fd.path),
         "content": entry["content"], "content_side": entry["content_side"],
         "hunks": hunks_json, "runs": runs_json, "symbols": entry["symbols"],
         "import_lines": sorted(entry["import_lines"]), "old_import_lines": sorted(entry["old_import_lines"]),
@@ -428,8 +446,8 @@ def renames_json(files: list[FileDiff], rename_info: dict, origins: dict) -> lis
     return sorted(out, key=lambda r: -r["runs"])
 
 
-def main() -> None:
-    root = Path(sys.argv[1])
+def classify(root: Path) -> dict:
+    """Classify the diff in the input directory: its files, the renames found across them, and the line totals by class."""
     files = parse_patch((root / "diff.patch").read_text())
     for fd in files:
         build_runs(fd)
@@ -443,8 +461,13 @@ def main() -> None:
     totals: Counter = Counter()
     for f in result_files:
         totals.update(f["stats"]["by_class"])
-    json.dump({"files": result_files, "renames": renames_json(files, rename_info, origins), "totals": dict(totals)},
-              sys.stdout)
+    return {"files": result_files, "renames": renames_json(files, rename_info, origins), "totals": dict(totals)}
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    json.dump(classify(Path(sys.argv[1])), sys.stdout)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,20 @@
 """Render a classified diff plus PR metadata as one HTML page.
 
 Usage: render.py <classified.json> <annotations.json> <out.html>
+
+The page's script is the concatenation of page/*.js in name order (hence the numeric prefixes), and its
+stylesheet page/page.css. Both are inlined, so a page works from disk as well as from the server.
 """
+
+from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+PAGE_DIR = ROOT / "page"
+
 
 def mix(color: str, pct: int) -> str:
     return f"color-mix(in srgb, {color} {pct}%, transparent)"
@@ -72,13 +79,16 @@ def theme_css() -> str:
 """
 
 
+# Applies the saved theme before the first paint, so the page never flashes the default theme.
+THEME_BOOT = "<script>try { const t = localStorage.getItem('dr:theme') || 'dark'; if (t !== 'auto') document.documentElement.dataset.theme = t; } catch (e) {}</script>"
+
 TEMPLATE = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
-<script>try { const t = localStorage.getItem('dr:theme') || 'dark'; if (t !== 'auto') document.documentElement.dataset.theme = t; } catch (e) {}</script>
+__THEME_BOOT__
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
 __THEMES__
@@ -95,15 +105,28 @@ __JS__</script>
 """
 
 
-def main() -> None:
-    classified = json.loads(Path(sys.argv[1]).read_text())
-    annotations = json.loads(Path(sys.argv[2]).read_text())
+def scripts() -> list[Path]:
+    return sorted(PAGE_DIR.glob("*.js"))
+
+
+def sources() -> list[Path]:
+    """Every file whose content ends up in a page, so a page older than any of them is rebuilt."""
+    return [ROOT / "render.py", PAGE_DIR / "page.css", *scripts()]
+
+
+def render_page(classified: dict, annotations: dict) -> str:
     data = {**classified, "annotations": annotations}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{annotations['pr']['number']} {annotations['pr']['title']}"
-    html = (TEMPLATE.replace("__TITLE__", title).replace("__THEMES__", theme_css())
-            .replace("__CSS__", (ROOT / "page.css").read_text()).replace("__JS__", (ROOT / "page.js").read_text())
-            .replace("__DATA__", payload))
+    js = "\n".join(f"// ---- {path.name}\n{path.read_text()}" for path in scripts())
+    return (TEMPLATE.replace("__TITLE__", title).replace("__THEME_BOOT__", THEME_BOOT).replace("__THEMES__", theme_css())
+            .replace("__CSS__", (PAGE_DIR / "page.css").read_text()).replace("__JS__", js).replace("__DATA__", payload))
+
+
+def main() -> None:
+    if len(sys.argv) != 4:
+        sys.exit(__doc__)
+    html = render_page(json.loads(Path(sys.argv[1]).read_text()), json.loads(Path(sys.argv[2]).read_text()))
     Path(sys.argv[3]).write_text(html)
     print(f"wrote {sys.argv[3]} ({len(html) // 1024} KB)")
 

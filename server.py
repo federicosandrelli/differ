@@ -4,7 +4,9 @@
 Usage: server.py [port]   (default 8765)
 
   /                                  pull requests waiting for your review, yours, and recent pages
-  /<owner>/<repo>/pull/<number>      the review page, rebuilt when the head commit changes
+  /lists                             the first two lists above, fresh from GitHub, as HTML fragments
+  /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
+                                     background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard, conversation
@@ -50,16 +52,34 @@ lists: dict[str, tuple[float, list | str]] = {}
 lock = threading.Lock()
 
 
-def current_head(key: tuple[str, str, int], fresh: bool = False) -> str:
-    now = time.time()
+def head_checked_recently(key: tuple[str, str, int]) -> bool:
     with lock:
         cached = heads.get(key)
-    if cached and not fresh and now - cached[0] < HEAD_TTL:
-        return cached[1]
+    return bool(cached) and time.time() - cached[0] < HEAD_TTL
+
+
+def current_head(key: tuple[str, str, int]) -> str:
     sha = build.head_sha(*key)
     with lock:
-        heads[key] = (now, sha)
+        heads[key] = (time.time(), sha)
     return sha
+
+
+def rebuild_if_moved(key: tuple[str, str, int]) -> None:
+    """Build the page for the head commit in the background when the one served was built from an older one."""
+    if head_checked_recently(key):
+        return
+    with lock:
+        heads[key] = (time.time(), "")
+
+    def work() -> None:
+        try:
+            if not build.page_current(build.page_path(*key, current_head(key))):
+                start_job(key)
+        except build.BuildError as exc:
+            sys.stderr.write(f"head check for {key} failed: {exc}\n")
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 def start_job(key: tuple[str, str, int]) -> Job:
@@ -81,13 +101,21 @@ def start_job(key: tuple[str, str, int]) -> Job:
     return job
 
 
+def cached_search(query: str) -> tuple[list | str | None, bool]:
+    """The last result for the query (None before the first), and whether it is fresh enough to show as is."""
+    with lock:
+        cached = lists.get(query)
+    if not cached:
+        return None, False
+    return cached[1], time.time() - cached[0] < LIST_TTL
+
+
 def search(query: str) -> list | str:
     """Open pull requests matching a gh search query, newest first, or the error text when gh fails."""
     now = time.time()
-    with lock:
-        cached = lists.get(query)
-    if cached and now - cached[0] < LIST_TTL:
-        return cached[1]
+    rows, fresh = cached_search(query)
+    if fresh:
+        return rows
     try:
         out = subprocess.run(["gh", "search", "prs", *query.split(), "--state=open", "--limit", "40",
                               "--json", "number,title,repository,author,updatedAt,url,isDraft"],
@@ -161,7 +189,7 @@ button {{ font: 14px var(--sans); color: #fff; background: var(--accent); border
 .themes button.on {{ background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }}
 html.app body {{ padding-top: 28px; }}
 </style>
-<script>try {{ const t = localStorage.getItem('dr:theme') || 'dark'; if (t !== 'auto') document.documentElement.dataset.theme = t; }} catch (e) {{}}</script>
+{theme_boot}
 </head><body><main><div class="themes">
 <button data-theme="auto">auto</button><button data-theme="light">light</button><button data-theme="sepia">sepia</button><button data-theme="dark">dark</button>
 </div>{body}</main>
@@ -184,7 +212,7 @@ html.app body {{ padding-top: 28px; }}
 
 
 def shell(title: str, body: str) -> bytes:
-    return SHELL.format(title=html.escape(title), themes=render.theme_css(), body=body).encode()
+    return SHELL.format(title=html.escape(title), themes=render.theme_css(), theme_boot=render.THEME_BOOT, body=body).encode()
 
 
 def pr_item(owner: str, repo: str, number: int, title: str, meta: str, when: str, draft: bool = False) -> str:
@@ -193,7 +221,9 @@ def pr_item(owner: str, repo: str, number: int, title: str, meta: str, when: str
             f'<span class="w">{html.escape(when)}</span><span class="m">{html.escape(meta)}</span></a>')
 
 
-def search_items(rows: list | str) -> str:
+def search_items(rows: list | str | None) -> str:
+    if rows is None:
+        return '<div class="empty">Loading…</div>'
     if isinstance(rows, str):
         return f'<div class="empty err">{html.escape(rows)}</div>'
     if not rows:
@@ -207,18 +237,32 @@ def search_items(rows: list | str) -> str:
     return "".join(out)
 
 
+LIST_QUERIES = {"review": "--review-requested=@me", "mine": "--author=@me"}
+
+
+def fresh_lists() -> dict[str, str]:
+    """Both GitHub lists as HTML, searched afresh when the cached ones are stale."""
+    with ThreadPoolExecutor(len(LIST_QUERIES)) as pool:
+        results = pool.map(search, LIST_QUERIES.values())
+    return {name: search_items(rows) for name, rows in zip(LIST_QUERIES, results)}
+
+
 def start_page() -> bytes:
-    with ThreadPoolExecutor(2) as pool:
-        review, mine = pool.map(search, ["--review-requested=@me", "--author=@me"])
+    """The start page at once, with the GitHub lists as last fetched; stale or missing ones are fetched by the page."""
+    cached = {name: cached_search(query) for name, query in LIST_QUERIES.items()}
     recent = recent_pages()
     recent_html = "".join(
         pr_item(p["owner"], p["repo"], p["number"], f'{p["owner"]}/{p["repo"]}#{p["number"]}', "built page",
                 ago(p["mtime"])) for p in recent) or '<div class="empty">No pages built yet.</div>'
     body = f"""<h1>Pull request review</h1><p class="sub">Open any GitHub pull request, or pick one below.</p>
 <form action="/open"><input name="pr" placeholder="https://github.com/owner/repo/pull/123 or owner/repo#123" autofocus><button>Open</button></form>
-<h2>Waiting for your review</h2><div class="list">{search_items(review)}</div>
-<h2>Yours</h2><div class="list">{search_items(mine)}</div>
+<h2>Waiting for your review</h2><div class="list" id="review">{search_items(cached["review"][0])}</div>
+<h2>Yours</h2><div class="list" id="mine">{search_items(cached["mine"][0])}</div>
 <h2>Recently opened</h2><div class="list">{recent_html}</div>"""
+    if not all(fresh for _, fresh in cached.values()):
+        body += """<script>
+fetch('/lists').then(r => r.json()).then(lists => { for (const id in lists) document.getElementById(id).innerHTML = lists[id]; }).catch(() => {});
+</script>"""
     return shell("Pull request review", body)
 
 
@@ -265,6 +309,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if url.path == "/":
                 return self.send(200, start_page())
+            if url.path == "/lists":
+                return self.send_json(fresh_lists())
             if url.path == "/open":
                 owner, repo, number = build.parse_ref((query.get("pr") or [""])[0])
                 return self.redirect(f"/{owner}/{repo}/pull/{number}")
@@ -275,13 +321,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, json.dumps(data).encode(), "application/json")
             if m := PAGE.match(url.path):
                 key = (m.group(1), m.group(2), int(m.group(3)))
-                refresh = "refresh" in query
-                head = current_head(key, fresh=refresh)
-                page = build.page_path(*key, head)
-                if refresh and page.exists():
-                    page.unlink()
+                if "refresh" in query:
+                    if not build.page_current(build.page_path(*key, current_head(key))):
+                        build.forget_pages(*key)
+                        start_job(key)
                     return self.redirect(url.path)
-                if build.page_current(page):
+                if page := build.latest_page(*key):
+                    rebuild_if_moved(key)
                     return self.send(200, page.read_bytes())
                 start_job(key)
                 return self.send(200, progress_page(key))

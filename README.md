@@ -11,10 +11,13 @@ python3 server.py            # http://localhost:8765/
 ```
 
 The start page lists the open PRs waiting for your review and your own, plus
-the pages you opened recently. Paste any PR URL or `owner/repo#123` to open
-another. A page is built on first visit and cached by head commit, so a new
-push rebuilds it and an unchanged PR opens at once. Add `?refresh=1` to a page
-URL to rebuild it anyway.
+the pages you opened recently. It opens at once with the lists as last fetched
+and refreshes them from GitHub in the background. Paste any PR URL or
+`owner/repo#123` to open another. A page is built on first visit and cached by
+head commit. A later visit serves the newest built page at once and checks the
+head commit in the background: after a new push the next page is built while
+you read, and the page offers it in a notice once its comments load. Add
+`?refresh=1` to a page URL to rebuild it anyway.
 
 To build one page without the server:
 
@@ -94,11 +97,24 @@ shell's PATH to run: it ships the Python files, not an interpreter.
 - The page hides generated files, and files with only folded changes (imports,
   rename fallout, whitespace or moved code), by default.
   A notice above the tree shows how many it hides and toggles them back.
-- `render.py` inlines `page.css` and `page.js` and turns the classified diff and
-  the PR metadata into one HTML page:
-  the PR description, the noise totals and the rename table, a file tree with
-  change colours and search, a reviewed mark per file kept in `localStorage`,
-  and every file with its removed lines interleaved.
+- `render.py` inlines `page/page.css` and the scripts in `page/`, concatenated
+  in name order, and turns the classified diff and the PR metadata into one HTML
+  page: the PR description, the noise totals and the rename table, a file tree
+  with change colours and search, a reviewed mark per file kept in
+  `localStorage`, and every file with its removed lines interleaved.
+- The page's script is split by concern: `00-data.js` holds the data, the
+  state and shared helpers; `10-files.js` which files show and the search hits;
+  `20-highlight.js` syntax highlighting (any language highlight.js knows,
+  chosen from the file extension by `classify.py`); `30-rows.js` the rows and
+  blocks of one file; `40-code.js` its diff table; `50-comments.js` the review
+  threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
+  `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
+- The main pane keeps one section per shown file. A section always has its
+  header; its diff table is cut into chunks of 100 rows that hold their rows
+  only while they are near the viewport and keep their height when emptied, so
+  the DOM stays small whatever the size of the pull request. A file's rows are
+  computed once per state they depend on, so toggling a fold or typing in the
+  search costs only the files on screen.
 - `server.py` serves the start page and the pages, building them in the
   background with a progress page, and the comments API.
 - `comments.py` reads and writes review threads, reviews and conversation

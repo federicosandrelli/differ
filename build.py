@@ -18,6 +18,9 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+import classify
+import render
+
 ROOT = Path(__file__).resolve().parent
 CACHE = Path(os.environ.get("DIFF_REVIEW_CACHE", Path.home() / ".cache" / "diff-review"))
 PR_REF = re.compile(r"(?:https?://github\.com/)?([\w.-]+)/([\w.-]+?)(?:/pull/|/pulls/|#)(\d+)")
@@ -36,8 +39,8 @@ def parse_ref(text: str) -> tuple[str, str, int]:
     return m.group(1), m.group(2), int(m.group(3))
 
 
-def run_bytes(args: list[str]) -> bytes:
-    r = subprocess.run(args, capture_output=True)
+def run_bytes(args: list[str], input: bytes | None = None) -> bytes:
+    r = subprocess.run(args, capture_output=True, input=input)
     if r.returncode:
         err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
         raise BuildError(f"`{' '.join(args[:4])}` failed: {err[:600]}")
@@ -62,12 +65,23 @@ def page_path(owner: str, repo: str, number: int, head: str) -> Path:
     return CACHE / "pages" / owner / repo / str(number) / f"{head[:12]}.html"
 
 
-SOURCES = [ROOT / name for name in ("build.py", "classify.py", "render.py", "page.css", "page.js")]
+def sources() -> list[Path]:
+    return [ROOT / "build.py", ROOT / "classify.py", *render.sources()]
 
 
 def page_current(page: Path) -> bool:
-    """Whether the page exists and was built after the last change to the code that renders pages."""
-    return page.exists() and page.stat().st_mtime >= max(src.stat().st_mtime for src in SOURCES)
+    """Whether the page exists and was built after the last change to the code that builds pages."""
+    return page.exists() and page.stat().st_mtime >= max(src.stat().st_mtime for src in sources())
+
+
+def latest_page(owner: str, repo: str, number: int) -> Path | None:
+    """The newest current page built for the pull request, whatever head commit it was built from."""
+    pages = sorted(page_path(owner, repo, number, "x").parent.glob("*.html"), key=lambda p: p.stat().st_mtime)
+    return next((p for p in reversed(pages) if page_current(p)), None)
+
+
+def forget_pages(owner: str, repo: str, number: int) -> None:
+    shutil.rmtree(page_path(owner, repo, number, "x").parent, ignore_errors=True)
 
 
 def ensure_repo(owner: str, repo: str, log: Log) -> Path:
@@ -95,31 +109,57 @@ def fetch(repo_dir: Path, number: int, base: str, head: str, log: Log) -> None:
         run(["git", "-C", str(repo_dir), "fetch", "--quiet", "--no-tags", "origin", head])
 
 
+def read_blobs(repo_dir: Path, specs: list[str]) -> dict[str, bytes]:
+    """The content of every `<commit>:<path>` spec, read in one git process; missing specs are left out."""
+    out = run_bytes(["git", "-C", str(repo_dir), "cat-file", "--batch", "--buffer"], input="".join(s + "\n" for s in specs).encode())
+    blobs: dict[str, bytes] = {}
+    pos = 0
+    for spec in specs:
+        end = out.index(b"\n", pos)
+        header = out[pos:end].decode(errors="replace").split(" ")
+        pos = end + 1
+        if header[-1] == "missing":
+            continue
+        size = int(header[2])
+        blobs[spec] = out[pos:pos + size]
+        pos += size + 1
+    return blobs
+
+
+def changed_paths(names: str) -> list[tuple[str | None, str | None]]:
+    """(old path, new path) per entry of `git diff --name-status`; None on the side where the file does not exist."""
+    pairs: list[tuple[str | None, str | None]] = []
+    for line in names.splitlines():
+        if not line:
+            continue
+        parts = line.split("\t")
+        status = parts[0]
+        if status.startswith(("R", "C")):
+            pairs.append((parts[1], parts[2]))
+        elif status == "D":
+            pairs.append((parts[1], None))
+        elif status == "A":
+            pairs.append((None, parts[1]))
+        else:
+            pairs.append((parts[1], parts[1]))
+    return pairs
+
+
 def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
     git = ["git", "-C", str(repo_dir)]
     log("Computing the diff")
     (out / "diff.patch").write_bytes(run_bytes(git + ["diff", "-M", "-U3", base, head]))
     names = run(git + ["diff", "-M", "--name-status", base, head])
     (out / "names.txt").write_text(names)
-    entries = [line.split("\t") for line in names.splitlines() if line]
-    log(f"Reading {len(entries)} changed files")
-    for parts in entries:
-        status = parts[0]
-        if status.startswith("R") or status.startswith("C"):
-            old, new = parts[1], parts[2]
-        elif status == "D":
-            old, new = parts[1], None
-        elif status == "A":
-            old, new = None, parts[1]
-        else:
-            old, new = parts[1], parts[1]
-        for side, sha, path in (("old", base, old), ("new", head, new)):
-            if not path:
-                continue
-            target = out / side / path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(run_bytes(git + ["show", f"{sha}:{path}"]))
-    paths = "".join(parts[-1] + "\n" for parts in entries)
+    pairs = changed_paths(names)
+    log(f"Reading {len(pairs)} changed files")
+    wanted = [(side, path) for old, new in pairs for side, sha, path in (("old", base, old), ("new", head, new)) if path]
+    blobs = read_blobs(repo_dir, [f"{base if side == 'old' else head}:{path}" for side, path in wanted])
+    for side, path in wanted:
+        target = out / side / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(blobs.get(f"{base if side == 'old' else head}:{path}", b""))
+    paths = "".join((new or old) + "\n" for old, new in pairs)
     attrs = subprocess.run(git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"],
                            input=paths, capture_output=True, text=True)
     generated = [line.split(": ")[0] for line in attrs.stdout.splitlines() if line.endswith(("set", "true"))]
@@ -156,12 +196,12 @@ def build(ref: str, log: Log = print) -> Path:
     (work / "annotations.json").write_text(json.dumps(annotations, indent=2, ensure_ascii=False) + "\n")
 
     log("Classifying changes")
-    classified = run([sys.executable, str(ROOT / "classify.py"), str(work)])
-    (work / "classified.json").write_text(classified)
+    classified = classify.classify(work)
+    (work / "classified.json").write_text(json.dumps(classified, ensure_ascii=False))
     log("Rendering the page")
+    html = render.render_page(classified, annotations)
     target.parent.mkdir(parents=True, exist_ok=True)
-    run([sys.executable, str(ROOT / "render.py"), str(work / "classified.json"), str(work / "annotations.json"),
-         str(target)])
+    target.write_text(html)
     log("Done")
     return target
 

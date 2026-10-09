@@ -60,7 +60,7 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 .check:hover { border-color: var(--accent); color: var(--accent); }
 .leaf.reviewed .check, .check.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
 
-#main { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; overflow-x: hidden; }
+#main { position: relative; flex: 1; min-width: 0; height: 100vh; overflow-y: auto; overflow-x: hidden; }
 .page { max-width: 1100px; margin: 0 auto; padding: 28px 36px 40px; }
 .page h1 { font-size: 22px; margin: 0 0 6px; }
 .page .meta { color: var(--fg2); margin-bottom: 18px; }
@@ -102,7 +102,9 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 .fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fhead .path .dir { font: 11.5px var(--mono); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fhead .path b { font: 600 14.5px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.code { padding: 6px 0; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; overflow: clip; }
+/* A body far from the viewport is empty and keeps its height; containment keeps each body's layout its own. */
+.code { padding: 6px 0; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; overflow: clip; contain: content; }
+.chunk { contain: content; }
 .empty { color: var(--fg3); padding: 24px; text-align: center; }
 
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.65 var(--mono); table-layout: fixed; color: var(--fg); }
@@ -140,10 +142,11 @@ html.app { --titlebar: 28px; }
 html.app body { padding-top: var(--titlebar); background: linear-gradient(90deg, var(--bg2) 0 var(--side, 420px), var(--line) 0 calc(var(--side, 420px) + 1px), var(--bg) 0); }
 html.app #side, html.app #main { height: calc(100vh - var(--titlebar)); }
 
-/* Review threads sit under the line they refer to; the compose form under the last selected line. */
+/* Review threads sit under the line they refer to; the compose form under the last selected line.
+   The number cell of a row is its comment button, drawn on hover; a row without an id (in a suggestion) has none. */
 table.diff td.n:first-child { position: relative; }
-table.diff .plus { position: absolute; left: 2px; top: 1px; width: 17px; height: 17px; padding: 0; line-height: 15px; font: 13px/15px var(--sans); text-align: center; color: #fff; background: var(--accent); border: 0; border-radius: 4px; display: none; z-index: 1; }
-table.diff tr:hover .plus { display: block; }
+body.commentable table.diff tr[id] > td.n:first-child { cursor: pointer; }
+body.commentable table.diff tr[id]:hover > td.n:first-child::before { content: "+"; position: absolute; left: 2px; top: 1px; width: 17px; height: 17px; font: 13px/17px var(--sans); text-align: center; color: #fff; background: var(--accent); border-radius: 4px; z-index: 1; }
 table.diff tr.sel td { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--accent) 14%, transparent); }
 table.diff tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px color-mix(in srgb, var(--accent) 14%, transparent) !important; }
 tr.thread > td, tr.compose > td { padding: 6px 12px 8px 44px; white-space: normal; font: 13px/1.45 var(--sans); background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }

@@ -1,0 +1,196 @@
+// The rows of one file: the whole new file with the removed lines interleaved where they were, grouped into
+// blocks of context and change runs, with the folds the reader has not opened.
+
+function buildRows(f) {
+  const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
+  for (const r of f.runs) {
+    r.removed.forEach(n => runOfOld.set(n, r)); r.added.forEach(n => runOfNew.set(n, r));
+    if (r.class === 'rename' && r.origin) continue;
+    (r.pair_rename || []).forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
+  }
+  const hl = highlightLines(f);
+  const raw = contentLines(f);
+  const rows = [];
+  if (f.content_side === 'old') {
+    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl[i], text: t, run: runOfOld.get(i + 1) }));
+    return flagHits(attachThreads(f, rows));
+  }
+  const removedBefore = new Map();
+  for (const h of f.hunks) {
+    const L = h.lines;
+    for (let i = 0; i < L.length; i++) {
+      const [tag, o, , t] = L[i]; if (tag !== '-') continue;
+      let anchor = null;
+      for (let j = i + 1; j < L.length; j++) if (L[j][2] != null) { anchor = L[j][2]; break; }
+      if (anchor == null) anchor = h.new_start + L.filter(x => x[2] != null).length;
+      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
+    }
+  }
+  for (let i = 1; i <= raw.length + 1; i++) {
+    for (const d of removedBefore.get(i) || []) rows.push(d);
+    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i) });
+  }
+  return flagHits(attachThreads(f, rows));
+}
+// A row's key on its own side: O<old line> for removed lines, L<new line> for the rest.
+const rowKeyOf = (r) => r.type === 'del' ? `O${r.oldNo}` : `L${r.newNo}`;
+function attachThreads(f, rows) {
+  const entry = THREADS.byFile.get(f.path), c = state.compose && state.compose.path === f.path ? state.compose : null;
+  if (!entry && !c) return rows;
+  for (const r of rows) {
+    if (entry) { const ts = entry.rows.get(rowKeyOf(r)); if (ts) r.threads = ts; }
+    if (!c) continue;
+    const n = c.side === 'RIGHT' ? (r.type !== 'del' ? r.newNo : null) : (r.type === 'del' ? r.oldNo : null);
+    if (n != null && n >= c.startLine && n <= c.line) { r.sel = true; if (n === c.line) r.compose = true; }
+  }
+  return rows;
+}
+// A row that must stay in view whatever folds around it: a search hit, a thread, or the comment being written.
+const pinned = (r) => r.hit || r.threads || r.compose;
+function flagHits(rows) {
+  const q = state.q.toLowerCase();
+  if (!q) return rows;
+  for (const r of rows) if (r.text.toLowerCase().includes(q)) { r.hit = true; r.html = markHtml(r.html, state.q); }
+  return rows;
+}
+function blocksFor(rows) {
+  const blocks = [];
+  for (const r of rows) {
+    const last = blocks[blocks.length - 1];
+    if (r.type === 'ctx' && !pinned(r)) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
+    else if (r.run && last && last.run === r.run) last.rows.push(r);
+    else blocks.push({ run: r.run || null, rows: [r] });
+  }
+  return blocks;
+}
+
+const runKey = (f, r) => `${f.path}#${r.index}`;
+// A block of folded noise stays open while a search hit, a rename origin, or the reader's choice needs it.
+function isCollapsed(f, b) {
+  const r = b.run;
+  if (!r || !NOISE.includes(r.class)) return false;
+  if (b.rows.some(pinned)) return false;
+  if (r.class === 'rename' && r.origin) return false;
+  if (state.show[r.class]) return false;
+  return !state.expanded.has(runKey(f, r));
+}
+
+// Several collapsed blocks of one class with only short context between them read as one thing (an import
+// section), so they fold into one row that expands together.
+function mergeCollapsed(f, blocks) {
+  const importSet = new Set(f.import_lines || []);
+  const merged = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const b = blocks[i];
+    if (!isCollapsed(f, b)) { merged.push(b); i++; continue; }
+    const cls = b.run.class; const group = [b.run]; let j = i + 1; let lastRun = i;
+    while (j < blocks.length) {
+      const c = blocks[j];
+      if (isCollapsed(f, c) && c.run.class === cls) { group.push(c.run); lastRun = j; j++; continue; }
+      const nextSame = j + 1 < blocks.length && isCollapsed(f, blocks[j + 1]) && blocks[j + 1].run.class === cls;
+      if (c.ctx && nextSame && (c.rows.length <= RADIUS * 2 + 2 || (cls === 'import' && c.rows.every(r => importSet.has(r.newNo) || !r.html.trim())))) { j++; continue; }
+      break;
+    }
+    merged.push(group.length > 1 ? { group, cls } : b);
+    i = lastRun + 1;
+  }
+  return merged;
+}
+
+// Every import section folds to one row, changed or not: the file's import lines, with the blank lines between them.
+function importSegments(f, rows) {
+  const newSet = new Set(f.import_lines || []), oldSet = new Set(f.old_import_lines || []);
+  const isImp = (r) => r.type === 'del' ? oldSet.has(r.oldNo) : newSet.has(r.newNo);
+  const isBlank = (r) => !r.text.trim();
+  const segs = [];
+  let i = 0;
+  while (i < rows.length) {
+    const seg = [];
+    if (isImp(rows[i])) {
+      let j = i;
+      while (j < rows.length && (isImp(rows[j]) || isBlank(rows[j]))) seg.push(rows[j++]);
+      while (seg.length && isBlank(seg[seg.length - 1])) { seg.pop(); j--; }
+      segs.push({ imports: true, rows: seg }); i = j;
+    } else {
+      let j = i;
+      while (j < rows.length && !isImp(rows[j])) seg.push(rows[j++]);
+      segs.push({ imports: false, rows: seg }); i = j;
+    }
+  }
+  return segs;
+}
+const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
+const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
+
+// The file's rows as the blocks the page shows: import sections, folded noise, context and change runs.
+function fileBlocks(f) {
+  const rows = buildRows(f);
+  let blocks = [];
+  for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
+  return mergeCollapsed(f, blocks);
+}
+
+// ---------- word-level differences between a removed line and its added counterpart
+// Changed ranges of the two lines, as plain-text offsets, or null when the lines share too little.
+function wordDiff(a, b) {
+  const tok = (t) => t.match(/\w+|\s+|[^\w\s]/g) || [];
+  const A = tok(a), B = tok(b);
+  const n = A.length, m = B.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const words = Math.max(A.filter(t => /\w/.test(t)).length, B.filter(t => /\w/.test(t)).length);
+  if (!words) return null;
+  const ra = [], rb = [];
+  let i = 0, j = 0, pa = 0, pb = 0, commonWords = 0;
+  const push = (arr, s, e) => { const last = arr[arr.length - 1]; if (last && last[1] === s) last[1] = e; else arr.push([s, e]); };
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { if (/\w/.test(A[i])) commonWords++; pa += A[i].length; pb += B[j].length; i++; j++; }
+    else if (L[i + 1][j] >= L[i][j + 1]) { push(ra, pa, pa + A[i].length); pa += A[i].length; i++; }
+    else { push(rb, pb, pb + B[j].length); pb += B[j].length; j++; }
+  }
+  while (i < n) { push(ra, pa, pa + A[i].length); pa += A[i].length; i++; }
+  while (j < m) { push(rb, pb, pb + B[j].length); pb += B[j].length; j++; }
+  if (commonWords < Math.ceil(words * 0.3)) return null;
+  // Join changed words separated only by spaces, so a rewritten phrase reads as one highlight.
+  const join = (arr, text) => arr.filter(([s, e]) => e > s).reduce((out, r) => {
+    const last = out[out.length - 1];
+    if (last && /^\s*$/.test(text.slice(last[1], r[0]))) last[1] = r[1]; else out.push([r[0], r[1]]);
+    return out;
+  }, []).map(([s, e]) => {
+    while (s < e && /\s/.test(text[s])) s++;
+    while (e > s && /\s/.test(text[e - 1])) e--;
+    return [s, e];
+  }).filter(([s, e]) => e > s);
+  return { a: join(ra, a), b: join(rb, b) };
+}
+// Wrap plain-text ranges of a highlighted line in <span class="ic">, walking only its text nodes.
+function wrapRanges(html, ranges) {
+  if (!ranges || !ranges.length) return html;
+  const ENT = /&(?:amp|lt|gt|quot|#x27|#39);|./gs;
+  let pos = 0, ri = 0;
+  return html.split(/(<[^>]+>)/).map(part => {
+    if (part.startsWith('<') && part.endsWith('>') && part.length > 1 && !part.startsWith('&')) return part;
+    let out = '', open = false;
+    for (const m of part.matchAll(ENT)) {
+      while (ri < ranges.length && pos >= ranges[ri][1]) ri++;
+      const inside = ri < ranges.length && pos >= ranges[ri][0] && pos < ranges[ri][1];
+      if (inside && !open) { out += '<span class="ic">'; open = true; }
+      if (!inside && open) { out += '</span>'; open = false; }
+      out += m[0]; pos++;
+    }
+    if (open) out += '</span>';
+    return out;
+  }).join('');
+}
+// Mark the word changes in a run's rows, which hold its removed lines followed by its added ones.
+function markPairs(rows) {
+  const n = rows.length / 2;
+  for (let i = 0; i < n; i++) {
+    const d = rows[i], a = rows[i + n];
+    if (!d || !a || d.type !== 'del' || a.type !== 'add') return;
+    const diff = wordDiff(d.text, a.text);
+    if (!diff) continue;
+    d.html = wrapRanges(d.html, diff.a); a.html = wrapRanges(a.html, diff.b);
+  }
+}
