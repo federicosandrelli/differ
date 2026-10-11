@@ -66,8 +66,7 @@ function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
-    <div class="meta"><span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a>${API ? ` · <a href="#" data-review-panel class="${state.reviewPanel ? 'on' : ''}">Review${pendingCount() ? ` (${pendingCount()})` : ''}</a>` : ''}</span>
-      <span class="themes">${THEMES.map(t => `<button data-theme="${t}" class="${state.theme === t ? 'on' : ''}">${t}</button>`).join('')}</span></div></div>
+    <div class="meta"><span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a>${API ? ` · <a href="#" data-review-panel class="${state.reviewPanel ? 'on' : ''}">Review${pendingCount() ? ` (${pendingCount()})` : ''}</a>` : ''}</span></div></div>
     ${commentNotices()}${state.reviewPanel ? reviewPanelHtml() : ''}
     <div class="controls"><span class="seg">
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
