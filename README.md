@@ -29,7 +29,7 @@ To build one page without the server:
 python3 build.py https://github.com/owner/repo/pull/123
 ```
 
-Requirements: Python 3.10+, git, and the GitHub CLI (`gh`) signed in.
+Requirements: Python 3.13, git, and the GitHub CLI (`gh`) signed in.
 
 ## Comments
 
@@ -71,8 +71,27 @@ npx tauri dev        # run from source
 npx tauri build      # differ.app and a .dmg under src-tauri/target/release/bundle/
 ```
 
-The app needs Rust (`cargo`) to build, and `python3` 3.10+ on the login
+The app needs Rust (`cargo`) to build, and `python3` 3.13 on the login
 shell's PATH to run: it ships the Python files, not an interpreter.
+
+## Checks
+
+The same checks run locally and in CI (`.github/workflows/ci.yml`): ruff for
+linting and formatting, pyright for types, and pytest for the unit tests and
+the end-to-end tests. The dev tools are installed with [uv](https://docs.astral.sh/uv/):
+
+```sh
+uv sync
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest
+```
+
+`pytest -m "not e2e"` runs the unit tests alone. The end-to-end tests under
+`tests/e2e/` start `server.py` against a local fixture repo and a fake `gh`,
+and drive the pages in Chromium through Playwright; they need
+`uv run playwright install chromium` once.
 
 ## How a page is built
 
