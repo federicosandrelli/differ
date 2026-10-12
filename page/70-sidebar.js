@@ -90,11 +90,11 @@ function renderSide() {
     <div class="searchbar">
       <input type="search" class="search" placeholder="Search changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
       <span class="meta" id="searchmeta"></span></div>
-    <div class="list" tabindex="0">${renderList()}</div><div class="grip"></div>`;
+    <div class="list" tabindex="0">${renderList()}</div>${bugFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
   const ae = document.activeElement;
-  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : null);
+  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : ae.dataset.bugText !== undefined ? '[data-bug-text]' : null);
   document.getElementById('side').innerHTML = h;
   document.querySelector('#side .list').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });

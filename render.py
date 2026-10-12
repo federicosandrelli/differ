@@ -13,7 +13,9 @@ from __future__ import annotations
 import html
 import json
 import re
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -121,8 +123,19 @@ def sources() -> list[Path]:
     return [ROOT / "render.py", PAGE_DIR / "page.css", SHELL_DIR / "theme.js", SHELL_DIR / "frame.js", *scripts()]
 
 
+def app_info() -> dict:
+    """The commit of this repository the page was rendered from, for the bug report a page writes."""
+    def git(*args: str) -> str:
+        try:
+            return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            return ""
+    return {"commit": git("rev-parse", "--short", "HEAD"), "dirty": bool(git("status", "--porcelain")),
+            "built": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+
+
 def render_page(classified: dict, annotations: dict) -> str:
-    data = {**classified, "annotations": annotations}
+    data = {**classified, "annotations": annotations, "app": app_info()}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{annotations['pr']['number']} {annotations['pr']['title']}"
     js = "\n".join(f"// ---- {path.name}\n{path.read_text()}" for path in [SHELL_DIR / "frame.js", *scripts()])

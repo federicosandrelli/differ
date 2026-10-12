@@ -4,6 +4,8 @@ function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.
 function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); render(); }
 
 document.addEventListener('click', (e) => {
+  const bug = e.target.closest(BUG_ATTRS);
+  if (bug) { e.preventDefault(); bugClick(bug); return; }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
   // The number cell of a code row is its comment button.
   const cell = API && e.target.closest('table.diff td.n:first-child');
@@ -40,6 +42,7 @@ document.addEventListener('input', (e) => {
   if (d.replyText !== undefined) { state.replyOpen.set(d.replyText, box.value); return; }
   if (d.reviewText !== undefined) { state.reviewText = box.value; return; }
   if (d.convText !== undefined) { state.convText = box.value; return; }
+  if (d.bugText !== undefined) { state.bug.text = box.value; return; }
   if (!box.classList.contains('search')) return;
   state.q = box.value.trim(); state.hitIndex = -1;
   render();
