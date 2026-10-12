@@ -64,6 +64,7 @@ def parse_patch(text: str) -> list[FileDiff]:
     for raw in text.splitlines():
         if raw.startswith("diff --git "):
             m = re.match(r"diff --git a/(.*) b/(.*)$", raw)
+            assert m
             current = FileDiff(old_path=m.group(1), new_path=m.group(2), status="M")
             files.append(current)
             hunk = None
@@ -83,12 +84,14 @@ def parse_patch(text: str) -> list[FileDiff]:
                 continue
         if raw.startswith("@@"):
             m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$", raw)
+            assert m
             old_no, new_no = int(m.group(1)), int(m.group(3))
             hunk = Hunk(old_start=old_no, new_start=new_no, header=m.group(5))
             current.hunks.append(hunk)
             continue
         if raw.startswith("\\ No newline"):
             continue
+        assert hunk is not None
         tag, body = raw[:1], raw[1:]
         if tag == " " or raw == "":
             hunk.lines.append((" ", old_no, new_no, body))
@@ -137,9 +140,9 @@ def python_structure(source: str) -> tuple[set[int], list[dict]]:
 
     def visit(node, depth, parent_name):
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.Import, ast.ImportFrom)):
-                imports.update(range(child.lineno, child.end_lineno + 1))
-            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if isinstance(child, ast.Import | ast.ImportFrom):
+                imports.update(range(child.lineno, (child.end_lineno or child.lineno) + 1))
+            elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 kind = "class" if isinstance(child, ast.ClassDef) else "def"
                 start = child.decorator_list[0].lineno if child.decorator_list else child.lineno
                 name = f"{parent_name}.{child.name}" if parent_name else child.name
@@ -154,7 +157,7 @@ def python_structure(source: str) -> tuple[set[int], list[dict]]:
                     }
                 )
                 visit(child, depth + 1, name)
-            elif isinstance(child, (ast.If, ast.Try, ast.With, ast.For, ast.While)):
+            elif isinstance(child, ast.If | ast.Try | ast.With | ast.For | ast.While):
                 visit(child, depth, parent_name)
 
     visit(tree, 0, "")
@@ -219,7 +222,7 @@ def collect_renames(files: list[FileDiff]) -> dict[tuple[str, str], dict]:
             if len(run.removed) != len(run.added):
                 continue
             seen: set[tuple[str, str]] = set()
-            for (_, o), (_, n) in zip(run.removed, run.added):
+            for (_, o), (_, n) in zip(run.removed, run.added, strict=True):
                 pair = token_diff(o, n)
                 if pair:
                     counts[pair] += 1
@@ -264,20 +267,20 @@ def classify_run(
         run.cls = "whitespace"
         return
     paired = len(removed) == len(added)
-    if paired and all(re.sub(r"\s+", "", o) == re.sub(r"\s+", "", n) for o, n in zip(removed, added)):
+    if paired and all(re.sub(r"\s+", "", o) == re.sub(r"\s+", "", n) for o, n in zip(removed, added, strict=True)):
         run.cls = "whitespace"
         return
     if changed and all(no in old_imports for no, _ in run.removed) and all(no in new_imports for no, _ in run.added):
         run.cls = "import"
         return
     if paired:
-        flags = [apply_renames(o, renames) == n for o, n in zip(removed, added)]
+        flags = [apply_renames(o, renames) == n for o, n in zip(removed, added, strict=True)]
         run.pair_rename = flags
         if flags and all(flags):
             # A line that renames the name more than once differs in a span wider than one token, so the
             # rename is found by the names it holds instead.
             pairs = Counter()
-            for o, n in zip(removed, added):
+            for o, n in zip(removed, added, strict=True):
                 pair = token_diff(o, n)
                 if pair in rename_info:
                     pairs[pair] += 1
@@ -289,7 +292,7 @@ def classify_run(
             run.origin = any(
                 is_definition(o, a) or is_definition(n, b)
                 for (a, b) in (list(pairs) or [])
-                for o, n in zip(removed, added)
+                for o, n in zip(removed, added, strict=True)
             )
             return
     run.cls = "substantive"
@@ -304,7 +307,7 @@ def detect_moves(files: list[FileDiff]) -> None:
         for run in fd.runs:
             if len(run.added) >= 4 and not run.removed:
                 added_index[key(run.added)].append((fi, run.index))
-    for fi, fd in enumerate(files):
+    for fd in files:
         for run in fd.runs:
             if len(run.removed) >= 4 and not run.added:
                 k = key(run.removed)
@@ -448,10 +451,10 @@ def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list
     return entries
 
 
-def find_origins(entries: list[dict], rename_info: dict) -> dict[tuple[str, str], dict]:
+def find_origins(entries: list[dict], rename_info: dict) -> dict[tuple[str, str], dict | None]:
     """Where each rename is defined: the first class, def, annotation or assignment of the new name,
     with implementation files searched before tests."""
-    origins: dict[tuple[str, str], dict] = {pair: None for pair in rename_info}
+    origins: dict[tuple[str, str], dict | None] = {pair: None for pair in rename_info}
     for entry in sorted(entries, key=lambda e: file_kind(e["fd"].path) == "test"):
         fd = entry["fd"]
         if fd.status == "R":
