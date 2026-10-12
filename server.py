@@ -3,8 +3,7 @@
 
 Usage: server.py [port]   (default 8765)
 
-  /                                  pull requests waiting for your review, yours, and recent pages
-  /lists                             the first two lists above, fresh from GitHub, as HTML fragments
+  /                                  the start page: a search bar and the ten pull requests opened last
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
@@ -19,11 +18,9 @@ import json
 import os
 import re
 import socket
-import subprocess
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -35,8 +32,10 @@ import render
 PAGE = re.compile(r"^/([\w.-]+)/([\w.-]+)/pull/(\d+)/?$")
 STATUS = re.compile(r"^/status/([\w.-]+)/([\w.-]+)/(\d+)$")
 API = re.compile(r"^/api/([\w.-]+)/([\w.-]+)/(\d+)/(\w+)$")
+TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
 HEAD_TTL = 20
-LIST_TTL = 60
+RECENT = build.CACHE / "recent.json"
+RECENT_MAX = 10
 
 
 class Job:
@@ -48,7 +47,6 @@ class Job:
 
 jobs: dict[tuple[str, str, int], Job] = {}
 heads: dict[tuple[str, str, int], tuple[float, str]] = {}
-lists: dict[str, tuple[float, list | str]] = {}
 lock = threading.Lock()
 
 
@@ -101,57 +99,27 @@ def start_job(key: tuple[str, str, int]) -> Job:
     return job
 
 
-def cached_search(query: str) -> tuple[list | str | None, bool]:
-    """The last result for the query (None before the first), and whether it is fresh enough to show as is."""
-    with lock:
-        cached = lists.get(query)
-    if not cached:
-        return None, False
-    return cached[1], time.time() - cached[0] < LIST_TTL
-
-
-def search(query: str) -> list | str:
-    """Open pull requests matching a gh search query, newest first, or the error text when gh fails."""
-    now = time.time()
-    rows, fresh = cached_search(query)
-    if fresh:
-        return rows
-    try:
-        out = subprocess.run(["gh", "search", "prs", *query.split(), "--state=open", "--limit", "40",
-                              "--json", "number,title,repository,author,updatedAt,url,isDraft"],
-                             capture_output=True, text=True, timeout=30)
-        if out.returncode:
-            result: list | str = out.stderr.strip() or f"gh search prs exited with {out.returncode}"
-        else:
-            result = sorted(json.loads(out.stdout), key=lambda r: r.get("updatedAt", ""), reverse=True)
-    except subprocess.TimeoutExpired:
-        result = "gh search prs took longer than 30 seconds"
-    except json.JSONDecodeError as exc:
-        result = f"gh search prs returned invalid JSON: {exc}"
-    with lock:
-        lists[query] = (now, result)
-    return result
-
-
 def recent_pages() -> list[dict]:
-    root = build.CACHE / "pages"
-    if not root.exists():
+    """The pull requests opened last, newest first: owner, repo, number, title and the time of the last open."""
+    try:
+        return json.loads(RECENT.read_text())
+    except (OSError, ValueError):
         return []
-    pages = []
-    for f in root.glob("*/*/*/*.html"):
-        owner, repo, number = f.parts[-4], f.parts[-3], f.parts[-2]
-        pages.append({"owner": owner, "repo": repo, "number": int(number), "mtime": f.stat().st_mtime})
-    latest: dict[tuple, dict] = {}
-    for p in sorted(pages, key=lambda p: p["mtime"]):
-        latest[(p["owner"], p["repo"], p["number"])] = p
-    return sorted(latest.values(), key=lambda p: -p["mtime"])[:15]
 
 
-def ago(iso_or_ts) -> str:
-    if isinstance(iso_or_ts, str):
-        ts = time.mktime(time.strptime(iso_or_ts[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
-    else:
-        ts = iso_or_ts
+def note_opened(key: tuple[str, str, int], page: bytes) -> None:
+    """Move the pull request to the top of the recently opened list, titled from the page just served."""
+    owner, repo, number = key
+    m = TITLE.search(page[:4096])
+    title = m.group(1).decode(errors="replace") if m else f"{owner}/{repo}#{number}"
+    with lock:
+        rest = [p for p in recent_pages() if (p["owner"], p["repo"], p["number"]) != key]
+        entry = {"owner": owner, "repo": repo, "number": number, "title": title, "opened": time.time()}
+        RECENT.parent.mkdir(parents=True, exist_ok=True)
+        RECENT.write_text(json.dumps([entry, *rest][:RECENT_MAX]))
+
+
+def ago(ts: float) -> str:
     s = max(0, int(time.time() - ts))
     for unit, n in (("d", 86400), ("h", 3600), ("m", 60)):
         if s >= n:
@@ -167,9 +135,9 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 body {{ margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }}
 a {{ color: var(--accent); text-decoration: none; }} a:hover {{ text-decoration: underline; }}
 main {{ max-width: 920px; margin: 0 auto; padding: 32px 24px 64px; }}
-h1 {{ font-size: 20px; margin: 0 0 4px; }} h2 {{ font-size: 13px; margin: 28px 0 8px; color: var(--fg3); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }}
+h1 {{ font-size: 20px; margin: 0 0 4px; }}
 .sub {{ color: var(--fg2); margin: 0 0 20px; }}
-form {{ display: flex; gap: 8px; }}
+form {{ display: flex; gap: 8px; margin: 0 0 20px; }}
 input {{ flex: 1; font: 14px var(--sans); color: var(--fg); background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; outline: none; }}
 input:focus {{ border-color: var(--accent); }}
 button {{ font: 14px var(--sans); color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: 0 16px; cursor: pointer; }}
@@ -179,7 +147,6 @@ button {{ font: 14px var(--sans); color: #fff; background: var(--accent); border
 .item .t {{ font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .item .m {{ grid-column: 1; color: var(--fg3); font-size: 12px; font-family: var(--mono); }}
 .item .w {{ grid-row: 1 / span 2; grid-column: 2; align-self: center; color: var(--fg3); font-size: 12px; white-space: nowrap; }}
-.draft {{ font-size: 11px; color: var(--fg3); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 6px; font-weight: 400; }}
 .empty {{ color: var(--fg3); padding: 12px 14px; }}
 .log {{ font: 13px/1.7 var(--mono); color: var(--fg2); background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; }}
 .log b {{ color: var(--fg); font-weight: 500; }} .err {{ color: var(--del-fg); }}
@@ -215,55 +182,17 @@ def shell(title: str, body: str) -> bytes:
     return SHELL.format(title=html.escape(title), themes=render.theme_css(), theme_boot=render.THEME_BOOT, body=body).encode()
 
 
-def pr_item(owner: str, repo: str, number: int, title: str, meta: str, when: str, draft: bool = False) -> str:
-    return (f'<a class="item" href="/{owner}/{repo}/pull/{number}"><span class="t">{html.escape(title)}'
-            f'{"<span class=draft>draft</span>" if draft else ""}</span>'
-            f'<span class="w">{html.escape(when)}</span><span class="m">{html.escape(meta)}</span></a>')
-
-
-def search_items(rows: list | str | None) -> str:
-    if rows is None:
-        return '<div class="empty">Loading…</div>'
-    if isinstance(rows, str):
-        return f'<div class="empty err">{html.escape(rows)}</div>'
-    if not rows:
-        return '<div class="empty">Nothing here.</div>'
-    out = []
-    for r in rows:
-        owner, repo = r["repository"]["nameWithOwner"].split("/")
-        out.append(pr_item(owner, repo, r["number"], r["title"],
-                           f'{owner}/{repo}#{r["number"]} · {(r.get("author") or {}).get("login", "")}',
-                           ago(r["updatedAt"]), r.get("isDraft", False)))
-    return "".join(out)
-
-
-LIST_QUERIES = {"review": "--review-requested=@me", "mine": "--author=@me"}
-
-
-def fresh_lists() -> dict[str, str]:
-    """Both GitHub lists as HTML, searched afresh when the cached ones are stale."""
-    with ThreadPoolExecutor(len(LIST_QUERIES)) as pool:
-        results = pool.map(search, LIST_QUERIES.values())
-    return {name: search_items(rows) for name, rows in zip(LIST_QUERIES, results)}
+def pr_item(p: dict) -> str:
+    ref = f'{p["owner"]}/{p["repo"]}#{p["number"]}'
+    return (f'<a class="item" href="/{p["owner"]}/{p["repo"]}/pull/{p["number"]}"><span class="t">{html.escape(p["title"])}</span>'
+            f'<span class="w">{html.escape(ago(p["opened"]))}</span><span class="m">{html.escape(ref)}</span></a>')
 
 
 def start_page() -> bytes:
-    """The start page at once, with the GitHub lists as last fetched; stale or missing ones are fetched by the page."""
-    cached = {name: cached_search(query) for name, query in LIST_QUERIES.items()}
-    recent = recent_pages()
-    recent_html = "".join(
-        pr_item(p["owner"], p["repo"], p["number"], f'{p["owner"]}/{p["repo"]}#{p["number"]}', "built page",
-                ago(p["mtime"])) for p in recent) or '<div class="empty">No pages built yet.</div>'
-    body = f"""<h1>Pull request review</h1><p class="sub">Open any GitHub pull request, or pick one below.</p>
+    items = "".join(map(pr_item, recent_pages())) or '<div class="empty">No pull requests opened yet.</div>'
+    return shell("Pull request review", f"""<h1>Pull request review</h1>
 <form action="/open"><input name="pr" placeholder="https://github.com/owner/repo/pull/123 or owner/repo#123" autofocus><button>Open</button></form>
-<h2>Waiting for your review</h2><div class="list" id="review">{search_items(cached["review"][0])}</div>
-<h2>Yours</h2><div class="list" id="mine">{search_items(cached["mine"][0])}</div>
-<h2>Recently opened</h2><div class="list">{recent_html}</div>"""
-    if not all(fresh for _, fresh in cached.values()):
-        body += """<script>
-fetch('/lists').then(r => r.json()).then(lists => { for (const id in lists) document.getElementById(id).innerHTML = lists[id]; }).catch(() => {});
-</script>"""
-    return shell("Pull request review", body)
+<div class="list">{items}</div>""")
 
 
 def progress_page(key: tuple[str, str, int]) -> bytes:
@@ -309,8 +238,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if url.path == "/":
                 return self.send(200, start_page())
-            if url.path == "/lists":
-                return self.send_json(fresh_lists())
             if url.path == "/open":
                 owner, repo, number = build.parse_ref((query.get("pr") or [""])[0])
                 return self.redirect(f"/{owner}/{repo}/pull/{number}")
@@ -328,7 +255,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.redirect(url.path)
                 if page := build.latest_page(*key):
                     rebuild_if_moved(key)
-                    return self.send(200, page.read_bytes())
+                    body = page.read_bytes()
+                    note_opened(key, body)
+                    return self.send(200, body)
                 start_job(key)
                 return self.send(200, progress_page(key))
             if (m := API.match(url.path)) and m.group(4) == "comments":
