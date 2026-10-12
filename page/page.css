@@ -97,16 +97,17 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 .filesec { margin: 16px 20px; }
 .fhead { position: sticky; top: 12px; z-index: 5; }
 .fhead::before { content: ""; position: absolute; inset: -12px 0 auto; height: 20px; background: var(--bg); z-index: -1; }
-.fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; cursor: pointer; background: var(--fhead); border: 1px solid var(--line); border-radius: 8px 8px 0 0; }
+.fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; cursor: pointer; background: var(--bg3); border: 1px solid var(--line); border-radius: 8px 8px 0 0; }
 .fhead .top .chev { width: 22px; height: 22px; flex: none; color: var(--fg2); display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; transition: transform .12s ease; }
 .fhead .top .chev.open { transform: rotate(90deg); }
-.fhead .top:hover .chev { background: var(--bg3); }
+.fhead .top:hover .chev { background: var(--line); }
 .fhead .top:hover .chev { color: var(--accent); }
+.fhead .top button:not(.on):hover { background: var(--line); }
 .filesec.closed .fhead .top { padding: 8px 20px; border-radius: 8px; }
 .filesec.closed .path b { color: var(--fg2); }
 .fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fhead .path .dir { font: 11.5px var(--mono); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fhead .path b { font: 600 14.5px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fhead .path b { font: 400 14.5px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A body far from the viewport is empty and keeps its height; containment keeps each body's layout its own. */
 .code { padding: 6px 0; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; overflow: clip; contain: content; }
 .chunk { contain: content; }

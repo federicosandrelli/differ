@@ -30,15 +30,9 @@ def mix(color: str, pct: int) -> str:
     return f"color-mix(in srgb, {color} {pct}%, transparent)"
 
 
-def shade(color: str, pct: int, toward: int) -> str:
-    """Mix a hex colour pct% towards black (0) or white (255)."""
-    channels = (int(color[i:i + 2], 16) for i in (1, 3, 5))
-    return "#" + "".join(f"{round(c + (toward - c) * pct / 100):02x}" for c in channels)
-
-
-def palette(*, bg, bg2, bg3, fg, fg2, fg3, line, accent, accent_bg, sel, sel_fg, add, dele, mod, ren, mark, mark_fg, syntax, header_toward):
+def palette(*, bg, bg2, bg3, fg, fg2, fg3, line, accent, accent_bg, sel, sel_fg, add, dele, mod, ren, mark, mark_fg, syntax):
     return dict(
-        fhead=shade(bg, 11, header_toward), bg=bg, bg2=bg2, bg3=bg3, fg=fg, fg2=fg2, fg3=fg3, line=line, accent=accent, accent_bg=accent_bg, sel=sel, sel_fg=sel_fg,
+        bg=bg, bg2=bg2, bg3=bg3, fg=fg, fg2=fg2, fg3=fg3, line=line, accent=accent, accent_bg=accent_bg, sel=sel, sel_fg=sel_fg,
         add_bg=mix(add, 16), add_fg=add, add_num=mix(add, 28), add_word=mix(add, 38),
         del_bg=mix(dele, 16), del_fg=dele, del_num=mix(dele, 28), del_word=mix(dele, 38),
         mod_bg=mix(mod, 22), mod_fg=mod, ren_bg=mix(ren, 22), ren_fg=ren, mark=mark, mark_fg=mark_fg, **syntax,
@@ -53,21 +47,18 @@ PALETTES = {
         bg="#ffffff", bg2="#f9f9f7", bg3="#f0efec", fg="#20201f", fg2="#6d6b67", fg3="#898781", line="#e1e0d9",
         accent="#2f6feb", accent_bg="#e8f0fe", sel="#cddcfb", sel_fg="#2f6feb",
         add="#1e9e3c", dele="#cd2054", mod="#9a5b00", ren="#6d3fc7", mark="#ffe066", mark_fg="#20201f",
-        header_toward=0,
         syntax=dict(kw="#c2410c", str_="#3f7d2a", cmt="#898781", num="#9a6a10", fn="#20201f", cls="#8a5a00", builtin="#c2410c"),
     ),
     "sepia": palette(
         bg="#f6efdc", bg2="#efe6cf", bg3="#e5d9bd", fg="#3b3328", fg2="#6b5f4e", fg3="#9a8c74", line="#dacdb0",
         accent="#3a5a9a", accent_bg="#dfe4ec", sel="#cfd9ec", sel_fg="#3a5a9a",
         add="#2f7d2a", dele="#b8324d", mod="#8a6410", ren="#6a4a8a", mark="#f2d25b", mark_fg="#3b3328",
-        header_toward=0,
         syntax=dict(kw="#b2451a", str_="#4f7a2a", cmt="#9a8c74", num="#9a6a10", fn="#3b3328", cls="#8a5a00", builtin="#b2451a"),
     ),
     "dark": palette(
         bg="#1a1a19", bg2="#151515", bg3="#20201f", fg="#d2d1c7", fg2="#a5a49a", fg3="#898781", line="#2c2c2a",
         accent="#6ea0ff", accent_bg="#1a2742", sel="#2a4474", sel_fg="#6ea0ff",
         add="#32d74b", dele="#ff2c56", mod="#f0b45a", ren="#c4a6ff", mark="#ffe066", mark_fg="#1c1f26",
-        header_toward=255,
         syntax=dict(kw="#f29b7a", str_="#9fcf8a", cmt="#898781", num="#e5c07b", fn="#d2d1c7", cls="#e5c07b", builtin="#f29b7a"),
     ),
 }
