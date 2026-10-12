@@ -73,7 +73,7 @@ const PR_ICON_PATHS = {
 function statusChip() {
   const st = PR.draft && PR.state === 'OPEN' ? 'draft' : (PR.state || '').toLowerCase();
   if (!PR_ICON_PATHS[st]) return '';
-  const icon = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PR_ICON_PATHS[st]}</svg>`;
+  const icon = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PR_ICON_PATHS[st]}</svg>`;
   return `<span class="status st-${st}">${icon}${st[0].toUpperCase() + st.slice(1)}</span>`;
 }
 function renderSide() {
