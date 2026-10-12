@@ -12,7 +12,7 @@ const CHUNK = 100;   // rows per chunk
 const ROW_PX = 20.6; // the height of a code row, to size a chunk before it is first filled
 let overviewEl = null;
 let sections = [];   // [{ f, el }] in page order
-const bodies = new Map(); // path -> { key, outdated, rows }: the body's HTML parts for the key it was computed from
+const bodies = new Map(); // path -> { key, outdated, rows, index, cols }: the body's HTML parts for the key it was computed from
 
 // The old path from the last directory the two paths share, so only the changed part shows.
 function renamedFrom(f) {
@@ -46,7 +46,7 @@ function bodyParts(f) {
   let parts = bodies.get(f.path);
   if (!parts || parts.key !== key) {
     const code = f.runs.length ? codeRows(f) : null;
-    parts = { key, outdated: outdatedHtml(f), rows: code && code.html, index: code && code.index };
+    parts = { key, outdated: outdatedHtml(f), rows: code && code.html, index: code && code.index, cols: code ? code.cols : 0 };
     bodies.set(f.path, parts);
   }
   return parts;
@@ -100,7 +100,10 @@ function fillBody(f, el) {
     for (let i = 0; parts.rows && i < parts.rows.length; i += CHUNK) {
       chunks.push(`<div class="chunk" data-start="${i}" style="height:${Math.round(Math.min(CHUNK, parts.rows.length - i) * ROW_PX)}px"></div>`);
     }
+    const left = code.scrollLeft;
+    code.style.setProperty('--cols', parts.cols);
     replaceContent(code, parts.outdated + (parts.rows ? chunks.join('') : '<div class="empty">No changes</div>'));
+    code.scrollLeft = left;
     code.dataset.key = parts.key;
   }
   for (const chunk of code.getElementsByClassName('chunk')) {
