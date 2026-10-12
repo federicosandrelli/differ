@@ -73,11 +73,16 @@ const lineRange = (a, b) => a && a !== b ? `${a}–${b}` : `${b}`;
 const btn = (attrs, label, primary) => `<button ${attrs} class="${primary ? 'primary' : ''}" ${state.busy ? 'disabled' : ''}>${label}</button>`;
 
 // ---------- HTML
+// GitHub's own rendering of a body, when it has one, except for suggestions: the page draws those against the file.
+function bodyHtml(c, ctx) {
+  if (!c.html || /^\s*```suggestion/m.test(c.body)) return renderMarkdown(c.body, ctx);
+  return c.html.replace(/<a\b(?![^>]*\btarget=)/g, '<a target="_blank"');
+}
 function commentHtml(c, ctx) {
   return `<div class="comment ${c.pending ? 'pending' : ''}"><div class="chead"><b>${esc(c.author)}</b><span class="hint">${ago(c.created)}</span>
     ${c.pending ? '<span class="pend">pending</span>' : ''}<span class="spacer"></span>
     ${c.pending ? `<a href="#" data-delete="${esc(c.id)}">delete</a>` : ''}<a href="${c.url}" target="_blank" title="Open on GitHub">↗</a></div>
-    <div class="cbody">${renderMarkdown(c.body, ctx)}</div></div>`;
+    <div class="cbody">${bodyHtml(c, ctx)}</div></div>`;
 }
 function threadHtml(f, t) {
   const n = t.comments.length, first = t.comments[0];
@@ -151,7 +156,7 @@ function conversationHtml() {
   else if (!items.length) h += '<p class="hint">No comments yet.</p>';
   for (const it of items) {
     h += `<div class="comment ${it.state === 'APPROVED' ? 'approved' : it.state === 'CHANGES_REQUESTED' ? 'changes' : ''}"><div class="chead"><b>${esc(it.author)}</b> ${esc(it.verb)}<span class="hint">${ago(it.created)}</span><span class="spacer"></span><a href="${it.url}" target="_blank" title="Open on GitHub">↗</a></div>
-      ${it.body ? `<div class="cbody">${renderMarkdown(it.body)}</div>` : ''}</div>`;
+      ${it.body ? `<div class="cbody">${bodyHtml(it)}</div>` : ''}</div>`;
   }
   h += `<div class="form conv"><textarea data-conv-text placeholder="Leave a comment on the pull request">${esc(state.convText)}</textarea>
     <div class="actions"><span class="spacer"></span>${btn('data-conv-send', 'Comment', true)}</div></div>`;

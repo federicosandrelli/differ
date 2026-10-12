@@ -66,6 +66,10 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 .page h2 { font-size: 15px; margin: 28px 0 10px; }
 .prbody { max-width: 78ch; } .prbody h3, .prbody h4 { font-size: 14px; margin: 16px 0 6px; } .prbody ul { padding-left: 20px; } .prbody li { margin: 4px 0; }
 .prbody code { font: 12.5px var(--mono); background: var(--bg3); padding: 0 4px; border-radius: 3px; }
+.prbody pre { margin: 8px 0; padding: 8px 10px; background: var(--bg3); border-radius: 6px; overflow-x: auto; } .prbody pre code { background: none; padding: 0; }
+.prbody details, .cbody details { margin: 6px 0; } .prbody summary, .cbody summary { cursor: pointer; }
+.prbody img, .cbody img { max-width: 100%; } .prbody blockquote, .cbody blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--fg2); }
+.prbody .contains-task-list, .cbody .contains-task-list { list-style: none; padding-left: 4px; }
 .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
 .stat { background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 130px; }
 .stat b { display: block; font-size: 20px; font-weight: 600; } .stat span { color: var(--fg2); font-size: 12px; }

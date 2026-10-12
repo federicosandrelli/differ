@@ -38,17 +38,17 @@ def graphql(query: str, **variables) -> dict:
 THREAD_FIELDS = """
   id isResolved isOutdated path line startLine diffSide startDiffSide originalLine originalStartLine
   resolvedBy { login }
-  comments(first: 100) { nodes { id author { login } body createdAt url state replyTo { id } pullRequestReview { id state } } }
+  comments(first: 100) { nodes { id author { login } body bodyHTML createdAt url state replyTo { id } pullRequestReview { id state } } }
 """
 
 READ = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   viewer { login }
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
-    id headRefOid
+    id headRefOid bodyHTML
     reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }
-    reviews(first: 100) { nodes { id author { login } state body createdAt submittedAt url } }
-    comments(first: 100) { nodes { id author { login } body createdAt url } }
+    reviews(first: 100) { nodes { id author { login } state body bodyHTML createdAt submittedAt url } }
+    comments(first: 100) { nodes { id author { login } body bodyHTML createdAt url } }
   } }
 }
 """ % THREAD_FIELDS
@@ -70,7 +70,7 @@ def _thread(t: dict, pending_review: str | None) -> dict | None:
     """The thread as the page shows it, or None when it has no comments left: a thread outlives its comments, and
     for a while after a pending review is deleted its comments still come back as pending."""
     comments = [{
-        "id": c["id"], "author": _author(c), "body": c["body"], "created": c["createdAt"], "url": c["url"],
+        "id": c["id"], "author": _author(c), "body": c["body"], "html": c.get("bodyHTML") or "", "created": c["createdAt"], "url": c["url"],
         "pending": c["state"] == "PENDING", "reply": bool(c.get("replyTo")),
     } for c in t["comments"]["nodes"] if c["state"] != "PENDING" or (c.get("pullRequestReview") or {}).get("id") == pending_review]
     if not comments:
@@ -97,14 +97,14 @@ def fetch(owner: str, repo: str, number: int) -> dict:
     viewer = data["viewer"]["login"]
     pending = next((r for r in pr["reviews"]["nodes"] if r["state"] == "PENDING" and _author(r) == viewer), None)
     reviews = [{
-        "id": r["id"], "author": _author(r), "state": r["state"], "body": r["body"] or "",
+        "id": r["id"], "author": _author(r), "state": r["state"], "body": r["body"] or "", "html": r.get("bodyHTML") or "",
         "created": r["submittedAt"] or r["createdAt"], "url": r["url"],
     } for r in pr["reviews"]["nodes"] if r["state"] != "PENDING"]
-    comments = [{"id": c["id"], "author": _author(c), "body": c["body"], "created": c["createdAt"], "url": c["url"]}
+    comments = [{"id": c["id"], "author": _author(c), "body": c["body"], "html": c.get("bodyHTML") or "", "created": c["createdAt"], "url": c["url"]}
                 for c in pr["comments"]["nodes"]]
     pending_id = pending["id"] if pending else None
     return {
-        "viewer": viewer, "pr_id": pr["id"], "head": pr["headRefOid"],
+        "viewer": viewer, "pr_id": pr["id"], "head": pr["headRefOid"], "body_html": pr.get("bodyHTML") or "",
         "pending": {"id": pending_id} if pending else None,
         "threads": [th for t in threads if (th := _thread(t, pending_id))],
         "reviews": reviews, "comments": comments,
