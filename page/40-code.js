@@ -24,8 +24,8 @@ function runSummary(r) {
 const RENAME_RUNS = Object.fromEntries(D.renames.map(r => [r.from + '\u0000' + r.to, r.runs]));
 function showOriginHead(r) { return r.class === 'rename' && r.origin && r.rename && (RENAME_RUNS[r.rename.join('\u0000')] || 0) >= 2; }
 
-const foldRow = (id, label) => `<tr class="collapsed" data-fold="${esc(id)}"><td colspan="4">▸ ${label}</td></tr>`;
-const openRow = (id, label) => `<tr class="runhead" data-fold="${esc(id)}"><td colspan="4">▾ ${label}</td></tr>`;
+const foldRow = (id, label) => `<tr class="collapsed" data-fold="${esc(id)}"><td colspan="4"><span class="lbl">▸ ${label}</span></td></tr>`;
+const openRow = (id, label) => `<tr class="runhead" data-fold="${esc(id)}"><td colspan="4"><span class="lbl">▾ ${label}</span></td></tr>`;
 
 function importsLabel(b) {
   const adds = b.rows.filter(r => r.type === 'add').length, dels = b.rows.filter(r => r.type === 'del').length;
@@ -44,12 +44,23 @@ function contextLabel(b, symStarts) {
   return `⋯ ${b.mid.length} unchanged lines${hint}`;
 }
 
-// The rows of a file's diff table, one HTML string each so the table can be shown in pieces, and the index of
-// each row's key in them.
+// The number of columns a line takes with tabs expanded to the browser's default tab stops of 8.
+function lineColumns(text) {
+  let n = 0;
+  for (const ch of text) n = ch === '\t' ? n + 8 - n % 8 : n + 1;
+  return n;
+}
+
+// The rows of a file's diff table, one HTML string each so the table can be shown in pieces, the index of
+// each row's key in them, and the columns of the longest drawn line.
 function codeRows(f) {
   const symStarts = new Map((f.symbols || []).map(s => [s.start, s]));
   const html = [], index = new Map();
-  const draw = (rows) => renderRows(f, rows, html, index);
+  let cols = 0;
+  const draw = (rows) => {
+    renderRows(f, rows, html, index);
+    for (const r of rows) cols = Math.max(cols, lineColumns(r.text));
+  };
   for (const b of fileBlocks(f)) {
     if (b.imports) {
       html.push((b.open ? openRow : foldRow)(b.fold, importsLabel(b)));
@@ -59,17 +70,17 @@ function codeRows(f) {
     } else if (b.ctx) {
       draw(b.head);
       if (b.open) draw(b.mid);
-      else if (b.mid.length) html.push(`<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4">${contextLabel(b, symStarts)}</td></tr>`);
+      else if (b.mid.length) html.push(`<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">${contextLabel(b, symStarts)}</span></td></tr>`);
       draw(b.tail);
     } else {
       const r = b.run;
       if (b.fold) html.push((b.open ? openRow : foldRow)(b.fold, runSummary(r)));
       if (!b.open) continue;
-      if (r && showOriginHead(r)) html.push(`<tr class="runhead"><td colspan="4">rename origin · <code>${esc(r.rename[0])}</code> → <code>${esc(r.rename[1])}</code></td></tr>`);
+      if (r && showOriginHead(r)) html.push(`<tr class="runhead"><td colspan="4"><span class="lbl">rename origin · <code>${esc(r.rename[0])}</code> → <code>${esc(r.rename[1])}</code></span></td></tr>`);
       if (r && r.removed.length === r.added.length && b.rows.length === r.removed.length * 2) markPairs(b.rows);
       draw(b.rows);
     }
   }
-  return { html, index };
+  return { html, index, cols };
 }
 const tableHtml = (rows) => `<table class="diff"><colgroup><col style="width:38px"><col style="width:38px"><col style="width:16px"><col></colgroup>${rows.join('')}</table>`;

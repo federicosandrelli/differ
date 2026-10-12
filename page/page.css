@@ -115,9 +115,11 @@ table.plain th { color: var(--fg3); font-weight: 500; font-size: 11px; text-tran
 .fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fhead .path .dir { font: 11.5px var(--mono); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fhead .path b { font: 400 14.5px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A body far from the viewport is empty and keeps its height; containment keeps each body's layout its own. */
-.code { padding: 6px 0; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; overflow: clip; contain: content; }
-.chunk { contain: content; }
+/* A body far from the viewport is empty and keeps its height; containment keeps each body's layout its own.
+   Code lines never wrap: the body scrolls sideways, and every chunk takes the width of the file's longest line
+   (--cols, in the table's font) so all rows of the file line up and share one scroll. */
+.code { padding: 6px 0; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; overflow-x: auto; overflow-y: hidden; contain: content; container-type: inline-size; }
+.chunk { contain: content; font: 12.5px var(--mono); width: max(100%, calc(var(--cols, 0) * 1ch + 104px)); }
 .empty { color: var(--fg3); padding: 24px; text-align: center; }
 
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.65 var(--mono); table-layout: fixed; color: var(--fg); }
@@ -134,9 +136,9 @@ table.diff tr.del .ic { background: var(--del-word); border-radius: 2px; }
 table.diff tr.dim td.c { opacity: var(--dim); }
 table.diff tr.target td { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent); }
 table.diff tr.target td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px color-mix(in srgb, var(--accent) 22%, transparent) !important; }
-table.diff td.c { white-space: pre-wrap; word-break: break-all; }
 table.diff td.c .tag { float: right; font: 10px var(--sans); color: var(--fg3); background: var(--bg3); border-radius: 3px; padding: 0 5px; margin-left: 8px; opacity: 1; }
-tr.fold td, tr.collapsed td, tr.runhead td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+tr.fold td, tr.collapsed td, tr.runhead td { white-space: nowrap; }
+tr.fold .lbl, tr.collapsed .lbl, tr.runhead .lbl { position: sticky; left: 12px; display: inline-block; vertical-align: top; max-width: calc(100cqw - 24px); overflow: hidden; text-overflow: ellipsis; }
 tr.fold td { background: var(--bg2); color: var(--fg3); font: 11.5px var(--sans); padding: 3px 12px; cursor: pointer; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 tr.fold td:hover { color: var(--accent); }
 tr.collapsed td { background: var(--bg2); color: var(--fg2); font: 12px var(--sans); padding: 4px 12px; cursor: pointer; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); }
@@ -163,6 +165,8 @@ body.commentable table.diff tr[id]:hover > td.n:first-child::before { content: "
 table.diff tr.sel td { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--accent) 14%, transparent); }
 table.diff tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px color-mix(in srgb, var(--accent) 14%, transparent) !important; }
 tr.thread > td, tr.compose > td { padding: 6px 12px 8px 44px; white-space: normal; font: 13px/1.45 var(--sans); background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+/* A thread or form stays in view and inside the body's width however far the code is scrolled sideways. */
+tr.thread > td > *, tr.compose > td > * { position: sticky; left: 44px; max-width: min(760px, 100cqw - 56px); }
 .thread { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); max-width: 760px; }
 .thread.folded { padding: 6px 12px; color: var(--fg2); font-size: 12.5px; cursor: pointer; }
 .thread.folded:hover { border-color: var(--accent); }
@@ -185,9 +189,9 @@ tr.thread > td, tr.compose > td { padding: 6px 12px 8px 44px; white-space: norma
 .pend { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--mod-fg); border: 1px solid var(--mod-fg); border-radius: 4px; padding: 0 5px; }
 .thread .tfoot { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--line); }
 .thread .tfoot button, .form .actions button { font-size: 12.5px; padding: 3px 10px; }
-.suggestion { margin: 6px 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.suggestion { margin: 6px 0; border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; }
 .suggestion .shead { padding: 4px 10px; font-size: 11.5px; color: var(--fg3); background: var(--bg2); border-bottom: 1px solid var(--line); }
-.suggestion table.diff { font-size: 12px; }
+.suggestion table.diff { font-size: 12px; table-layout: auto; width: max-content; min-width: 100%; }
 .form { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-width: 760px; }
 .form > .hint { margin-bottom: 6px; }
 .form textarea { display: block; width: 100%; min-height: 84px; resize: vertical; font: 13px/1.45 var(--mono); color: var(--fg); background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; outline: none; }
