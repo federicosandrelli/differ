@@ -9,8 +9,9 @@ function guides(depth) {
   for (let k = 0; k < depth; k++) { img.push('linear-gradient(var(--line), var(--line))'); pos.push(`${17 + k * 19}px 0`); size.push('1px 100%'); }
   return `background-image:${img.join(',')};background-position:${pos.join(',')};background-size:${size.join(',')}`;
 }
-// Outline folder icons drawn inline, closed and open, so the page needs no icon font.
+// Outline folder and speech-bubble icons drawn inline, so the page needs no icon font.
 const FOLDER_CLOSED = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const BUBBLE = '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FOLDER_OPEN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 19l2.757-7.351A1 1 0 0 1 8.693 11H21a1 1 0 0 1 .986 1.164l-.996 5.211A2 2 0 0 1 19.026 19H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function leafHtml(f, depth) {
@@ -22,7 +23,7 @@ function leafHtml(f, depth) {
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
       ${hitCount ? `<span class="cnt hits">${hitCount}</span>` : ''}
-      ${threads ? `<span class="cnt bubble" title="${plural(threads, 'unresolved thread')}">${threads}</span>` : ''}
+      ${threads ? `<span class="cnt bubble" title="${plural(threads, 'unresolved thread')}">${BUBBLE}${threads}</span>` : ''}
       <span class="spacer"></span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>`;
 }
 function renderTreeNode(node, depth, out) {
