@@ -15,7 +15,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -210,7 +210,7 @@ def app_info() -> dict:
     return {
         "commit": git("rev-parse", "--short", "HEAD") if own else "",
         "dirty": own and bool(git("--no-optional-locks", "status", "--porcelain")),
-        "built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "built": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
 
