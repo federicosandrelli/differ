@@ -261,11 +261,15 @@ def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames
         flags = [apply_renames(o, renames) == n for o, n in zip(removed, added)]
         run.pair_rename = flags
         if flags and all(flags):
+            # A line that renames the name more than once differs in a span wider than one token, so the
+            # rename is found by the names it holds instead.
             pairs = Counter()
             for o, n in zip(removed, added):
                 pair = token_diff(o, n)
                 if pair in rename_info:
                     pairs[pair] += 1
+                else:
+                    pairs.update(p for p in renames if re.search(r"(?<!\w)" + re.escape(p[0]) + r"(?!\w)", o))
             if pairs:
                 run.rename = pairs.most_common(1)[0][0]
             run.cls = "rename"

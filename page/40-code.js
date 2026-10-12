@@ -34,7 +34,8 @@ function importsLabel(b) {
 }
 function groupLabel(b) {
   const n = b.group.reduce((a, r) => a + r.removed.length + r.added.length, 0);
-  const rename = b.cls === 'rename' ? ` · <code>${esc(b.group[0].rename[0])}</code> → <code>${esc(b.group[0].rename[1])}</code>` : '';
+  const named = b.cls === 'rename' && b.group.find(r => r.rename);
+  const rename = named ? ` · <code>${esc(named.rename[0])}</code> → <code>${esc(named.rename[1])}</code>` : '';
   return `<span class="cls">${esc(NOISE_LABEL[b.cls])}</span> ${n} lines in ${b.group.length} places${rename}`;
 }
 function contextLabel(b, symStarts) {
