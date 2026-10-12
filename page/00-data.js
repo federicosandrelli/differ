@@ -33,7 +33,7 @@ const isReviewed = (f) => lsGet(LS(f.path)) === '1';
 const setReviewed = (f, v) => lsSet(LS(f.path), v ? '1' : null);
 const sectionOpen = (f) => state.openOverride.has(f.path) ? state.openOverride.get(f.path) : !isReviewed(f);
 
-const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fmt = (n) => n.toLocaleString('en-GB');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 function ago(iso) {

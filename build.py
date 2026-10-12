@@ -33,10 +33,11 @@ class BuildError(Exception):
 
 
 def parse_ref(text: str) -> tuple[str, str, int]:
+    """GitHub matches owner and repo names case-insensitively, so they are lowercased and one PR has one cache path."""
     m = PR_REF.search(text.strip())
     if not m:
         raise BuildError(f"Not a pull request reference: {text!r}. Use owner/repo#123 or a pull request URL.")
-    return m.group(1), m.group(2), int(m.group(3))
+    return m.group(1).lower(), m.group(2).lower(), int(m.group(3))
 
 
 def run_bytes(args: list[str], input: bytes | None = None) -> bytes:
@@ -162,7 +163,7 @@ def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
     paths = "".join((new or old) + "\n" for old, new in pairs)
     attrs = subprocess.run(git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"],
                            input=paths, capture_output=True, text=True)
-    generated = [line.split(": ")[0] for line in attrs.stdout.splitlines() if line.endswith(("set", "true"))]
+    generated = [line.rsplit(": ", 2)[0] for line in attrs.stdout.splitlines() if line.rsplit(": ", 1)[-1] in ("set", "true")]
     (out / "generated.txt").write_text("".join(path + "\n" for path in generated))
 
 

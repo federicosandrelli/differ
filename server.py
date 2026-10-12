@@ -55,6 +55,11 @@ heads: dict[tuple[str, str, int], tuple[float, str]] = {}
 lock = threading.Lock()
 
 
+def page_key(m: re.Match) -> tuple[str, str, int]:
+    """The owner, repo and number a route names, with owner and repo lowercased as build.parse_ref does."""
+    return m.group(1).lower(), m.group(2).lower(), int(m.group(3))
+
+
 def head_checked_recently(key: tuple[str, str, int]) -> bool:
     with lock:
         cached = heads.get(key)
@@ -203,11 +208,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.redirect(f"/{owner}/{repo}/pull/{number}")
             if m := STATUS.match(url.path):
                 with lock:
-                    job = jobs.get((m.group(1), m.group(2), int(m.group(3))))
+                    job = jobs.get(page_key(m))
                 data = {"state": job.state, "log": job.log, "error": job.error} if job else {"state": "none", "log": [], "error": ""}
                 return self.send(200, json.dumps(data).encode(), "application/json")
             if m := PAGE.match(url.path):
-                key = (m.group(1), m.group(2), int(m.group(3)))
+                if url.path != url.path.lower():
+                    return self.redirect(url.path.lower() + (f"?{url.query}" if url.query else ""))
+                key = page_key(m)
                 if "refresh" in query:
                     if not build.page_current(build.page_path(*key, current_head(key))):
                         build.forget_pages(*key)
@@ -221,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
                 start_job(key)
                 return self.send(200, progress_page(key))
             if (m := API.match(url.path)) and m.group(4) == "comments":
-                return self.send_json(comments.fetch(m.group(1), m.group(2), int(m.group(3))))
+                return self.send_json(comments.fetch(*page_key(m)))
             return self.send(404, error_page(f"No page at {url.path}"))
         except build.BuildError as exc:
             return self.send(400, error_page(str(exc)))
@@ -253,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, error_page(f"No page at {self.path}"))
         if why := self.refused():
             return self.send_json({"error": f"Forbidden: {why}"}, 403)
-        owner, repo, number, action = m.group(1), m.group(2), int(m.group(3)), m.group(4)
+        (owner, repo, number), action = page_key(m), m.group(4)
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             if action == "comment":
