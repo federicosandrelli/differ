@@ -11,6 +11,8 @@ Usage: server.py [port]   (default 8765)
   /open?pr=<url or owner/repo#n>     redirects to the page above
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard, conversation
+                                     (only from a page this server served: the Origin must be this server
+                                     on a loopback host, and the Content-Type application/json)
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ import render
 PAGE = re.compile(r"^/([\w.-]+)/([\w.-]+)/pull/(\d+)/?$")
 STATUS = re.compile(r"^/status/([\w.-]+)/([\w.-]+)/(\d+)$")
 API = re.compile(r"^/api/([\w.-]+)/([\w.-]+)/(\d+)/(\w+)$")
+LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
 HEAD_TTL = 20
 RECENT = build.CACHE / "recent.json"
@@ -228,10 +231,28 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, data: dict, code: int = 200) -> None:
         self.send(code, json.dumps(data).encode(), "application/json")
 
+    def refused(self) -> str | None:
+        """Why this POST is refused, or None: a page from another origin must not act with the user's gh identity.
+
+        Browsers send an Origin header with every POST, so the Origin must be this server on a loopback host.
+        The Content-Type must be application/json, which a cross-origin page can send only after a preflight
+        this server never answers.
+        """
+        port = self.server.server_address[1]
+        origin = self.headers.get("Origin")
+        if origin not in {f"http://{host}:{port}" for host in LOOPBACK_HOSTS}:
+            return f"Origin {origin or '(missing)'} is not this server"
+        ctype = self.headers.get("Content-Type", "")
+        if ctype.split(";")[0].strip().lower() != "application/json":
+            return f"Content-Type {ctype or '(missing)'} is not application/json"
+        return None
+
     def do_POST(self) -> None:
         m = API.match(urlparse(self.path).path)
         if not m:
             return self.send(404, error_page(f"No page at {self.path}"))
+        if why := self.refused():
+            return self.send_json({"error": f"Forbidden: {why}"}, 403)
         owner, repo, number, action = m.group(1), m.group(2), int(m.group(3)), m.group(4)
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
