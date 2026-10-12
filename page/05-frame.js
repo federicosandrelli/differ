@@ -23,6 +23,12 @@ if (SHELL) {
     url.search = new URLSearchParams(new FormData(form)).toString();
     SHELL.tell({ type: 'open', url: url.pathname + url.search });
   }, true);
+  // Cmd+Option+Left/Right steps between the shell's tabs. Focus sits inside the page, so the page forwards the chord.
+  document.addEventListener('keydown', (e) => {
+    if (!e.metaKey || !e.altKey || e.ctrlKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault();
+    SHELL.tell({ type: 'step', dir: e.key === 'ArrowLeft' ? -1 : 1 });
+  }, true);
   // The shell says when the tab comes to the front; pages listen for 'tab-shown' on the document.
   window.addEventListener('message', (e) => {
     if (e.origin === location.origin && e.data && e.data.type === 'shown') document.dispatchEvent(new Event('tab-shown'));

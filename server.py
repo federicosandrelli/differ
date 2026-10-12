@@ -258,6 +258,16 @@ __THEME_BOOT__
     if (active === tab) activate(tabs[i] || tabs[i - 1] || home); else { draw(); save(); }
   }
   const byKey = (key) => key === 'home' ? home : tabs.find(t => t.key === key);
+  // Cmd+Option+Left/Right steps through the home tab and the open tabs in strip order, wrapping at the ends.
+  function step(dir) {
+    const all = [home, ...tabs];
+    activate(all[(all.indexOf(active) + dir + all.length) % all.length]);
+  }
+  window.addEventListener('keydown', (e) => {
+    if (!e.metaKey || !e.altKey || e.ctrlKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault();
+    step(e.key === 'ArrowLeft' ? -1 : 1);
+  });
 
   bar.addEventListener('click', (e) => {
     const c = e.target.closest('[data-close]');
@@ -273,6 +283,7 @@ __THEME_BOOT__
     if (e.origin !== location.origin || !e.data) return;
     const m = e.data;
     if (m.type === 'open') { open(m.url); return; }
+    if (m.type === 'step') { step(m.dir === -1 ? -1 : 1); return; }
     if (m.type === 'external') { if (APP) location.href = m.url; else window.open(m.url, '_blank', 'noopener'); return; }
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
