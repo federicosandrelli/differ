@@ -32,7 +32,6 @@ class Run:
     rename: tuple[str, str] | None = None
     origin: bool = False
     pair_rename: list[bool] = field(default_factory=list)
-    anchor_new: int = 0
     moved_to: dict | None = None
 
 
@@ -119,8 +118,7 @@ def build_runs(fd: FileDiff) -> None:
                 tag, o, n, text = lines[j]
                 (removed if tag == "-" else added).append((o if tag == "-" else n, text))
                 j += 1
-            anchor = added[0][0] if added else (lines[j][2] if j < len(lines) else hunk.new_start)
-            fd.runs.append(Run(index=index, removed=removed, added=added, anchor_new=anchor))
+            fd.runs.append(Run(index=index, removed=removed, added=added))
             index += 1
             i = j
 
@@ -386,19 +384,19 @@ def find_origins(entries: list[dict], rename_info: dict) -> dict[tuple[str, str]
         if fd.status == "R":
             for pair in rename_info:
                 if rename_info[pair]["seed"] and origins[pair] is None:
-                    origins[pair] = {"path": fd.path, "line": 1, "text": f"renamed from {fd.old_path}"}
+                    origins[pair] = {"path": fd.path, "line": 1, "side": "new", "text": f"renamed from {fd.old_path}"}
         for run in fd.runs:
             for (a, b), origin in origins.items():
                 if origin is not None:
                     continue
                 for no, text in run.added:
                     if is_definition(text, b):
-                        origins[(a, b)] = {"path": fd.path, "line": no, "text": text.strip()}
+                        origins[(a, b)] = {"path": fd.path, "line": no, "side": "new", "text": text.strip()}
                         break
                 else:
                     for no, text in run.removed:
                         if is_definition(text, a):
-                            origins[(a, b)] = {"path": fd.path, "line": run.anchor_new, "text": text.strip()}
+                            origins[(a, b)] = {"path": fd.path, "line": no, "side": "old", "text": text.strip()}
                             break
     return origins
 
@@ -417,7 +415,7 @@ def file_json(entry: dict, marked: set[str]) -> dict:
             "index": run.index, "class": run.cls,
             "removed": [no for no, _ in run.removed], "added": [no for no, _ in run.added],
             "rename": list(run.rename) if run.rename else None, "origin": run.origin,
-            "pair_rename": run.pair_rename, "anchor_new": run.anchor_new, "moved_to": run.moved_to,
+            "pair_rename": run.pair_rename, "moved_to": run.moved_to,
         })
     hunks_json = [{"old_start": h.old_start, "new_start": h.new_start, "header": h.header,
                    "lines": [[t, o, n, x] for t, o, n, x in h.lines]} for h in fd.hunks]

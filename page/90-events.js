@@ -9,7 +9,7 @@ document.addEventListener('click', (e) => {
   const cell = API && e.target.closest('table.diff td.n:first-child');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],' + COMMENT_ATTRS);
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],' + COMMENT_ATTRS);
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
@@ -19,9 +19,10 @@ document.addEventListener('click', (e) => {
   if (d.path) {
     e.preventDefault();
     if (t.closest('#side .tree')) { state.cursor = 'f:' + d.path; document.querySelector('#side .list').focus({ preventScroll: true }); }
-    let line = d.line ? +d.line : null;
-    if (!line && state.q && t.closest('#side')) line = firstHitLine(BY_PATH[d.path]);
-    go(d.path, line);
+    const f = BY_PATH[d.path];
+    let key = f && d.line ? rowKey(f, d.side === 'old' ? 'LEFT' : 'RIGHT', +d.line) : null;
+    if (!key && state.q && t.closest('#side')) key = firstHitKey(f);
+    go(d.path, key);
     return;
   }
   if (d.filter) { state.filter = d.filter; render(); return; }
@@ -31,9 +32,7 @@ document.addEventListener('click', (e) => {
   if (d.folder !== undefined) { state.cursor = 'd:' + d.folder; document.querySelector('#side .list').focus({ preventScroll: true }); toggleFolder(d.folder); return; }
   if (d.show) { state.show[d.show] = !state.show[d.show]; render(); return; }
   if (d.whole !== undefined) { state.whole = d.whole === '1'; render(); return; }
-  if (d.fold) { state.unfolded.add(d.fold); render(); return; }
-  if (d.runs) { for (const k of d.runs.split('|')) state.expanded.add(k); render(); return; }
-  if (d.run) { state.expanded.has(d.run) ? state.expanded.delete(d.run) : state.expanded.add(d.run); render(); return; }
+  if (d.fold) { toggleFold(d.fold); render(); return; }
 });
 
 document.addEventListener('input', (e) => {
@@ -52,7 +51,7 @@ function stepHit(dir) {
   if (!all.length) return;
   state.hitIndex = ((state.hitIndex ?? -1) + dir + all.length) % all.length;
   const hit = all[state.hitIndex];
-  go(hit.path, hit.line);
+  go(hit.path, hit.key);
   focusBox('.search');
   updateSearchMeta();
 }
@@ -79,16 +78,17 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'c' && current) toggleSection(current);
 });
 
-// #path or #path:line
+// #path or #path:line, the line being one of the file as shown
 function hashTarget() {
   const h = decodeURIComponent(location.hash.slice(1));
   const m = h.match(/^(.*?)(?::(\d+))?$/);
-  return h && BY_PATH[m[1]] ? { path: m[1], line: m[2] ? +m[2] : null } : null;
+  const f = h && BY_PATH[m[1]];
+  return f ? { path: m[1], key: m[2] ? rowKey(f, 'RIGHT', +m[2]) : null } : null;
 }
 window.addEventListener('hashchange', () => {
   const t = hashTarget();
   if (!t) { if (!location.hash.slice(1) && state.view !== 'overview') scrollToFile('overview'); return; }
-  if (state.view !== t.path || t.line) go(t.path, t.line);
+  if (state.view !== t.path || t.key) go(t.path, t.key);
 });
 
 (function sideResize() {
@@ -107,7 +107,7 @@ window.addEventListener('hashchange', () => {
   document.body.classList.toggle('commentable', !!API);
   render();
   const t = hashTarget();
-  if (t) go(t.path, t.line);
+  if (t) go(t.path, t.key);
   loadComments();
   const refresh = () => { if (C.loaded && !state.busy && Date.now() - C.loadedAt > 30000) loadComments(); };
   window.addEventListener('focus', refresh);

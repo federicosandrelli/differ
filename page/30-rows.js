@@ -1,5 +1,6 @@
-// The rows of one file: the whole new file with the removed lines interleaved where they were, grouped into
-// blocks of context and change runs, with the folds the reader has not opened.
+// The view of one file: the whole new file with the removed lines interleaved where they were, grouped into
+// blocks of context and change runs, with every fold decided. fileBlocks gives the diff table what to draw,
+// reveal opens whatever hides a row, and toggleFold answers a click on a fold row; the fold keys stay in here.
 
 function buildRows(f) {
   const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
@@ -32,8 +33,6 @@ function buildRows(f) {
   }
   return flagHits(attachThreads(f, rows));
 }
-// A row's key on its own side: O<old line> for removed lines, L<new line> for the rest.
-const rowKeyOf = (r) => r.type === 'del' ? `O${r.oldNo}` : `L${r.newNo}`;
 function attachThreads(f, rows) {
   const entry = THREADS.byFile.get(f.path), c = state.compose && state.compose.path === f.path ? state.compose : null;
   if (!entry && !c) return rows;
@@ -64,13 +63,21 @@ function blocksFor(rows) {
   return blocks;
 }
 
+// ---------- folds
+// A fold id names a fold row on the page; what opening it does is kept here, so the page only passes ids back.
+const FOLDS = new Map();
+function fold(id, open, toggle) { FOLDS.set(id, { open, toggle: toggle || open }); return id; }
+function toggleFold(id) { const x = FOLDS.get(id); if (x) x.toggle(); }
+const toggleIn = (set, key) => () => { set.has(key) ? set.delete(key) : set.add(key); };
+
 const runKey = (f, r) => `${f.path}#${r.index}`;
-// A block of folded noise stays open while a search hit, a rename origin, or the reader's choice needs it.
+// A noise run folds; a rename run that holds the rename's origin does not.
+const isNoise = (r) => !!r && NOISE.includes(r.class) && !(r.class === 'rename' && r.origin);
+// A block of folded noise stays open while a search hit, a thread, or the reader's choice needs it.
 function isCollapsed(f, b) {
   const r = b.run;
-  if (!r || !NOISE.includes(r.class)) return false;
+  if (!isNoise(r)) return false;
   if (b.rows.some(pinned)) return false;
-  if (r.class === 'rename' && r.origin) return false;
   if (state.show[r.class]) return false;
   return !state.expanded.has(runKey(f, r));
 }
@@ -92,7 +99,7 @@ function mergeCollapsed(f, blocks) {
       if (c.ctx && nextSame && (c.rows.length <= RADIUS * 2 + 2 || (cls === 'import' && c.rows.every(r => importSet.has(r.newNo) || !r.html.trim())))) { j++; continue; }
       break;
     }
-    merged.push(group.length > 1 ? { group, cls } : b);
+    merged.push(group.length > 1 ? { group, cls, rows: blocks.slice(i, lastRun + 1).flatMap(x => x.rows) } : b);
     i = lastRun + 1;
   }
   return merged;
@@ -123,12 +130,68 @@ function importSegments(f, rows) {
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
 const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
-// The file's rows as the blocks the page shows: import sections, folded noise, context and change runs.
+// A context block shows RADIUS lines next to each visible neighbour and folds the middle, unless the
+// reader opened it or asked for whole files: head and tail show, mid shows when open.
+function contextBlock(f, blocks, bi) {
+  const rs = blocks[bi].rows;
+  const whole = { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
+  const visible = (nb) => nb && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
+  const leftVisible = bi > 0 && visible(blocks[bi - 1]);
+  const rightVisible = bi < blocks.length - 1 && visible(blocks[bi + 1]);
+  if (state.whole || (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible))) return whole;
+  const head = leftVisible ? rs.slice(0, RADIUS) : [];
+  const tail = rightVisible ? rs.slice(rs.length - RADIUS) : [];
+  const mid = rs.slice(head.length, rs.length - tail.length);
+  if (!mid.length) return whole;
+  const key = `${f.path}:${mid[0].newNo}`;
+  return { ctx: true, rows: rs, head, mid, tail, fold: fold(key, () => state.unfolded.add(key)), open: state.unfolded.has(key) };
+}
+
+// The file as the blocks the diff table draws, every fold decided. A block has its rows, the id of the fold
+// that hides some of them (fold, null when nothing folds) and whether that fold is open:
+//   { imports, rows }                 an import section, shown when open
+//   { group, cls, rows }              noise runs folded together, always closed
+//   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
+//   { run, rows }                     a change run; a noise run folds, shown when open
 function fileBlocks(f) {
   const rows = buildRows(f);
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
-  return mergeCollapsed(f, blocks);
+  blocks = mergeCollapsed(f, blocks);
+  return blocks.map((b, bi) => {
+    if (b.imports) {
+      const k = importsKey(f, b);
+      return { ...b, fold: fold(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b) };
+    }
+    if (b.group) {
+      const keys = b.group.map(r => runKey(f, r));
+      return { ...b, fold: fold(`${f.path}#runs:${b.group.map(r => r.index).join(',')}`, () => keys.forEach(k => state.expanded.add(k))), open: false };
+    }
+    if (b.ctx) return contextBlock(f, blocks, bi);
+    if (!isNoise(b.run)) return { ...b, fold: null, open: true };
+    const k = runKey(f, b.run);
+    return { ...b, fold: fold(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b) };
+  });
+}
+const hiddenRows = (b) => b.open ? [] : b.ctx ? b.mid : b.rows;
+
+// Open whatever hides the row with this key, so the next render shows it; false when the file has no such row.
+// Opening one fold can uncover another (a grouped run's context folds on its own), so it looks again.
+function reveal(f, key) {
+  const has = (rows) => rows.some(r => rowKeyOf(r) === key);
+  for (let pass = 0; pass < 4; pass++) {
+    const b = fileBlocks(f).find(b => has(b.rows));
+    if (!b) return false;
+    if (!has(hiddenRows(b))) return true;
+    FOLDS.get(b.fold).open();
+  }
+  return true;
+}
+
+// The state the file's blocks depend on, for a cache key.
+function viewKey(f) {
+  const runs = f.path + '#', folds = f.path + ':';
+  return [state.whole, state.q, state.show, [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds))];
 }
 
 // ---------- word-level differences between a removed line and its added counterpart

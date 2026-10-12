@@ -111,9 +111,11 @@ shell's PATH to run: it ships the Python files, not an interpreter.
   state and shared helpers; `05-frame.js` the hooks for the tabbed shell;
   `10-files.js` which files show and the search hits;
   `20-highlight.js` syntax highlighting (any language highlight.js knows,
-  chosen from the file extension by `classify.py`); `30-rows.js` the rows and
-  blocks of one file; `40-code.js` its diff table; `50-comments.js` the review
-  threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
+  chosen from the file extension by `classify.py`); `25-address.js` the row
+  keys that name a line of a file on either side; `30-rows.js` the view of one
+  file: its rows, blocks and folds, and `reveal`, which opens whatever hides a
+  row; `40-code.js` draws that view as the diff table; `50-comments.js` the
+  review threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
   `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its
   header; its diff table is cut into chunks of 100 rows that hold their rows

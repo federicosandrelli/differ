@@ -29,27 +29,6 @@ async function post(action, body) {
   } catch (e) { C.error = e.message; state.busy = false; render(); return false; }
 }
 
-// The new-side line number of an unchanged old-side line: the hunks give the pairing inside them and the offset outside.
-function oldToNew(f, o) {
-  let delta = 0;
-  for (const h of f.hunks) {
-    if (o < h.old_start) return o + delta;
-    let lastO = h.old_start - 1, lastN = h.new_start - 1;
-    for (const [tag, ho, hn] of h.lines) {
-      if (tag === ' ' && ho === o) return hn;
-      if (ho != null) lastO = ho;
-      if (hn != null) lastN = hn;
-    }
-    delta = lastN - lastO;
-  }
-  return o + delta;
-}
-function rowKeyFor(f, side, line) {
-  if (side === 'RIGHT' && f.content_side !== 'old') return `L${line}`;
-  if (f.content_side === 'old') return `O${line}`;
-  for (const h of f.hunks) for (const [tag, o] of h.lines) if (tag === '-' && o === line) return `O${line}`;
-  return `L${oldToNew(f, line)}`;
-}
 function indexThreads() {
   THREADS.byFile = new Map(); THREADS.orphans = [];
   for (const t of C.threads) {
@@ -57,7 +36,7 @@ function indexThreads() {
     if (!f) { THREADS.orphans.push(t); continue; }
     const entry = THREADS.byFile.get(t.path) || THREADS.byFile.set(t.path, { rows: new Map(), outdated: [] }).get(t.path);
     if (t.outdated || t.line == null) { entry.outdated.push(t); continue; }
-    const key = rowKeyFor(f, t.side, t.line);
+    const key = rowKey(f, t.side, t.line);
     (entry.rows.get(key) || entry.rows.set(key, []).get(key)).push(t);
   }
 }
@@ -181,8 +160,7 @@ function goThread(t) {
   const f = BY_PATH[t.path];
   if (!f) return;
   if (t.outdated || t.line == null) { state.showOutdated.add(f.path); go(t.path); return; }
-  const key = rowKeyFor(f, t.side, t.line), n = +key.slice(1);
-  go(t.path, key[0] === 'O' && f.content_side !== 'old' ? { oldNo: n, anchor: oldToNew(f, n) } : n);
+  go(t.path, rowKey(f, t.side, t.line));
 }
 function openCompose(path, side, line, extend) {
   const c = state.compose;

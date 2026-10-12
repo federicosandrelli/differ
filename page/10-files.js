@@ -10,6 +10,12 @@ function fileShown(f) {
     (state.showGenerated || !f.generated);
 }
 
+// The changed hunk lines holding the query, as [hunk, line] pairs, in file order.
+function* hitLines(f) {
+  const q = state.q.toLowerCase();
+  if (!q) return;
+  for (const h of f.hunks) for (const l of h.lines) if (l[0] !== ' ' && l[3].toLowerCase().includes(q)) yield [h, l];
+}
 // Changed lines of the file holding the query; counted once per query.
 const hitCache = { q: '', counts: new Map() };
 function hits(f) {
@@ -19,7 +25,7 @@ function hits(f) {
   let n = hitCache.counts.get(f.path);
   if (n === undefined) {
     n = 0;
-    for (const h of f.hunks) for (const [tag, , , text] of h.lines) if (tag !== ' ' && text.toLowerCase().includes(q)) n++;
+    for (const _ of hitLines(f)) n++;
     hitCache.counts.set(f.path, n);
   }
   return n;
@@ -69,34 +75,15 @@ function visibleFiles() {
   return visibleCache.files;
 }
 
-// ---------- search hits, for Enter to step through
-// A hit is a row: a new line number, or for a removed line its old number and the new line it sits above.
-function hitRow(f, h, o, n) {
-  if (f.content_side === 'old') return o;
-  return n != null ? n : { oldNo: o, anchor: anchorAfter(h, o) };
-}
-function anchorAfter(h, oldNo) {
-  for (const [, o, n] of h.lines) if (o != null && o >= oldNo && n != null) return n;
-  for (let i = h.lines.length - 1; i >= 0; i--) if (h.lines[i][2] != null) return h.lines[i][2];
-  return h.new_start;
-}
+// ---------- search hits, for Enter to step through: every hit as { path, key } of its row
 function allHits() {
-  const q = state.q.toLowerCase();
-  if (!q) return [];
   const out = [];
-  for (const f of visibleFiles()) {
-    for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
-      if (tag !== ' ' && text.toLowerCase().includes(q)) out.push({ path: f.path, line: hitRow(f, h, o, n) });
-    }
-  }
+  for (const f of visibleFiles()) for (const [, [, o, n]] of hitLines(f)) out.push({ path: f.path, key: hunkKey(f, o, n) });
   return out;
 }
-function firstHitLine(f) {
-  const q = state.q.toLowerCase();
-  if (!f || !q) return null;
-  for (const h of f.hunks) for (const [tag, o, n, text] of h.lines) {
-    if (tag !== ' ' && text.toLowerCase().includes(q)) return hitRow(f, h, o, n);
-  }
+function firstHitKey(f) {
+  if (!f) return null;
+  for (const [, [, o, n]] of hitLines(f)) return hunkKey(f, o, n);
   return null;
 }
 // Wrap every occurrence of the query in <mark>, in the text of an HTML fragment only.

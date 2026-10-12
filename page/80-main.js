@@ -35,12 +35,9 @@ function headerHtml(f, open) {
 }
 // Everything a file's body depends on besides the file itself.
 function bodyKey(f) {
-  const runs = f.path + '#', folds = f.path + ':';
   const c = state.compose && state.compose.path === f.path ? state.compose : null;
   return JSON.stringify([
-    state.whole, state.q, state.show,
-    [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds)),
-    c && [c.side, c.startLine, c.line, c.text],
+    viewKey(f), c && [c.side, c.startLine, c.line, c.text],
     C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path),
   ]);
 }
@@ -48,7 +45,8 @@ function bodyParts(f) {
   const key = bodyKey(f);
   let parts = bodies.get(f.path);
   if (!parts || parts.key !== key) {
-    parts = { key, outdated: outdatedHtml(f), rows: f.runs.length ? codeRows(f) : null };
+    const code = f.runs.length ? codeRows(f) : null;
+    parts = { key, outdated: outdatedHtml(f), rows: code && code.html, index: code && code.index };
     bodies.set(f.path, parts);
   }
   return parts;
@@ -117,15 +115,15 @@ function emptyBody(el) {
   code.innerHTML = '';
   delete code.dataset.key;
 }
-// Fill the chunk holding a row, so it can be scrolled to; the row element, or null when the file lacks it.
-function revealRow(f, el, id) {
+// Fill the chunk holding the row with a key, so it can be scrolled to; the row element, or null when the
+// body does not show it.
+function revealRow(f, el, key) {
   fillBody(f, el);
-  const parts = bodyParts(f), needle = `id="${id}"`;
-  const i = parts.rows ? parts.rows.findIndex(r => r.includes(needle)) : -1;
-  if (i < 0) return null;
+  const parts = bodyParts(f), i = parts.index ? parts.index.get(key) : undefined;
+  if (i === undefined) return null;
   const chunk = codeOf(el).querySelector(`.chunk[data-start="${i - i % CHUNK}"]`);
   if (chunk) fillChunk(parts, chunk);
-  return document.getElementById(id);
+  return document.getElementById(rowId(f, key));
 }
 
 function patchOverview() {
@@ -218,7 +216,8 @@ function viewportAnchor() {
 }
 function restoreAnchor(a) {
   if (!a || !a.sec.isConnected) return;
-  const row = a.rowId && (document.getElementById(a.rowId) || revealRow(a.f, a.sec, a.rowId));
+  const at = a.rowId && rowAt(a.rowId);
+  const row = at && (document.getElementById(a.rowId) || revealRow(a.f, a.sec, at.key));
   if (row) main.scrollTop += row.getBoundingClientRect().top - a.rowTop;
   else main.scrollTop += a.sec.getBoundingClientRect().top - a.secTop;
 }
@@ -253,8 +252,8 @@ function scrollToFile(path) {
   main.scrollTop = span(el)[0] - 16;
   setActive(path);
 }
-// Show a file, and a line of it when given: a new line number, or { oldNo, anchor } for a removed line.
-function go(path, line) {
+// Show a file, and a row of it when given the row's key, opening whatever folds hide it.
+function go(path, key) {
   const f = BY_PATH[path];
   if (!f) { scrollToFile('overview'); return; }
   let dirty = false;
@@ -266,17 +265,12 @@ function go(path, line) {
     dirty = true;
   }
   if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }
-  if (line == null) { if (dirty) render(); scrollToFile(path); return; }
-  const explicit = typeof line === 'object' ? line : null;
-  const anchor = explicit ? explicit.anchor : line;
-  for (const b of blocksFor(buildRows(f))) {
-    if (b.ctx && b.rows.some(r => r.newNo === anchor)) { const mid = b.rows.slice(RADIUS, b.rows.length - RADIUS); if (mid.length) state.unfolded.add(`${f.path}:${mid[0].newNo}`); }
-  }
+  if (key == null) { if (dirty) render(); scrollToFile(path); return; }
+  reveal(f, key);
   render();
   const el = sectionEl(f);
   if (!el) return;
-  const id = explicit ? `r${f.index}-O${explicit.oldNo}` : (f.content_side === 'old' ? `r${f.index}-O${line}` : `r${f.index}-L${line}`);
-  const row = revealRow(f, el, id);
+  const row = revealRow(f, el, key);
   if (!row) { scrollToFile(path); return; }
   row.scrollIntoView({ block: 'center' });
   const top = row.getBoundingClientRect().top;

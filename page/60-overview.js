@@ -40,7 +40,7 @@ function renamesHtml() {
   for (const r of D.renames) {
     const o = r.origin;
     h += `<tr><td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${r.runs}</td><td>${r.files.length}</td>
-      <td>${o ? `<a href="#" data-path="${esc(o.path)}" data-line="${o.line}" class="mono">${esc(o.path.split('/').pop())}:${o.line}</a> <span class="hint">${esc(o.text.slice(0, 60))}</span>` : '<span class="hint">not in this diff</span>'}</td></tr>`;
+      <td>${o ? `<a href="#" data-path="${esc(o.path)}" data-line="${o.line}" data-side="${o.side}" class="mono">${esc(o.path.split('/').pop())}:${o.line}</a> <span class="hint">${esc(o.text.slice(0, 60))}</span>` : '<span class="hint">not in this diff</span>'}</td></tr>`;
   }
   return h + `</table></div>`;
 }

@@ -114,9 +114,9 @@ function setActive(path) {
 
 // ---------- keyboard navigation in the tree
 function treeRows() { return [...document.querySelectorAll('#side .tree .row')]; }
-function rowKey(el) { return el.dataset.folder !== undefined ? 'd:' + el.dataset.folder : 'f:' + el.dataset.path; }
+function cursorKey(el) { return el.dataset.folder !== undefined ? 'd:' + el.dataset.folder : 'f:' + el.dataset.path; }
 function setCursor(el) {
-  state.cursor = rowKey(el);
+  state.cursor = cursorKey(el);
   for (const x of document.querySelectorAll('#side .row.cursor')) x.classList.remove('cursor');
   el.classList.add('cursor');
   const list = document.querySelector('#side .list'), a = el.getBoundingClientRect(), l = list.getBoundingClientRect();
@@ -130,7 +130,7 @@ function toggleFolder(folder) {
 // Handle an arrow, Enter or space key in the focused tree; true when it was one.
 function treeKey(e) {
   const rows = treeRows(); if (!rows.length) return false;
-  let i = rows.findIndex(r => rowKey(r) === state.cursor);
+  let i = rows.findIndex(r => cursorKey(r) === state.cursor);
   if (i < 0) i = rows.findIndex(r => r.dataset.path === state.view);
   const cur = rows[i];
   if (e.key === 'ArrowDown') { setCursor(rows[Math.min(i + 1, rows.length - 1)]); return true; }
