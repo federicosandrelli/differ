@@ -109,6 +109,11 @@ def scripts() -> list[Path]:
     return sorted(PAGE_DIR.glob("*.js"))
 
 
+def frame_script() -> str:
+    """The script that lets a page run inside the tabbed shell; the review page gets it with the other scripts."""
+    return (PAGE_DIR / "05-frame.js").read_text()
+
+
 def sources() -> list[Path]:
     """Every file whose content ends up in a page, so a page older than any of them is rebuilt."""
     return [ROOT / "render.py", PAGE_DIR / "page.css", *scripts()]
