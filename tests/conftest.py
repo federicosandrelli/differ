@@ -7,4 +7,5 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
 os.environ.setdefault("DIFF_REVIEW_CACHE", tempfile.mkdtemp(prefix="diff-review-tests-"))
