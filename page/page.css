@@ -187,8 +187,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.primary:hover { background: color-mix(in srgb, var(--accent) 85%, black); }
 button:disabled { opacity: .5; cursor: default; }
 .outdated { padding: 6px 20px 2px; font-size: 12px; } .outdated .thread { margin: 6px 0; }
-.tree .cnt.bubble { background: var(--bg3); color: var(--fg2); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
-.tree .cnt.bubble::before { content: "💬 "; font-size: 9px; }
+.tree .cnt.bubble { display: inline-flex; align-items: center; gap: 3px; background: var(--bg3); color: var(--fg2); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
 #side .head .meta a.on { font-weight: 600; }
 #side .form.review { margin: 8px 12px; border-radius: 8px; }
 #side .form.review textarea { min-height: 64px; }
