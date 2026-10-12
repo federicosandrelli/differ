@@ -10,10 +10,18 @@ use tauri::{Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl, WebviewWin
 
 struct Sidecar(Mutex<Option<Child>>);
 
-// Marks the page as running in the app, so its CSS leaves room for the transparent title bar.
+// Marks the page as running in the app, so its CSS leaves room for the transparent title bar, and lays
+// a drag region over that strip: the webview covers the title bar, so the window only moves when Tauri's
+// drag handler sees a mousedown on an element with data-tauri-drag-region.
 // The webview also drops clicks on target="_blank" links; sending them through the window lets
 // on_navigation hand every URL outside the local server to the system browser.
 const PAGE_SETUP: &str = r#"document.documentElement.classList.add('app');
+document.addEventListener('DOMContentLoaded', () => {
+  const bar = document.createElement('div');
+  bar.setAttribute('data-tauri-drag-region', '');
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;z-index:2147483647;';
+  document.body.prepend(bar);
+});
 document.addEventListener('click', e => {
   const a = e.target.closest('a[target="_blank"]');
   if (a && a.href) { e.preventDefault(); location.href = a.href; }
