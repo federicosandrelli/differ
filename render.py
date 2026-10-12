@@ -130,7 +130,9 @@ def app_info() -> dict:
             return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True).stdout.strip()
         except (OSError, subprocess.CalledProcessError):
             return ""
-    return {"commit": git("rev-parse", "--short", "HEAD"), "dirty": bool(git("status", "--porcelain")),
+    own = git("rev-parse", "--show-toplevel") == str(ROOT)
+    return {"commit": git("rev-parse", "--short", "HEAD") if own else "",
+            "dirty": own and bool(git("--no-optional-locks", "status", "--porcelain")),
             "built": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
 

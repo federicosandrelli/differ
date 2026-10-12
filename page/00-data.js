@@ -71,17 +71,24 @@ function logTarget(el) {
   const row = el.closest('tr[id]'), text = (t.textContent || '').replace(/\s+/g, ' ').trim();
   return `${t.tagName.toLowerCase()}${ds ? ` [${ds}]` : ''}${row ? ` in #${row.id}` : ''}${text ? ` "${text.slice(0, 40)}${text.length > 40 ? '…' : ''}"` : ''}`;
 }
-const errorText = (x) => x instanceof Error ? x.stack || x.message : typeof x === 'string' ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })();
-window.addEventListener('error', (e) => logPush(LOG.errors, { kind: 'error', text: e.message, where: e.lineno ? `${e.filename}:${e.lineno}:${e.colno}` : '', stack: e.error && e.error.stack }));
-window.addEventListener('unhandledrejection', (e) => logPush(LOG.errors, { kind: 'unhandled rejection', text: errorText(e.reason), stack: e.reason && e.reason.stack }));
+const PAGE_SCRIPT = document.currentScript;
+const clip = (s) => s.length > 2000 ? s.slice(0, 2000) + '…' : s;
+const errorText = (x) => x instanceof Error ? `${x.name}: ${x.message}` : typeof x === 'string' ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })();
+const errorStack = (x) => x instanceof Error ? clip(x.stack || '') : '';
+window.addEventListener('error', (e) => logPush(LOG.errors, { kind: 'error', text: clip(e.message), where: e.lineno ? `${e.filename}:${e.lineno}:${e.colno}` : '', stack: errorStack(e.error) }));
+window.addEventListener('unhandledrejection', (e) => logPush(LOG.errors, { kind: 'unhandled rejection', text: clip(errorText(e.reason)), stack: errorStack(e.reason) }));
 const consoleError = console.error.bind(console);
-console.error = (...args) => { logPush(LOG.errors, { kind: 'console.error', text: args.map(errorText).join(' ') }); consoleError(...args); };
+console.error = (...args) => {
+  logPush(LOG.errors, { kind: 'console.error', text: clip(args.map(errorText).join(' ')), stack: errorStack(args.find(a => a instanceof Error)) });
+  consoleError(...args);
+};
 document.addEventListener('click', (e) => {
   const what = logTarget(e.target);
   if (what) logPush(LOG.actions, { what: `click ${what}${e.shiftKey ? ' (shift)' : ''}` });
 }, true);
 document.addEventListener('keydown', (e) => {
   const field = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT';
+  if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].includes(e.key) || e.getModifierState('AltGraph')) return;
   if (field && !(e.metaKey || e.ctrlKey) && e.key !== 'Enter' && e.key !== 'Escape') return;
   if (!field && e.key.length !== 1 && !/^(Arrow|Enter|Escape|Tab|Backspace)/.test(e.key)) return;
   const mods = [e.metaKey && 'cmd', e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift'].filter(Boolean).join('+');

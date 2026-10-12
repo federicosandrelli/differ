@@ -38,7 +38,7 @@ function bugState() {
     showNoiseOnly: state.showNoiseOnly, showGenerated: state.showGenerated, show: state.show,
     closedFolders: cap([...state.closed]), openOverride: Object.fromEntries(state.openOverride),
     expanded: cap([...state.expanded]), unfolded: cap([...state.unfolded]),
-    compose: c && { ...c, text: c.text.length > 500 ? c.text.slice(0, 500) + '…' : c.text },
+    compose: c && { ...c, text: `${c.text.length} chars` },
     replyOpen: [...state.replyOpen.keys()], openThreads: cap([...state.openThreads]), showOutdated: [...state.showOutdated],
     reviewPanel: state.reviewPanel, reviewText: `${state.reviewText.length} chars`, convText: `${state.convText.length} chars`,
     busy: state.busy, focus: state.focus, reviewedFiles: FILES.filter(isReviewed).length,
@@ -61,7 +61,7 @@ function errorsText() {
   if (!LOG.errors.length) return 'None recorded since the page loaded.';
   const now = Date.now();
   return LOG.errors.map(e => {
-    const stack = (e.stack || '').split('\n').filter(l => l.trim()).slice(0, 6).map(l => '    ' + mapPageLines(l.trim()));
+    const stack = (e.stack || '').split('\n').map(l => l.trim()).filter(l => l && l !== e.text).slice(0, 6).map(l => '    ' + mapPageLines(l));
     return `- ${relative(e.t, now)} ${e.kind}: ${mapPageLines(e.text)}${e.where ? ` at ${mapPageLines(e.where)}` : ''}${stack.length ? '\n' + stack.join('\n') : ''}`;
   }).join('\n');
 }
@@ -137,9 +137,9 @@ async function loadPageMap() {
   if (pageMap !== null) return;
   pageMap = false;
   try {
-    const script = document.scripts[document.scripts.length - 1];
+    const script = PAGE_SCRIPT;
     const src = await (await fetch(SERVED ? location.pathname : location.href)).text();
-    const at = src.indexOf(script.textContent);
+    const at = script ? src.indexOf(script.textContent) : -1;
     if (at < 0) return;
     const marks = [];
     script.textContent.split('\n').forEach((l, i) => { const m = /^\/\/ ---- (\S+)$/.exec(l); if (m) marks.push([i + 1, m[1]]); });
@@ -174,7 +174,7 @@ async function copyText(text) {
 }
 async function bugClick(t) {
   const d = t.dataset, b = state.bug;
-  if (d.bugOpen !== undefined) { b.open = true; state.focus = '[data-bug-text]'; renderSide(); restoreFocus(); return; }
+  if (d.bugOpen !== undefined) { b.open = true; state.focus = '[data-bug-text]'; renderSide(); restoreFocus(); loadPageMap(); return; }
   if (d.bugCancel !== undefined) { b.open = false; b.prompt = ''; b.copied = null; renderSide(); return; }
   if (d.bugGenerate !== undefined) {
     await loadPageMap();
