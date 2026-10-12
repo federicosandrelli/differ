@@ -10,13 +10,18 @@ with import sections and rename fallout folded away.
 python3 server.py            # http://localhost:8765/
 ```
 
-The start page has a search bar and the ten pull requests you opened last,
-newest first. Paste any PR URL or `owner/repo#123` to open another. A page is
-built on first visit and cached by head commit. A later visit serves the
-newest built page at once and checks the head commit in the background: after
-a new push the next page is built while you read, and the page offers it in a
-notice once its comments load. Add `?refresh=1` to a page URL to rebuild it
-anyway.
+The page at `/` is a tabbed shell: a home tab with the start page, and one tab
+per pull request. The start page (`/home` on its own) has a search bar and the
+ten pull requests you opened last, newest first; the list is fetched again each
+time its tab comes to the front. Paste any PR URL or `owner/repo#123` to open
+another. Opening a pull request from the start page opens it in a tab, or
+brings its tab to the front when it has one; a tab shows the number of
+unresolved threads once the comments load, and the open tabs survive a
+relaunch. A page is built on first visit and cached by head commit. A later
+visit serves the newest built page at once and checks the head commit in the
+background: after a new push the next page is built while you read, and the
+page offers it in a notice once its comments load. Add `?refresh=1` to a page
+URL to rebuild it anyway.
 
 To build one page without the server:
 
@@ -48,10 +53,11 @@ change and when the window regains focus after 30 seconds away.
 
 ## Desktop app
 
-The same pages in a native window. The Tauri shell in `src-tauri/` starts
-`server.py` as a child process on port 8766 (or a free port when that one is
-taken), opens the window on it, and stops the server when the app quits (the
-server also exits on its own if the app dies). The page keeps its settings in
+The same pages in a native window, with the tab strip across the title bar.
+The Tauri shell in `src-tauri/` starts `server.py` as a child process on port
+8766 (or a free port when that one is taken), opens the window on it, and stops
+the server when the app quits (the server also exits on its own if the app
+dies). The page keeps its settings in
 the webview's `localStorage`, so the fixed port is what makes them survive a
 relaunch. Links to GitHub open in the system browser.
 
@@ -102,7 +108,8 @@ shell's PATH to run: it ships the Python files, not an interpreter.
   with change colours and search, a reviewed mark per file kept in
   `localStorage`, and every file with its removed lines interleaved.
 - The page's script is split by concern: `00-data.js` holds the data, the
-  state and shared helpers; `10-files.js` which files show and the search hits;
+  state and shared helpers; `05-frame.js` the hooks for the tabbed shell;
+  `10-files.js` which files show and the search hits;
   `20-highlight.js` syntax highlighting (any language highlight.js knows,
   chosen from the file extension by `classify.py`); `30-rows.js` the rows and
   blocks of one file; `40-code.js` its diff table; `50-comments.js` the review
@@ -114,8 +121,10 @@ shell's PATH to run: it ships the Python files, not an interpreter.
   the DOM stays small whatever the size of the pull request. A file's rows are
   computed once per state they depend on, so toggling a fold or typing in the
   search costs only the files on screen.
-- `server.py` serves the start page and the pages, building them in the
-  background with a progress page, and the comments API.
+- `server.py` serves the tabbed shell, the start page and the pages, building
+  them in the background with a progress page, and the comments API. The shell
+  holds each page in an iframe; `05-frame.js` runs in every page and hands the
+  shell its title and its links, so a click opens or switches a tab.
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API (`gh api graphql`).
 

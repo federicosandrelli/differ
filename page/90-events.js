@@ -109,5 +109,9 @@ window.addEventListener('hashchange', () => {
   const t = hashTarget();
   if (t) go(t.path, t.line);
   loadComments();
-  window.addEventListener('focus', () => { if (C.loaded && !state.busy && Date.now() - C.loadedAt > 30000) loadComments(); });
+  const refresh = () => { if (C.loaded && !state.busy && Date.now() - C.loadedAt > 30000) loadComments(); };
+  window.addEventListener('focus', refresh);
+  document.addEventListener('tab-shown', refresh);
+  // The theme is chosen on the start page; in the shell that page is another frame, so the change arrives as a storage event.
+  window.addEventListener('storage', (e) => { if (e.key === 'dr:theme') { state.theme = THEMES.includes(e.newValue) ? e.newValue : 'dark'; applyTheme(); } });
 })();

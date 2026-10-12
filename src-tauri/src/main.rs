@@ -6,17 +6,19 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::{Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{LogicalPosition, Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl, WebviewWindowBuilder};
 
 struct Sidecar(Mutex<Option<Child>>);
 
 // Marks the page as running in the app, so its CSS leaves room for the transparent title bar, and lays
 // a drag region over that strip: the webview covers the title bar, so the window only moves when Tauri's
-// drag handler sees a mousedown on an element with data-tauri-drag-region.
+// drag handler sees a mousedown on an element with data-tauri-drag-region. The tabbed shell draws its
+// tab strip there and marks it as the drag region itself, so it gets no overlay.
 // The webview also drops clicks on target="_blank" links; sending them through the window lets
 // on_navigation hand every URL outside the local server to the system browser.
 const PAGE_SETUP: &str = r#"document.documentElement.classList.add('app');
 document.addEventListener('DOMContentLoaded', () => {
+  if (document.querySelector('[data-tauri-drag-region]')) return;
   const bar = document.createElement('div');
   bar.setAttribute('data-tauri-drag-region', '');
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;z-index:2147483647;';
@@ -78,6 +80,8 @@ fn main() {
                 .inner_size(1440.0, 900.0)
                 .title_bar_style(TitleBarStyle::Overlay)
                 .hidden_title(true)
+                // Centred on the 40px tab strip the shell draws across the title bar.
+                .traffic_light_position(LogicalPosition::new(13.0, 20.0))
                 .initialization_script(PAGE_SETUP)
                 .on_navigation(move |target| {
                     let is_local = target.host_str() == local.host_str() && target.port() == local.port();
