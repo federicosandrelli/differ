@@ -68,14 +68,9 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
   if (e.key === '/') { e.preventDefault(); focusBox('#side .search'); return; }
-  const files = visibleFiles(); const i = files.findIndex(f => f.path === state.view);
   const current = BY_PATH[state.view];
-  if (e.key === 'j') { const n = files[i + 1] || files[0]; if (n) scrollToFile(n.path); }
-  else if (e.key === 'k') { if (i > 0) scrollToFile(files[i - 1].path); else scrollToFile('overview'); }
-  else if (e.key === 'o') scrollToFile('overview');
-  else if (e.key === 'w') { state.whole = !state.whole; render(); }
+  if (e.key === 'o') scrollToFile('overview');
   else if (e.key === 'r' && current) toggleReviewed(current);
-  else if (e.key === 'c' && current) toggleSection(current);
 });
 
 // #path or #path:line, the line being one of the file as shown
