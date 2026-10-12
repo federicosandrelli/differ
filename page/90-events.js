@@ -9,7 +9,7 @@ document.addEventListener('click', (e) => {
   const cell = API && e.target.closest('table.diff td.n:first-child');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],' + COMMENT_ATTRS);
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-review],[data-fold],' + COMMENT_ATTRS);
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
@@ -31,7 +31,6 @@ document.addEventListener('click', (e) => {
   if (d.tree) { state.closed = new Set(d.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
   if (d.folder !== undefined) { state.cursor = 'd:' + d.folder; document.querySelector('#side .list').focus({ preventScroll: true }); toggleFolder(d.folder); return; }
   if (d.show) { state.show[d.show] = !state.show[d.show]; render(); return; }
-  if (d.whole !== undefined) { state.whole = d.whole === '1'; render(); return; }
   if (d.fold) { toggleFold(d.fold); render(); return; }
 });
 

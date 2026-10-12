@@ -131,14 +131,14 @@ const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].o
 const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
 // A context block shows RADIUS lines next to each visible neighbour and folds the middle, unless the
-// reader opened it or asked for whole files: head and tail show, mid shows when open.
+// reader opened it: head and tail show, mid shows when open.
 function contextBlock(f, blocks, bi) {
   const rs = blocks[bi].rows;
   const whole = { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
   const visible = (nb) => nb && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
   const leftVisible = bi > 0 && visible(blocks[bi - 1]);
   const rightVisible = bi < blocks.length - 1 && visible(blocks[bi + 1]);
-  if (state.whole || (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible))) return whole;
+  if (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible)) return whole;
   const head = leftVisible ? rs.slice(0, RADIUS) : [];
   const tail = rightVisible ? rs.slice(rs.length - RADIUS) : [];
   const mid = rs.slice(head.length, rs.length - tail.length);
@@ -191,7 +191,7 @@ function reveal(f, key) {
 // The state the file's blocks depend on, for a cache key.
 function viewKey(f) {
   const runs = f.path + '#', folds = f.path + ':';
-  return [state.whole, state.q, state.show, [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds))];
+  return [state.q, state.show, [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds))];
 }
 
 // ---------- word-level differences between a removed line and its added counterpart

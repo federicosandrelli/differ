@@ -73,7 +73,6 @@ function renderSide() {
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
       <button data-filter="implementation" class="${state.filter === 'implementation' ? 'on' : ''}">Implementation</button>
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
-      <span class="seg"><button data-whole="0" class="${!state.whole ? 'on' : ''}">Changes</button><button data-whole="1" class="${state.whole ? 'on' : ''}">Whole files</button></span>
       <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
       <span class="hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>r</kbd> reviewed · <kbd>o</kbd> top · <kbd>/</kbd> search</span></div>
     <div class="searchbar">
