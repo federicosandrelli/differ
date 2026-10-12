@@ -74,6 +74,7 @@ function stepHit(dir) {
 }
 
 document.addEventListener('keydown', (e) => {
+  if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); focusBox('#side .search'); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
@@ -84,7 +85,6 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
-  if (e.key === '/') { e.preventDefault(); focusBox('#side .search'); return; }
   const current = BY_PATH[state.view];
   if (e.key === 'o') scrollToFile('overview');
   else if (e.key === 'r' && current) toggleReviewed(current);
