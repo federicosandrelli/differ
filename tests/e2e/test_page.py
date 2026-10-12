@@ -61,9 +61,9 @@ def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> 
     expect(section.locator("tr.add", has_text="import sys")).to_have_count(0)
 
 
-def test_slash_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, server_url: str) -> None:
+def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    page.keyboard.press("/")
+    page.keyboard.press("Meta+f")
     expect(page.locator("#side .search")).to_be_focused()
     page.keyboard.type("sys")
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
