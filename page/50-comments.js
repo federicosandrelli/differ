@@ -17,6 +17,12 @@ async function loadComments() {
   render();
   if (SHELL) SHELL.badge(C.threads.filter(t => !t.resolved).length);
 }
+// Whether the page holds text the user typed and has not sent. Closing the page's tab would lose it.
+function hasDraft() {
+  const b = state.bug;
+  return !!((state.compose && state.compose.text.trim()) || [...state.replyOpen.values()].some(t => t.trim())
+    || state.reviewText.trim() || state.convText.trim() || (b.open && !b.prompt && b.text.trim()));
+}
 async function post(action, body) {
   state.busy = true; render();
   try {

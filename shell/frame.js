@@ -10,6 +10,8 @@ const SHELL = window.parent === window ? null : {
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
   badge(n) { this.tell({ type: 'badge', n }); },
   page(url, title) { this.tell({ type: 'page', url, title }); },
+  draft(on) { if (on !== this.drafting) { this.drafting = on; this.tell({ type: 'draft', on }); } },
+  drafting: false,
 };
 
 if (SHELL) {
