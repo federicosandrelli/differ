@@ -47,6 +47,7 @@ document.addEventListener('input', (e) => {
   state.q = box.value.trim(); state.hitIndex = -1;
   render();
 });
+document.addEventListener('input', () => { if (SHELL) SHELL.draft(hasDraft()); });
 
 function stepHit(dir) {
   const all = allHits();

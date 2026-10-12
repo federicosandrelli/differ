@@ -96,6 +96,7 @@ function renderSide() {
   const ae = document.activeElement;
   const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : ae.dataset.bugText !== undefined ? '[data-bug-text]' : null);
   document.getElementById('side').innerHTML = h;
+  if (SHELL) SHELL.draft(hasDraft());
   document.querySelector('#side .list').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
   else if (focused) focusBox(focused);

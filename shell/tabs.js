@@ -20,7 +20,7 @@
     return tab.frame;
   }
   function draw() {
-    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}"><span class="label">${esc(t.title)}</span>${t.badge ? `<span class="badge" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" title="Close tab">×</button></div>`;
+    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}"><span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.badge ? `<span class="badge" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" title="Close tab">×</button></div>`;
     bar.innerHTML = `<div class="tab home ${active === home ? 'on' : ''}" data-key="home" title="Pull requests">${HOME_ICON}</div>` + tabs.map(pill).join('');
     document.title = active.title;
   }
@@ -44,6 +44,18 @@
     tabs.splice(i, 1);
     if (tab.frame) tab.frame.remove();
     if (active === tab) activate(tabs[i] || tabs[i - 1] || home); else { draw(); save(); }
+  }
+  // A page with unsent text keeps its tab open on the first close and shows a warning in the tab instead. A second
+  // close within a few seconds discards the text.
+  function closeAsked(tab) {
+    if (!tab || tab === home) return;
+    if (tab.draft && !tab.warning) {
+      tab.warning = setTimeout(() => { tab.warning = 0; draw(); }, 4000);
+      draw();
+      return;
+    }
+    clearTimeout(tab.warning);
+    close(tab);
   }
   const byKey = (key) => key === 'home' ? home : tabs.find(t => t.key === key);
   // Cmd+Option+Left/Right steps through the home tab and the open tabs in strip order, wrapping at the ends.
@@ -80,15 +92,18 @@
     if (dir !== null && webview) { e.preventDefault(); zoomStep(dir); }
   });
 
+  // The desktop app's Cmd+W menu item sends 'close-tab'.
+  window.addEventListener('close-tab', () => closeAsked(active));
+
   bar.addEventListener('click', (e) => {
     const c = e.target.closest('[data-close]');
-    if (c) { close(byKey(c.dataset.close)); return; }
+    if (c) { closeAsked(byKey(c.dataset.close)); return; }
     const t = e.target.closest('[data-key]');
     if (t) activate(byKey(t.dataset.key));
   });
   bar.addEventListener('auxclick', (e) => {
     const t = e.button === 1 && e.target.closest('.tab:not(.home)');
-    if (t) close(byKey(t.dataset.key));
+    if (t) closeAsked(byKey(t.dataset.key));
   });
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin || !e.data) return;
@@ -100,8 +115,9 @@
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
     if (m.type === 'badge') { tab.badge = m.n; draw(); save(); }
+    if (m.type === 'draft') tab.draft = !!m.on;
     if (m.type === 'page') {
-      tab.url = m.url; tab.title = m.title;
+      tab.url = m.url; tab.title = m.title; tab.draft = false;
       const key = keyOf(m.url), twin = tabs.find(t => t !== tab && t.key === key);
       if (twin) { close(tab); activate(twin); return; }
       tab.key = key; draw(); save();

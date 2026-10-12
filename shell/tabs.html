@@ -15,6 +15,7 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 .tab.home svg { display: block; }
 .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
 .tab .badge { flex: none; font: 11px/18px var(--mono); min-width: 18px; text-align: center; padding: 0 4px; border-radius: 4px; background: var(--bg); color: var(--fg2); border: 1px solid var(--line); }
+.tab.warn .label { color: var(--del-fg); }
 .tab .close { flex: none; width: 16px; height: 16px; border: 0; border-radius: 4px; padding: 0; background: none; color: var(--fg3); font: 15px/16px var(--sans); cursor: pointer; visibility: hidden; }
 .tab:hover .close, .tab.on .close { visibility: visible; }
 .tab .close:hover { background: var(--line); color: var(--fg); }

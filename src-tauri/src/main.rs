@@ -6,7 +6,11 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::{LogicalPosition, Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::menu::{Menu, MenuItem, MenuItemKind};
+use tauri::{
+    AppHandle, LogicalPosition, Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl,
+    WebviewWindowBuilder, Wry,
+};
 
 struct Sidecar(Mutex<Option<Child>>);
 
@@ -59,10 +63,65 @@ fn wait_for(port: u16, limit: Duration) -> bool {
     false
 }
 
+const CLOSE_TAB: &str = "close-tab";
+const CLOSE_WINDOW: &str = "close-window";
+
+// Tauri's default menu binds Cmd+W to "Close Window", and closing the only window quits the app. This is the default
+// menu with Cmd+W on "Close Tab", which tells the tab shell to close its active tab, and "Close Window" on Cmd+Shift+W.
+fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    let menu = Menu::default(app)?;
+    for item in menu.items()? {
+        let MenuItemKind::Submenu(submenu) = item else {
+            continue;
+        };
+        let entries = submenu.items()?;
+        for (i, entry) in entries.iter().enumerate() {
+            let MenuItemKind::Predefined(close) = entry else {
+                continue;
+            };
+            if close.text()? != "Close Window" {
+                continue;
+            }
+            submenu.remove(close)?;
+            if let Some(MenuItemKind::Predefined(separator)) =
+                i.checked_sub(1).and_then(|j| entries.get(j))
+            {
+                if separator.text()?.is_empty() {
+                    submenu.remove(separator)?;
+                }
+            }
+        }
+        if submenu.text()? == "File" {
+            submenu.prepend_items(&[
+                &MenuItem::with_id(app, CLOSE_TAB, "Close Tab", true, Some("CmdOrCtrl+W"))?,
+                &MenuItem::with_id(
+                    app,
+                    CLOSE_WINDOW,
+                    "Close Window",
+                    true,
+                    Some("CmdOrCtrl+Shift+W"),
+                )?,
+            ])?;
+        }
+    }
+    Ok(menu)
+}
+
 fn main() {
     let _ = fix_path_env::fix();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .menu(app_menu)
+        .on_menu_event(|app, event| {
+            let Some(window) = app.get_webview_window("main") else {
+                return;
+            };
+            if event.id() == CLOSE_TAB {
+                let _ = window.eval("window.dispatchEvent(new Event('close-tab'))");
+            } else if event.id() == CLOSE_WINDOW {
+                let _ = window.close();
+            }
+        })
         .setup(|app| {
             let port = pick_port()?;
             let child = Command::new("python3")
