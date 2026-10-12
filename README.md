@@ -137,6 +137,5 @@ shell's PATH to run: it ships the Python files, not an interpreter.
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API (`gh api graphql`).
 
-Keys in the page: `j` / `k` next and previous file, arrow keys in the tree,
-`/` search and Enter for the next hit, `c` collapse a file, `r` mark reviewed,
-`w` whole files, `o` back to the top.
+Keys in the page: arrow keys in the tree, `/` search and Enter for the next
+hit, `r` mark reviewed, `o` back to the top.

@@ -54,7 +54,7 @@ function bodyParts(f) {
 // About how tall the body will be, from the rows the diff view shows: the changed lines with their context.
 function estimateHeight(f) {
   const lines = contentLines(f).length, changed = f.stats.raw, runs = f.runs.length;
-  const rows = state.whole ? lines + changed : Math.min(lines + changed, changed + runs * (2 * RADIUS + 2));
+  const rows = Math.min(lines + changed, changed + runs * (2 * RADIUS + 2));
   return Math.round(rows * ROW_PX + 14);
 }
 
