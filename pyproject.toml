@@ -1,0 +1,34 @@
+[project]
+name = "differ"
+version = "0.1.0"
+description = "A pull request viewer for agent-written code"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-playwright>=0.7",
+    "pyright==1.1.411",
+    "ruff==0.12.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pyright]
+pythonVersion = "3.13"
+include = ["*.py", "tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+# The GraphQL queries in comments.py hold braces, so percent formatting reads better than f-strings there.
+ignore = ["UP031"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["e2e: drives the served page in a browser"]
