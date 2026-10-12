@@ -15,7 +15,7 @@ async function loadComments() {
   C.version++;
   indexThreads();
   render();
-  if (SHELL) SHELL.tell({ type: 'badge', n: C.threads.filter(t => !t.resolved).length });
+  if (SHELL) SHELL.badge(C.threads.filter(t => !t.resolved).length);
 }
 async function post(action, body) {
   state.busy = true; render();

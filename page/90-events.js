@@ -102,8 +102,6 @@ window.addEventListener('hashchange', () => {
 (function init() {
   state.showNoiseOnly = lsGet('dr:noise-only') === '1';
   state.showGenerated = lsGet('dr:generated') === '1';
-  state.theme = THEMES.includes(lsGet('dr:theme')) ? lsGet('dr:theme') : 'dark';
-  applyTheme();
   document.body.classList.toggle('commentable', !!API);
   render();
   const t = hashTarget();
@@ -112,6 +110,4 @@ window.addEventListener('hashchange', () => {
   const refresh = () => { if (C.loaded && !state.busy && Date.now() - C.loadedAt > 30000) loadComments(); };
   window.addEventListener('focus', refresh);
   document.addEventListener('tab-shown', refresh);
-  // The theme is chosen on the start page; in the shell that page is another frame, so the change arrives as a storage event.
-  window.addEventListener('storage', (e) => { if (e.key === 'dr:theme') { state.theme = THEMES.includes(e.newValue) ? e.newValue : 'dark'; applyTheme(); } });
 })();

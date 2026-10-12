@@ -12,4 +12,6 @@ Terms the code uses. A name here is the name in the code.
 - **Fold.** Something the view hides until opened: the middle of a context block, a noise run, several noise runs grouped as one, or an import section. A fold has an opaque **fold id** that only the file view reads.
 - **Pinned row.** A row a fold may never hide: a search hit, a row with a thread, or the row with the comment being written.
 - **Thread.** A GitHub review thread, placed on the row its line maps to, or listed as outdated when its line is gone.
-- **Tab, shell.** The page of one PR, and the tabbed frame around it served by `server.py`.
+- **Shell.** The tabbed document at `/` that holds the start page and one page per PR in iframes. Its two sides are `shell/tabs.js` (the strip and the frames) and `shell/frame.js` (what a page inside it does); the messages between them are known only to those two files. A page reaches the shell through `SHELL`, null when the page is the top-level document.
+- **Tab.** One entry in the shell's strip: the home tab for the start page, or a PR page, keyed by its path.
+- **Theme.** The colour scheme (`auto`, `light`, `sepia`, `dark`) saved as `dr:theme`. `shell/theme.js` applies it in every document and keeps the native window and the other open documents in step; the palettes live in `render.py`.

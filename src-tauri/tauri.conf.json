@@ -19,7 +19,8 @@
     "icon": ["icons/icon.icns", "icons/icon.png"],
     "resources": {
       "../*.py": "python/",
-      "../page/*": "python/page/"
+      "../page/*": "python/page/",
+      "../shell/*": "python/shell/"
     }
   }
 }

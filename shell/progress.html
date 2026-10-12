@@ -1,0 +1,16 @@
+<h1>__REF__</h1><p class="sub"><a href="/">← All pull requests</a></p>
+<div class="log" id="log" data-status="__STATUS__" data-retry="__RETRY__">Starting…</div>
+<script>
+(function () {
+  const el = document.getElementById('log');
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  async function poll() {
+    const r = await fetch(el.dataset.status); const s = await r.json();
+    el.innerHTML = s.log.map(esc).join('\n') || 'Starting…';
+    if (s.state === 'done') { location.reload(); return; }
+    if (s.state === 'error') { el.innerHTML += '\n<span class="err">' + esc(s.error) + '</span>\n\n<a href="' + el.dataset.retry + '">Try again</a>'; return; }
+    setTimeout(poll, 700);
+  }
+  poll();
+})();
+</script>

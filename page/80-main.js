@@ -279,14 +279,3 @@ function go(path, key) {
   row.classList.add('target');
   setTimeout(() => row.classList.remove('target'), 2500);
 }
-
-function applyTheme() {
-  if (state.theme === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = state.theme;
-  syncWindowTheme(state.theme);
-}
-// In the desktop app the native window follows the page, so the title bar and traffic lights match.
-function syncWindowTheme(theme) {
-  const win = window.__TAURI__ && window.__TAURI__.window;
-  if (!win) return;
-  win.getCurrentWindow().setTheme(theme === 'auto' ? null : theme === 'dark' ? 'dark' : 'light').catch(() => {});
-}

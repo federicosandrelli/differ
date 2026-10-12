@@ -3,18 +3,27 @@
 
 Usage: render.py <classified.json> <annotations.json> <out.html>
 
-The page's script is the concatenation of page/*.js in name order (hence the numeric prefixes), and its
-stylesheet page/page.css. Both are inlined, so a page works from disk as well as from the server.
+The page's script is shell/frame.js followed by page/*.js in name order (hence the numeric prefixes), and its
+stylesheet page/page.css. Both are inlined, so a page works from disk as well as from the server. The theme
+(shell/theme.js and the palettes here) goes into the head of every document the server sends.
 """
 
 from __future__ import annotations
 
+import html
 import json
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PAGE_DIR = ROOT / "page"
+SHELL_DIR = ROOT / "shell"
+
+
+def fill(template: str, **slots: str) -> str:
+    """Fill a template's __NAME__ slots in one pass, so a value holding a slot's name is left as it is."""
+    return re.sub("|".join(f"__{name}__" for name in slots), lambda m: slots[m.group(0)[2:-2]], template)
 
 
 def mix(color: str, pct: int) -> str:
@@ -79,8 +88,11 @@ def theme_css() -> str:
 """
 
 
-# Applies the saved theme before the first paint, so the page never flashes the default theme.
-THEME_BOOT = "<script>try { const t = localStorage.getItem('dr:theme') || 'dark'; if (t !== 'auto') document.documentElement.dataset.theme = t; } catch (e) {}</script>"
+def theme_head() -> str:
+    """The theme variables and the script that applies the saved theme, for the head of a document so it
+    never flashes the default theme."""
+    return f"<style>{theme_css()}</style>\n<script>{(SHELL_DIR / 'theme.js').read_text()}</script>"
+
 
 TEMPLATE = """<!doctype html>
 <html lang="en">
@@ -88,10 +100,9 @@ TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
-__THEME_BOOT__
+__THEME__
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
-__THEMES__
 __CSS__</style>
 </head>
 <body>
@@ -111,21 +122,20 @@ def scripts() -> list[Path]:
 
 def frame_script() -> str:
     """The script that lets a page run inside the tabbed shell; the review page gets it with the other scripts."""
-    return (PAGE_DIR / "05-frame.js").read_text()
+    return (SHELL_DIR / "frame.js").read_text()
 
 
 def sources() -> list[Path]:
     """Every file whose content ends up in a page, so a page older than any of them is rebuilt."""
-    return [ROOT / "render.py", PAGE_DIR / "page.css", *scripts()]
+    return [ROOT / "render.py", PAGE_DIR / "page.css", SHELL_DIR / "theme.js", SHELL_DIR / "frame.js", *scripts()]
 
 
 def render_page(classified: dict, annotations: dict) -> str:
     data = {**classified, "annotations": annotations}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{annotations['pr']['number']} {annotations['pr']['title']}"
-    js = "\n".join(f"// ---- {path.name}\n{path.read_text()}" for path in scripts())
-    return (TEMPLATE.replace("__TITLE__", title).replace("__THEME_BOOT__", THEME_BOOT).replace("__THEMES__", theme_css())
-            .replace("__CSS__", (PAGE_DIR / "page.css").read_text()).replace("__JS__", js).replace("__DATA__", payload))
+    js = "\n".join(f"// ---- {path.name}\n{path.read_text()}" for path in [SHELL_DIR / "frame.js", *scripts()])
+    return fill(TEMPLATE, TITLE=html.escape(title), THEME=theme_head(), CSS=(PAGE_DIR / "page.css").read_text(), JS=js, DATA=payload)
 
 
 def main() -> None:

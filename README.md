@@ -102,14 +102,13 @@ shell's PATH to run: it ships the Python files, not an interpreter.
 - The page hides generated files, and files with only folded changes (imports,
   rename fallout, whitespace or moved code), by default.
   A notice above the tree shows how many it hides and toggles them back.
-- `render.py` inlines `page/page.css` and the scripts in `page/`, concatenated
-  in name order, and turns the classified diff and the PR metadata into one HTML
+- `render.py` inlines `page/page.css`, the theme and frame scripts from
+  `shell/`, and the scripts in `page/` concatenated in name order, and turns the classified diff and the PR metadata into one HTML
   page: the PR description, the noise totals and the rename table, a file tree
   with change colours and search, a reviewed mark per file kept in
   `localStorage`, and every file with its removed lines interleaved.
 - The page's script is split by concern: `00-data.js` holds the data, the
-  state and shared helpers; `05-frame.js` the hooks for the tabbed shell;
-  `10-files.js` which files show and the search hits;
+  state and shared helpers; `10-files.js` which files show and the search hits;
   `20-highlight.js` syntax highlighting (any language highlight.js knows,
   chosen from the file extension by `classify.py`); `25-address.js` the row
   keys that name a line of a file on either side; `30-rows.js` the view of one
@@ -124,9 +123,14 @@ shell's PATH to run: it ships the Python files, not an interpreter.
   computed once per state they depend on, so toggling a fold or typing in the
   search costs only the files on screen.
 - `server.py` serves the tabbed shell, the start page and the pages, building
-  them in the background with a progress page, and the comments API. The shell
-  holds each page in an iframe; `05-frame.js` runs in every page and hands the
-  shell its title and its links, so a click opens or switches a tab.
+  them in the background with a progress page, and the comments API. Those
+  documents are the files in `shell/`: `tabs.html` and `tabs.js` are the shell,
+  which holds each page in an iframe; `frame.js` runs in every page and hands
+  the shell its title and its links, so a click opens or switches a tab;
+  `theme.js` applies the saved theme in every document and keeps the native
+  window and the other open documents in step with a change; `document.html`
+  wraps the start, progress and error pages (`start.html`, `progress.html`,
+  `error.html`).
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API (`gh api graphql`).
 

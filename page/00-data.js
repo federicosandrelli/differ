@@ -6,7 +6,6 @@ const BY_PATH = Object.fromEntries(FILES.map(f => [f.path, f]));
 const NOISE = ['import', 'rename', 'whitespace', 'moved'];
 const NOISE_LABEL = { import: 'imports', rename: 'rename fallout', whitespace: 'whitespace', moved: 'moved code' };
 const KIND_LABEL = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', V: 'moved' };
-const THEMES = ['auto', 'light', 'sepia', 'dark'];
 const RADIUS = 4;
 // Comments live on GitHub and change independently of the page, so they load after it, from the server.
 const SERVED = location.protocol.startsWith('http');
@@ -20,7 +19,7 @@ FILES.forEach((f, i) => {
 
 const state = {
   view: 'overview', filter: 'implementation', whole: false, closed: new Set(), q: '', hitIndex: -1,
-  showNoiseOnly: false, showGenerated: false, theme: 'auto', cursor: null, openOverride: new Map(),
+  showNoiseOnly: false, showGenerated: false, cursor: null, openOverride: new Map(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(),
   compose: null, replyOpen: new Map(), openThreads: new Set(), showOutdated: new Set(),
