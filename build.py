@@ -15,8 +15,8 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import classify
 import render
@@ -169,7 +169,7 @@ def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
         target = out / side / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blobs.get(f"{base if side == 'old' else head}:{path}", b""))
-    paths = "".join((new or old) + "\n" for old, new in pairs)
+    paths = "".join(path + "\n" for old, new in pairs if (path := new or old))
     attrs = subprocess.run(
         git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"],
         input=paths,
