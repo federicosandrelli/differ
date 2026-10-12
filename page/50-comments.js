@@ -169,6 +169,15 @@ function openCompose(path, side, line, extend) {
   state.focus = '[data-compose-text]';
   render();
 }
+// The draft the state holds for a form's textarea.
+function draftText(box) {
+  const d = box.dataset;
+  if (d.composeText !== undefined) return state.compose ? state.compose.text : '';
+  if (d.replyText !== undefined) return state.replyOpen.get(d.replyText) || '';
+  if (d.reviewText !== undefined) return state.reviewText;
+  if (d.convText !== undefined) return state.convText;
+  return box.value;
+}
 function textareaKey(e) {
   const form = e.target.closest('.form');
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary'); if (b && !b.disabled) b.click(); e.preventDefault(); }
@@ -182,6 +191,8 @@ async function commentClick(t, e) {
   if (d.suggest !== undefined) {
     const c = state.compose, f = BY_PATH[c.path];
     c.text = (c.text && !c.text.endsWith('\n') ? c.text + '\n' : c.text) + suggestionTemplate(f, c);
+    const box = document.querySelector('[data-compose-text]');
+    if (box) box.value = c.text;
     state.focus = '[data-compose-text]'; render(); return true;
   }
   if (d.composeSend !== undefined) {

@@ -104,7 +104,11 @@ window.addEventListener('hashchange', () => {
   const t = hashTarget();
   if (t) go(t.path, t.key);
   loadComments();
-  const refresh = () => { if (C.loaded && !state.busy && Date.now() - C.loadedAt > 30000) loadComments(); };
+  // A reload rebuilds the forms, so it waits while a comment box has focus.
+  const refresh = () => {
+    const typing = document.activeElement && document.activeElement.tagName === 'TEXTAREA';
+    if (C.loaded && !state.busy && !typing && Date.now() - C.loadedAt > 30000) loadComments();
+  };
   window.addEventListener('focus', refresh);
   document.addEventListener('tab-shown', refresh);
 })();

@@ -37,7 +37,7 @@ function headerHtml(f, open) {
 function bodyKey(f) {
   const c = state.compose && state.compose.path === f.path ? state.compose : null;
   return JSON.stringify([
-    viewKey(f), c && [c.side, c.startLine, c.line, c.text],
+    viewKey(f), c && [c.side, c.startLine, c.line],
     C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path),
   ]);
 }
@@ -69,11 +69,13 @@ const near = ([top, bottom]) => bottom >= main.scrollTop - NEAR && top <= main.s
 const far = ([top, bottom]) => bottom < main.scrollTop - FAR || top > main.scrollTop + main.clientHeight + FAR;
 
 // Replace an element's content and let the content size it, keeping what is on screen still when the
-// element is above the viewport.
+// element is above the viewport. Each textarea takes its draft from the state, because the kept HTML of a
+// body can predate the latest typing.
 function replaceContent(el, html) {
   const above = span(el)[1] <= main.scrollTop + 1, before = el.offsetHeight;
   el.style.height = '';
   el.innerHTML = html;
+  for (const box of el.getElementsByTagName('textarea')) box.value = draftText(box);
   if (above) main.scrollTop += el.offsetHeight - before;
 }
 function fillChunk(parts, chunk) {
@@ -119,9 +121,9 @@ function emptyBody(el) {
 // body does not show it.
 function revealRow(f, el, key) {
   fillBody(f, el);
-  const parts = bodyParts(f), i = parts.index ? parts.index.get(key) : undefined;
-  if (i === undefined) return null;
-  const chunk = codeOf(el).querySelector(`.chunk[data-start="${i - i % CHUNK}"]`);
+  const code = codeOf(el), parts = bodyParts(f), i = parts.index ? parts.index.get(key) : undefined;
+  if (!code || i === undefined) return null;
+  const chunk = code.querySelector(`.chunk[data-start="${i - i % CHUNK}"]`);
   if (chunk) fillChunk(parts, chunk);
   return document.getElementById(rowId(f, key));
 }

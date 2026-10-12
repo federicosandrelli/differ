@@ -49,7 +49,8 @@ or comment, or discards it. Cmd+Enter sends a form, Escape closes it.
 
 Comments load from GitHub after the page, through `/api/...` on the server, so
 they need the server (not a page opened from disk). They refresh after every
-change and when the window regains focus after 30 seconds away.
+change and when the window regains focus after 30 seconds away, unless a
+comment box has focus.
 
 ## Desktop app
 
