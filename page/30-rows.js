@@ -195,8 +195,11 @@ function viewKey(f) {
 }
 
 // ---------- word-level differences between a removed line and its added counterpart
-// Changed ranges of the two lines, as plain-text offsets, or null when the lines share too little.
+const WORD_DIFF_MAX = 1000;
+// Changed ranges of the two lines, as plain-text offsets, or null when the lines share too little or either is
+// longer than WORD_DIFF_MAX characters: the comparison's table grows with the product of the two lengths.
 function wordDiff(a, b) {
+  if (a.length > WORD_DIFF_MAX || b.length > WORD_DIFF_MAX) return null;
   const tok = (t) => t.match(/\w+|\s+|[^\w\s]/g) || [];
   const A = tok(a), B = tok(b);
   const n = A.length, m = B.length;

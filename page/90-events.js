@@ -1,7 +1,21 @@
 // Event handling and start-up.
 
-function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); render(); }
-function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); render(); }
+// Render after a file's section opens or closes. When the file's header is on screen, the header stays where it
+// is: a collapse removes the rows under the viewport, so keeping them as the anchor would carry the pane deep into
+// the next files.
+function renderKeepingHeader(f) {
+  const head = (el) => el && el.querySelector(':scope > .fhead');
+  const pane = main.getBoundingClientRect(), old = head(sectionEl(f));
+  const top = old && old.getBoundingClientRect().top;
+  const onScreen = top != null && top >= pane.top - 1 && top < pane.bottom;
+  render();
+  const now = onScreen && head(sectionEl(f));
+  if (!now) return;
+  const keep = () => { main.scrollTop += now.getBoundingClientRect().top - top; };
+  keep(); syncViewport(); keep(); syncViewport(); keep();
+}
+function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); renderKeepingHeader(f); }
+function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); renderKeepingHeader(f); }
 
 document.addEventListener('click', (e) => {
   const bug = e.target.closest(BUG_ATTRS);
@@ -100,6 +114,7 @@ window.addEventListener('hashchange', () => {
 (function init() {
   state.showNoiseOnly = lsGet('dr:noise-only') === '1';
   state.showGenerated = lsGet('dr:generated') === '1';
+  if (!FILES.some(kindVisible)) state.filter = 'all';
   document.body.classList.toggle('commentable', !!API);
   render();
   const t = hashTarget();
