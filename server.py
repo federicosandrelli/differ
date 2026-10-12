@@ -26,7 +26,6 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import build
@@ -260,7 +259,8 @@ class Handler(BaseHTTPRequestHandler):
         The Content-Type must be application/json, which a cross-origin page can send only after a preflight
         this server never answers.
         """
-        port = self.server.server_address[1]
+        address = self.server.server_address
+        port = address[1] if isinstance(address, tuple) else None
         origin = self.headers.get("Origin")
         if origin not in {f"http://{host}:{port}" for host in LOOPBACK_HOSTS}:
             return f"Origin {origin or '(missing)'} is not this server"
@@ -313,8 +313,8 @@ class Handler(BaseHTTPRequestHandler):
         except comments.CommentError as exc:
             return self.send_json({"error": str(exc)}, 502)
 
-    def log_message(self, fmt: str, *args) -> None:
-        sys.stderr.write(f"{self.address_string()} {fmt % args}\n")
+    def log_message(self, format: str, *args) -> None:
+        sys.stderr.write(f"{self.address_string()} {format % args}\n")
 
 
 def port_taken(port: int) -> str | None:
