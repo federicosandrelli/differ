@@ -52,10 +52,32 @@
     const all = [home, ...tabs];
     activate(all[(all.indexOf(active) + dir + all.length) % all.length]);
   }
+  // Cmd+Plus, Cmd+Minus and Cmd+0 zoom the pages in the desktop app, whose webview has no zoom of its own; a browser
+  // zooms by itself. The zoom survives a relaunch. The tab strip zooms back out by the same factor, so it keeps its
+  // size and its place around the traffic lights.
+  const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+  const webview = APP && window.__TAURI__ && window.__TAURI__.webview;
+  let zoom = 1;
+  function setZoom(z) {
+    if (!webview) return;
+    zoom = z;
+    bar.style.zoom = 1 / z;
+    webview.getCurrentWebview().setZoom(z).catch(() => {});
+    try { localStorage.setItem('dr:zoom', String(z)); } catch (e) {}
+  }
+  function zoomStep(dir) {
+    const next = dir === 0 ? 1 : dir > 0 ? ZOOMS.find(z => z > zoom + 1e-6) : ZOOMS.filter(z => z < zoom - 1e-6).pop();
+    if (next) setZoom(next);
+  }
+  const zoomDir = (e) => !e.metaKey || e.altKey || e.ctrlKey ? null : e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
   window.addEventListener('keydown', (e) => {
-    if (!e.metaKey || !e.altKey || e.ctrlKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
-    e.preventDefault();
-    step(e.key === 'ArrowLeft' ? -1 : 1);
+    if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      step(e.key === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
+    const dir = zoomDir(e);
+    if (dir !== null && webview) { e.preventDefault(); zoomStep(dir); }
   });
 
   bar.addEventListener('click', (e) => {
@@ -73,6 +95,7 @@
     const m = e.data;
     if (m.type === 'open') { open(m.url); return; }
     if (m.type === 'step') { step(m.dir === -1 ? -1 : 1); return; }
+    if (m.type === 'zoom') { if ([-1, 0, 1].includes(m.dir)) zoomStep(m.dir); return; }
     if (m.type === 'external') { if (APP) location.href = m.url; else window.open(m.url, '_blank', 'noopener'); return; }
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
@@ -85,6 +108,8 @@
     }
   });
 
+  const savedZoom = (() => { try { return parseFloat(localStorage.getItem('dr:zoom')); } catch (e) { return NaN; } })();
+  if (savedZoom > 0 && savedZoom !== 1) setZoom(savedZoom);
   const saved = lsGet();
   tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', badge: t.badge || 0, frame: null }));
   activate(byKey(saved.active) || home);

@@ -7,6 +7,7 @@ const SHELL = window.parent === window ? null : {
   open(url) { this.tell({ type: 'open', url }); },
   external(url) { this.tell({ type: 'external', url }); },
   step(dir) { this.tell({ type: 'step', dir }); },
+  zoom(dir) { this.tell({ type: 'zoom', dir }); },
   badge(n) { this.tell({ type: 'badge', n }); },
   page(url, title) { this.tell({ type: 'page', url, title }); },
 };
@@ -34,6 +35,13 @@ if (SHELL) {
     if (!e.metaKey || !e.altKey || e.ctrlKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
     e.preventDefault();
     SHELL.step(e.key === 'ArrowLeft' ? -1 : 1);
+  }, true);
+  // Cmd+Plus, Cmd+Minus and Cmd+0 zoom the desktop app's window. The shell owns the zoom, so the page forwards the
+  // chord; it leaves the default in place, so a browser still zooms by itself.
+  document.addEventListener('keydown', (e) => {
+    if (!e.metaKey || e.altKey || e.ctrlKey) return;
+    const dir = e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
+    if (dir !== null) SHELL.zoom(dir);
   }, true);
   // The shell says when the tab comes to the front; pages listen for 'tab-shown' on the document.
   window.addEventListener('message', (e) => {

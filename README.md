@@ -59,7 +59,10 @@ The Tauri shell in `src-tauri/` starts `server.py` as a child process on port
 the server when the app quits (the server also exits on its own if the app
 dies). The page keeps its settings in
 the webview's `localStorage`, so the fixed port is what makes them survive a
-relaunch. Links to GitHub open in the system browser.
+relaunch. Links to GitHub open in the system browser. Cmd+Option+Left and
+Cmd+Option+Right step between the tabs. Cmd+Plus and Cmd+Minus zoom the pages
+in steps from 50% to 200%, Cmd+0 resets the zoom, and the zoom survives a
+relaunch; the tab strip keeps its size.
 
 ```sh
 npm install          # the Tauri CLI
