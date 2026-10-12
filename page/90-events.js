@@ -9,7 +9,7 @@ document.addEventListener('click', (e) => {
   const cell = API && e.target.closest('table.diff td.n:first-child');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],[data-theme],' + COMMENT_ATTRS);
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-whole],[data-review],[data-fold],[data-runs],[data-run],' + COMMENT_ATTRS);
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
@@ -25,7 +25,6 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (d.filter) { state.filter = d.filter; render(); return; }
-  if (d.theme) { state.theme = d.theme; lsSet('dr:theme', state.theme); applyTheme(); renderSide(); return; }
   if (d.generated !== undefined) { e.preventDefault(); state.showGenerated = d.generated === '1'; lsSet('dr:generated', state.showGenerated ? '1' : '0'); render(); return; }
   if (d.noiseonly !== undefined) { e.preventDefault(); state.showNoiseOnly = d.noiseonly === '1'; lsSet('dr:noise-only', state.showNoiseOnly ? '1' : '0'); render(); return; }
   if (d.tree) { state.closed = new Set(d.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
