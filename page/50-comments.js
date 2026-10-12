@@ -172,7 +172,7 @@ function openCompose(path, side, line, extend) {
 function textareaKey(e) {
   const form = e.target.closest('.form');
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary'); if (b && !b.disabled) b.click(); e.preventDefault(); }
-  else if (e.key === 'Escape') { const b = form && form.querySelector('[data-compose-cancel],[data-reply-cancel]'); if (b) b.click(); else e.target.blur(); }
+  else if (e.key === 'Escape') { const b = form && form.querySelector('[data-compose-cancel],[data-reply-cancel],[data-bug-cancel]'); if (b) b.click(); else e.target.blur(); }
 }
 const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload]';
 // Handle a click on a comment control; true when the element was one.

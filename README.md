@@ -118,7 +118,7 @@ shell's PATH to run: it ships the Python files, not an interpreter.
   file: its rows, blocks and folds, and `reveal`, which opens whatever hides a
   row; `40-code.js` draws that view as the diff table; `50-comments.js` the
   review threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
-  `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
+  `75-bugreport.js` the bug report prompt; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its
   header; its diff table is cut into chunks of 100 rows that hold their rows
   only while they are near the viewport and keep their height when emptied, so
@@ -139,3 +139,14 @@ shell's PATH to run: it ships the Python files, not an interpreter.
 
 Keys in the page: arrow keys in the tree, `/` search and Enter for the next
 hit, `r` mark reviewed, `o` back to the top.
+
+## Reporting a bug
+
+"Report a bug" under the file tree takes a description of the issue and
+turns it into a prompt for Claude Code, shown in the sidebar and copied to the
+clipboard. The prompt holds the description, the page's address and pull
+request, the file and row in view, the page's state, the comments' state, the
+last clicks and keys, the errors since the page loaded (with page line
+numbers mapped back to the source files), the differ commit the page was
+built from, and how to run the app. Paste it into a Claude Code session
+opened in this repository.
