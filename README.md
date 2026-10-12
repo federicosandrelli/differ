@@ -10,14 +10,13 @@ with import sections and rename fallout folded away.
 python3 server.py            # http://localhost:8765/
 ```
 
-The start page lists the open PRs waiting for your review and your own, plus
-the pages you opened recently. It opens at once with the lists as last fetched
-and refreshes them from GitHub in the background. Paste any PR URL or
-`owner/repo#123` to open another. A page is built on first visit and cached by
-head commit. A later visit serves the newest built page at once and checks the
-head commit in the background: after a new push the next page is built while
-you read, and the page offers it in a notice once its comments load. Add
-`?refresh=1` to a page URL to rebuild it anyway.
+The start page has a search bar and the ten pull requests you opened last,
+newest first. Paste any PR URL or `owner/repo#123` to open another. A page is
+built on first visit and cached by head commit. A later visit serves the
+newest built page at once and checks the head commit in the background: after
+a new push the next page is built while you read, and the page offers it in a
+notice once its comments load. Add `?refresh=1` to a page URL to rebuild it
+anyway.
 
 To build one page without the server:
 
