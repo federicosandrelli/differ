@@ -143,8 +143,13 @@ def shell_file(name: str) -> str:
 
 def shell(title: str, body: str) -> bytes:
     """A plain document inside the tabbed shell: the start page, and the progress and error pages."""
-    return render.fill(shell_file("document.html"), TITLE=html.escape(title), THEME=render.theme_head(),
-                       FRAME=render.frame_script(), BODY=body).encode()
+    return render.fill(
+        shell_file("document.html"),
+        TITLE=html.escape(title),
+        THEME=render.theme_head(),
+        FRAME=render.frame_script(),
+        BODY=body,
+    ).encode()
 
 
 def tabs_page() -> bytes:
@@ -153,9 +158,11 @@ def tabs_page() -> bytes:
 
 
 def pr_item(p: dict) -> str:
-    ref = f'{p["owner"]}/{p["repo"]}#{p["number"]}'
-    return (f'<a class="item" href="/{p["owner"]}/{p["repo"]}/pull/{p["number"]}"><span class="t">{html.escape(p["title"])}</span>'
-            f'<span class="w">{html.escape(ago(p["opened"]))}</span><span class="m">{html.escape(ref)}</span></a>')
+    ref = f"{p['owner']}/{p['repo']}#{p['number']}"
+    return (
+        f'<a class="item" href="/{p["owner"]}/{p["repo"]}/pull/{p["number"]}"><span class="t">{html.escape(p["title"])}</span>'
+        f'<span class="w">{html.escape(ago(p["opened"]))}</span><span class="m">{html.escape(ref)}</span></a>'
+    )
 
 
 def recent_items() -> str:
@@ -170,8 +177,12 @@ def start_page() -> bytes:
 def progress_page(key: tuple[str, str, int]) -> bytes:
     owner, repo, number = key
     ref = f"{owner}/{repo}#{number}"
-    body = render.fill(shell_file("progress.html"), REF=html.escape(ref), STATUS=f"/status/{owner}/{repo}/{number}",
-                       RETRY=f"/{owner}/{repo}/pull/{number}?refresh=1")
+    body = render.fill(
+        shell_file("progress.html"),
+        REF=html.escape(ref),
+        STATUS=f"/status/{owner}/{repo}/{number}",
+        RETRY=f"/{owner}/{repo}/pull/{number}?refresh=1",
+    )
     return shell(f"Building {ref}", body)
 
 
@@ -209,7 +220,11 @@ class Handler(BaseHTTPRequestHandler):
             if m := STATUS.match(url.path):
                 with lock:
                     job = jobs.get(page_key(m))
-                data = {"state": job.state, "log": job.log, "error": job.error} if job else {"state": "none", "log": [], "error": ""}
+                data = (
+                    {"state": job.state, "log": job.log, "error": job.error}
+                    if job
+                    else {"state": "none", "log": [], "error": ""}
+                )
                 return self.send(200, json.dumps(data).encode(), "application/json")
             if m := PAGE.match(url.path):
                 if url.path != url.path.lower():
@@ -264,11 +279,22 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             if action == "comment":
-                result = comments.add_thread(owner, repo, number, path=body["path"], body=body["body"], line=int(body["line"]),
-                                             side=body.get("side", "RIGHT"), start_line=body.get("start_line"),
-                                             start_side=body.get("start_side"), mode=body.get("mode", "review"))
+                result = comments.add_thread(
+                    owner,
+                    repo,
+                    number,
+                    path=body["path"],
+                    body=body["body"],
+                    line=int(body["line"]),
+                    side=body.get("side", "RIGHT"),
+                    start_line=body.get("start_line"),
+                    start_side=body.get("start_side"),
+                    mode=body.get("mode", "review"),
+                )
             elif action == "reply":
-                result = comments.reply(owner, repo, number, thread_id=body["thread"], body=body["body"], mode=body.get("mode", "review"))
+                result = comments.reply(
+                    owner, repo, number, thread_id=body["thread"], body=body["body"], mode=body.get("mode", "review")
+                )
             elif action == "resolve":
                 result = comments.resolve(body["thread"], bool(body.get("resolved", True)))
             elif action == "delete":

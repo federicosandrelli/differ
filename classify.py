@@ -63,7 +63,7 @@ def parse_patch(text: str) -> list[FileDiff]:
     old_no = new_no = 0
     for raw in text.splitlines():
         if raw.startswith("diff --git "):
-            m = re.match(r'diff --git a/(.*) b/(.*)$', raw)
+            m = re.match(r"diff --git a/(.*) b/(.*)$", raw)
             current = FileDiff(old_path=m.group(1), new_path=m.group(2), status="M")
             files.append(current)
             hunk = None
@@ -125,6 +125,7 @@ def build_runs(fd: FileDiff) -> None:
 
 # ---------------------------------------------------------------- python structure
 
+
 def python_structure(source: str) -> tuple[set[int], list[dict]]:
     """Return (import line numbers, symbols) for a Python source; both empty when it does not parse."""
     imports: set[int] = set()
@@ -142,16 +143,26 @@ def python_structure(source: str) -> tuple[set[int], list[dict]]:
                 kind = "class" if isinstance(child, ast.ClassDef) else "def"
                 start = child.decorator_list[0].lineno if child.decorator_list else child.lineno
                 name = f"{parent_name}.{child.name}" if parent_name else child.name
-                symbols.append({"name": name, "short": child.name, "kind": kind, "start": start,
-                                "end": child.end_lineno, "depth": depth})
+                symbols.append(
+                    {
+                        "name": name,
+                        "short": child.name,
+                        "kind": kind,
+                        "start": start,
+                        "end": child.end_lineno,
+                        "depth": depth,
+                    }
+                )
                 visit(child, depth + 1, name)
             elif isinstance(child, (ast.If, ast.Try, ast.With, ast.For, ast.While)):
                 visit(child, depth, parent_name)
+
     visit(tree, 0, "")
     return imports, symbols
 
 
 # ---------------------------------------------------------------- renames
+
 
 def token_diff(old: str, new: str) -> tuple[str, str] | None:
     """The differing span of two lines, widened to token boundaries, or None when it is not identifier-like."""
@@ -242,8 +253,10 @@ def is_definition(line: str, name: str) -> bool:
 
 # ---------------------------------------------------------------- classification
 
-def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames: list[tuple[str, str]],
-                 rename_info: dict) -> None:
+
+def classify_run(
+    run: Run, old_imports: set[int], new_imports: set[int], renames: list[tuple[str, str]], rename_info: dict
+) -> None:
     removed = [t for _, t in run.removed]
     added = [t for _, t in run.added]
     changed = removed + added
@@ -285,6 +298,7 @@ def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames
 def detect_moves(files: list[FileDiff]) -> None:
     def key(lines):
         return tuple(t.strip() for _, t in lines if t.strip())
+
     added_index: dict[tuple, list[tuple[int, int]]] = defaultdict(list)
     for fi, fd in enumerate(files):
         for run in fd.runs:
@@ -314,13 +328,24 @@ def file_kind(path: str) -> str:
 
 
 GENERATED_NAMES = {
-    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "poetry.lock", "uv.lock", "Pipfile.lock",
-    "Cargo.lock", "Gemfile.lock", "composer.lock", "go.sum",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "bun.lockb",
+    "poetry.lock",
+    "uv.lock",
+    "Pipfile.lock",
+    "Cargo.lock",
+    "Gemfile.lock",
+    "composer.lock",
+    "go.sum",
 }
 GENERATED_SUFFIXES = (".min.js", ".min.css", ".pb.go", "_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
 GENERATED_MARKER = re.compile(
     r"@generated|do not (hand[- ])?edit|(file|code) (is|was|has been) (auto(matically)?[- ]?)?generated"
-    r"|auto(matically)?[- ]?generated (by|from|at|on|with|using)\b", re.I)
+    r"|auto(matically)?[- ]?generated (by|from|at|on|with|using)\b",
+    re.I,
+)
 
 
 def is_generated(path: str, source: str, marked: set[str]) -> bool:
@@ -332,12 +357,48 @@ def is_generated(path: str, source: str, marked: set[str]) -> bool:
 
 
 LANGUAGES = {
-    ".py": "python", ".pyi": "python", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".jsx": "javascript",
-    ".ts": "typescript", ".tsx": "typescript", ".rs": "rust", ".go": "go", ".rb": "ruby", ".java": "java", ".kt": "kotlin",
-    ".swift": "swift", ".c": "c", ".h": "c", ".cpp": "cpp", ".hpp": "cpp", ".cs": "csharp", ".php": "php", ".lua": "lua",
-    ".sh": "bash", ".bash": "bash", ".zsh": "bash", ".sql": "sql", ".json": "json", ".yml": "yaml", ".yaml": "yaml",
-    ".toml": "ini", ".ini": "ini", ".cfg": "ini", ".css": "css", ".scss": "scss", ".html": "xml", ".xml": "xml",
-    ".svg": "xml", ".md": "markdown", ".diff": "diff", ".patch": "diff", ".graphql": "graphql", ".r": "r", ".pl": "perl",
+    ".py": "python",
+    ".pyi": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".rs": "rust",
+    ".go": "go",
+    ".rb": "ruby",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".swift": "swift",
+    ".c": "c",
+    ".h": "c",
+    ".cpp": "cpp",
+    ".hpp": "cpp",
+    ".cs": "csharp",
+    ".php": "php",
+    ".lua": "lua",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".sql": "sql",
+    ".json": "json",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".toml": "ini",
+    ".ini": "ini",
+    ".cfg": "ini",
+    ".css": "css",
+    ".scss": "scss",
+    ".html": "xml",
+    ".xml": "xml",
+    ".svg": "xml",
+    ".md": "markdown",
+    ".diff": "diff",
+    ".patch": "diff",
+    ".graphql": "graphql",
+    ".r": "r",
+    ".pl": "perl",
 }
 SPECIAL_FILES = {"Makefile": "makefile", "Dockerfile": "dockerfile"}
 
@@ -345,7 +406,7 @@ SPECIAL_FILES = {"Makefile": "makefile", "Dockerfile": "dockerfile"}
 def language(path: str) -> str:
     """The highlight.js language name for a path, or "text"."""
     name = path.rsplit("/", 1)[-1]
-    suffix = name[name.rfind("."):].lower() if "." in name else ""
+    suffix = name[name.rfind(".") :].lower() if "." in name else ""
     return SPECIAL_FILES.get(name) or LANGUAGES.get(suffix, "text")
 
 
@@ -374,8 +435,16 @@ def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list
             old_imports, imports, symbols = set(), set(), []
         for run in fd.runs:
             classify_run(run, old_imports, imports if content_side == "new" else old_imports, ordered, rename_info)
-        entries.append({"fd": fd, "symbols": symbols, "content": content, "content_side": content_side,
-                        "import_lines": imports, "old_import_lines": old_imports})
+        entries.append(
+            {
+                "fd": fd,
+                "symbols": symbols,
+                "content": content,
+                "content_side": content_side,
+                "import_lines": imports,
+                "old_import_lines": old_imports,
+            }
+        )
     return entries
 
 
@@ -415,23 +484,49 @@ def file_json(entry: dict, marked: set[str]) -> dict:
         by_class[run.cls] += n
         if run.cls == "substantive" or (run.cls == "rename" and run.origin):
             substantive += n
-        runs_json.append({
-            "index": run.index, "class": run.cls,
-            "removed": [no for no, _ in run.removed], "added": [no for no, _ in run.added],
-            "rename": list(run.rename) if run.rename else None, "origin": run.origin,
-            "pair_rename": run.pair_rename, "moved_to": run.moved_to,
-        })
-    hunks_json = [{"old_start": h.old_start, "new_start": h.new_start, "header": h.header,
-                   "lines": [[t, o, n, x] for t, o, n, x in h.lines]} for h in fd.hunks]
+        runs_json.append(
+            {
+                "index": run.index,
+                "class": run.cls,
+                "removed": [no for no, _ in run.removed],
+                "added": [no for no, _ in run.added],
+                "rename": list(run.rename) if run.rename else None,
+                "origin": run.origin,
+                "pair_rename": run.pair_rename,
+                "moved_to": run.moved_to,
+            }
+        )
+    hunks_json = [
+        {
+            "old_start": h.old_start,
+            "new_start": h.new_start,
+            "header": h.header,
+            "lines": [[t, o, n, x] for t, o, n, x in h.lines],
+        }
+        for h in fd.hunks
+    ]
     return {
-        "path": fd.path, "old_path": fd.old_path, "new_path": fd.new_path, "status": fd.status,
-        "kind": file_kind(fd.path), "generated": is_generated(fd.path, entry["content"], marked),
+        "path": fd.path,
+        "old_path": fd.old_path,
+        "new_path": fd.new_path,
+        "status": fd.status,
+        "kind": file_kind(fd.path),
+        "generated": is_generated(fd.path, entry["content"], marked),
         "lang": language(fd.path),
-        "content": entry["content"], "content_side": entry["content_side"],
-        "hunks": hunks_json, "runs": runs_json, "symbols": entry["symbols"],
-        "import_lines": sorted(entry["import_lines"]), "old_import_lines": sorted(entry["old_import_lines"]),
-        "stats": {"raw": sum(by_class.values()), "substantive": substantive, "by_class": dict(by_class),
-                  "additions": sum(len(r.added) for r in fd.runs), "deletions": sum(len(r.removed) for r in fd.runs)},
+        "content": entry["content"],
+        "content_side": entry["content_side"],
+        "hunks": hunks_json,
+        "runs": runs_json,
+        "symbols": entry["symbols"],
+        "import_lines": sorted(entry["import_lines"]),
+        "old_import_lines": sorted(entry["old_import_lines"]),
+        "stats": {
+            "raw": sum(by_class.values()),
+            "substantive": substantive,
+            "by_class": dict(by_class),
+            "additions": sum(len(r.added) for r in fd.runs),
+            "deletions": sum(len(r.removed) for r in fd.runs),
+        },
     }
 
 
@@ -443,8 +538,11 @@ def renames_json(files: list[FileDiff], rename_info: dict, origins: dict) -> lis
             if run.rename:
                 usage[run.rename]["runs"] += 1
                 usage[run.rename]["files"].add(fd.path)
-    out = [{**info, "runs": usage[pair]["runs"], "files": sorted(usage[pair]["files"]), "origin": origins[pair]}
-           for pair, info in rename_info.items() if usage[pair]["runs"]]
+    out = [
+        {**info, "runs": usage[pair]["runs"], "files": sorted(usage[pair]["files"]), "origin": origins[pair]}
+        for pair, info in rename_info.items()
+        if usage[pair]["runs"]
+    ]
     return sorted(out, key=lambda r: -r["runs"])
 
 

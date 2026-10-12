@@ -58,8 +58,9 @@ def pr_metadata(owner: str, repo: str, number: int) -> dict:
 
 
 def head_sha(owner: str, repo: str, number: int) -> str:
-    return run(["gh", "pr", "view", str(number), "--repo", f"{owner}/{repo}", "--json", "headRefOid",
-                "--jq", ".headRefOid"]).strip()
+    return run(
+        ["gh", "pr", "view", str(number), "--repo", f"{owner}/{repo}", "--json", "headRefOid", "--jq", ".headRefOid"]
+    ).strip()
 
 
 def page_path(owner: str, repo: str, number: int, head: str) -> Path:
@@ -97,8 +98,12 @@ def ensure_repo(owner: str, repo: str, log: Log) -> Path:
 
 
 def has_commit(repo_dir: Path, sha: str) -> bool:
-    return subprocess.run(["git", "-C", str(repo_dir), "cat-file", "-e", f"{sha}^{{commit}}"],
-                          capture_output=True).returncode == 0
+    return (
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "cat-file", "-e", f"{sha}^{{commit}}"], capture_output=True
+        ).returncode
+        == 0
+    )
 
 
 def fetch(repo_dir: Path, number: int, base: str, head: str, log: Log) -> None:
@@ -112,7 +117,9 @@ def fetch(repo_dir: Path, number: int, base: str, head: str, log: Log) -> None:
 
 def read_blobs(repo_dir: Path, specs: list[str]) -> dict[str, bytes]:
     """The content of every `<commit>:<path>` spec, read in one git process; missing specs are left out."""
-    out = run_bytes(["git", "-C", str(repo_dir), "cat-file", "--batch", "--buffer"], input="".join(s + "\n" for s in specs).encode())
+    out = run_bytes(
+        ["git", "-C", str(repo_dir), "cat-file", "--batch", "--buffer"], input="".join(s + "\n" for s in specs).encode()
+    )
     blobs: dict[str, bytes] = {}
     pos = 0
     for spec in specs:
@@ -122,7 +129,7 @@ def read_blobs(repo_dir: Path, specs: list[str]) -> dict[str, bytes]:
         if header[-1] == "missing":
             continue
         size = int(header[2])
-        blobs[spec] = out[pos:pos + size]
+        blobs[spec] = out[pos : pos + size]
         pos += size + 1
     return blobs
 
@@ -154,16 +161,24 @@ def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
     (out / "names.txt").write_text(names)
     pairs = changed_paths(names)
     log(f"Reading {len(pairs)} changed files")
-    wanted = [(side, path) for old, new in pairs for side, sha, path in (("old", base, old), ("new", head, new)) if path]
+    wanted = [
+        (side, path) for old, new in pairs for side, sha, path in (("old", base, old), ("new", head, new)) if path
+    ]
     blobs = read_blobs(repo_dir, [f"{base if side == 'old' else head}:{path}" for side, path in wanted])
     for side, path in wanted:
         target = out / side / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blobs.get(f"{base if side == 'old' else head}:{path}", b""))
     paths = "".join((new or old) + "\n" for old, new in pairs)
-    attrs = subprocess.run(git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"],
-                           input=paths, capture_output=True, text=True)
-    generated = [line.rsplit(": ", 2)[0] for line in attrs.stdout.splitlines() if line.rsplit(": ", 1)[-1] in ("set", "true")]
+    attrs = subprocess.run(
+        git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"],
+        input=paths,
+        capture_output=True,
+        text=True,
+    )
+    generated = [
+        line.rsplit(": ", 2)[0] for line in attrs.stdout.splitlines() if line.rsplit(": ", 1)[-1] in ("set", "true")
+    ]
     (out / "generated.txt").write_text("".join(path + "\n" for path in generated))
 
 
@@ -187,13 +202,23 @@ def build(ref: str, log: Log = print) -> Path:
     (work / "new").mkdir(parents=True)
     export(repo_dir, merge_base, head, work, log)
 
-    annotations = {"pr": {
-        "number": number, "title": meta["title"], "url": meta["url"], "repo": f"{owner}/{repo}",
-        "base": merge_base, "head": head, "author": (meta.get("author") or {}).get("login", ""),
-        "commits": len(meta.get("commits") or []), "body": meta.get("body") or "",
-        "base_ref": meta.get("baseRefName"), "head_ref": meta.get("headRefName"),
-        "state": meta.get("state"), "draft": meta.get("isDraft", False),
-    }}
+    annotations = {
+        "pr": {
+            "number": number,
+            "title": meta["title"],
+            "url": meta["url"],
+            "repo": f"{owner}/{repo}",
+            "base": merge_base,
+            "head": head,
+            "author": (meta.get("author") or {}).get("login", ""),
+            "commits": len(meta.get("commits") or []),
+            "body": meta.get("body") or "",
+            "base_ref": meta.get("baseRefName"),
+            "head_ref": meta.get("headRefName"),
+            "state": meta.get("state"),
+            "draft": meta.get("isDraft", False),
+        }
+    }
     (work / "annotations.json").write_text(json.dumps(annotations, indent=2, ensure_ascii=False) + "\n")
 
     log("Classifying changes")
