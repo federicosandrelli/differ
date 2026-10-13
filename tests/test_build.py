@@ -1,6 +1,8 @@
 import os
+import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -95,3 +97,40 @@ def test_page_current_and_latest_page(tmp_path: Path, monkeypatch: pytest.Monkey
 
     build.forget_pages("owner", "repo", 7)
     assert not stale.parent.exists()
+
+
+def test_run_names_the_command_and_limit_when_it_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    def hang(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    monkeypatch.setattr(build.subprocess, "run", hang)
+    with pytest.raises(build.BuildError, match=r"`gh pr view 7` did not finish within 5 seconds"):
+        build.run(["gh", "pr", "view", "7", "--repo", "o/r"], timeout=5)
+
+
+def test_run_explains_a_missing_gh(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        raise FileNotFoundError(2, "No such file or directory", args[0])
+
+    monkeypatch.setattr(build.subprocess, "run", missing)
+    with pytest.raises(build.BuildError, match=r"The GitHub CLI \(gh\) is not installed or not on PATH"):
+        build.run(["gh", "pr", "view", "7"])
+    with pytest.raises(build.BuildError, match="git is not installed or not on PATH"):
+        build.has_commit(Path("/nowhere"), "abc")
+
+
+def test_every_subprocess_gets_a_timeout_and_clones_get_a_longer_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(build, "CACHE", tmp_path)
+    timeouts: dict[str, float] = {}
+
+    def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        verb = next(a for a in args if a in ("clone", "cat-file", "fetch"))
+        timeouts[verb] = kwargs["timeout"]
+        return subprocess.CompletedProcess(args, 1 if verb == "cat-file" else 0, b"", b"")
+
+    monkeypatch.setattr(build.subprocess, "run", record)
+    build.ensure_repo("o", "r", lambda line: None)
+    build.fetch(tmp_path / "r.git", 7, "base", "head", lambda line: None)
+    assert timeouts == {"clone": 600, "cat-file": 120, "fetch": 600}

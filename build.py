@@ -28,6 +28,9 @@ REPO = r"(?!-)(?!\.+(?![\w.-]))[\w.-]+"
 PR_REF = re.compile(rf"(?:https?://github\.com/)?(?<![\w.-])({OWNER})/({REPO})(?:/pull/|/pulls/|#)(\d+)")
 
 Log = Callable[[str], None]
+TIMEOUT = 120
+CLONE_TIMEOUT = 600
+GH_MISSING = "The GitHub CLI (gh) is not installed or not on PATH"
 
 
 class BuildError(Exception):
@@ -42,16 +45,29 @@ def parse_ref(text: str) -> tuple[str, str, int]:
     return m.group(1).lower(), m.group(2).lower(), int(m.group(3))
 
 
-def run_bytes(args: list[str], input: bytes | None = None) -> bytes:
-    r = subprocess.run(args, capture_output=True, input=input)
+def spawn(
+    args: list[str], input: bytes | str | None = None, text: bool = False, timeout: float = TIMEOUT
+) -> subprocess.CompletedProcess:
+    """Run the command and wait at most `timeout` seconds for it. A command that is not installed or does not
+    finish in time raises a BuildError that names it."""
+    try:
+        return subprocess.run(args, capture_output=True, input=input, text=text, timeout=timeout)
+    except FileNotFoundError:
+        raise BuildError(GH_MISSING if args[0] == "gh" else f"{args[0]} is not installed or not on PATH") from None
+    except subprocess.TimeoutExpired:
+        raise BuildError(f"`{' '.join(args[:4])}` did not finish within {timeout:g} seconds") from None
+
+
+def run_bytes(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT) -> bytes:
+    r = spawn(args, input=input, timeout=timeout)
     if r.returncode:
         err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
         raise BuildError(f"`{' '.join(args[:4])}` failed: {err[:600]}")
     return r.stdout
 
 
-def run(args: list[str]) -> str:
-    return run_bytes(args).decode(errors="replace")
+def run(args: list[str], timeout: float = TIMEOUT) -> str:
+    return run_bytes(args, timeout=timeout).decode(errors="replace")
 
 
 def pr_metadata(owner: str, repo: str, number: int) -> dict:
@@ -128,28 +144,27 @@ def ensure_repo(owner: str, repo: str, log: Log) -> Path:
     if not mirror.exists():
         log(f"Cloning {owner}/{repo} without file contents (first time for this repo)")
         mirror.parent.mkdir(parents=True, exist_ok=True)
-        run(["gh", "repo", "clone", f"{owner}/{repo}", str(mirror), "--", "--bare", "--filter=blob:none", "--quiet"])
+        run(
+            ["gh", "repo", "clone", f"{owner}/{repo}", str(mirror), "--", "--bare", "--filter=blob:none", "--quiet"],
+            timeout=CLONE_TIMEOUT,
+        )
     else:
         log(f"Using the cached clone of {owner}/{repo}")
     return mirror
 
 
 def has_commit(repo_dir: Path, sha: str) -> bool:
-    return (
-        subprocess.run(
-            ["git", "-C", str(repo_dir), "cat-file", "-e", f"{sha}^{{commit}}"], capture_output=True
-        ).returncode
-        == 0
-    )
+    return spawn(["git", "-C", str(repo_dir), "cat-file", "-e", f"{sha}^{{commit}}"]).returncode == 0
 
 
 def fetch(repo_dir: Path, number: int, base: str, head: str, log: Log) -> None:
     if has_commit(repo_dir, base) and has_commit(repo_dir, head):
         return
     log("Fetching the pull request's commits")
-    run(["git", "-C", str(repo_dir), "fetch", "--quiet", "--no-tags", "origin", f"pull/{number}/head", base])
+    git = ["git", "-C", str(repo_dir)]
+    run(git + ["fetch", "--quiet", "--no-tags", "origin", f"pull/{number}/head", base], timeout=CLONE_TIMEOUT)
     if not has_commit(repo_dir, head):
-        run(["git", "-C", str(repo_dir), "fetch", "--quiet", "--no-tags", "origin", head])
+        run(git + ["fetch", "--quiet", "--no-tags", "origin", head], timeout=CLONE_TIMEOUT)
 
 
 def read_blobs(repo_dir: Path, specs: list[str]) -> dict[str, bytes]:
@@ -207,12 +222,7 @@ def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blobs.get(f"{base if side == 'old' else head}:{path}", b""))
     paths = "".join(path + "\n" for old, new in pairs if (path := new or old))
-    attrs = subprocess.run(
-        git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"],
-        input=paths,
-        capture_output=True,
-        text=True,
-    )
+    attrs = spawn(git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"], input=paths, text=True)
     generated = [
         line.rsplit(": ", 2)[0] for line in attrs.stdout.splitlines() if line.rsplit(": ", 1)[-1] in ("set", "true")
     ]

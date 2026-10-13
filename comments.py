@@ -22,13 +22,18 @@ class CommentError(Exception):
 
 
 def graphql(query: str, **variables) -> dict:
-    r = subprocess.run(
-        ["gh", "api", "graphql", "--input", "-"],
-        input=json.dumps({"query": query, "variables": variables}),
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    try:
+        r = subprocess.run(
+            ["gh", "api", "graphql", "--input", "-"],
+            input=json.dumps({"query": query, "variables": variables}),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except FileNotFoundError:
+        raise CommentError(build.GH_MISSING) from None
+    except subprocess.TimeoutExpired:
+        raise CommentError("`gh api graphql` did not finish within 60 seconds") from None
     try:
         out = json.loads(r.stdout) if r.stdout.strip() else {}
     except json.JSONDecodeError:

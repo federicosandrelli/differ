@@ -212,3 +212,52 @@ def test_refresh_statuses_skips_github_while_another_refresh_runs(
     with server.refreshing:
         server.refresh_statuses()
     assert server.recent_pages()[0]["status"] == "open"
+
+
+def request(method: str, path: str, body: bytes = b"") -> server.Handler:
+    h = handler("http://localhost:8765", "application/json")
+    h.command, h.path, h.request_version = method, path, "HTTP/1.1"
+    h.requestline = f"{method} {path} HTTP/1.1"
+    h.client_address = ("127.0.0.1", 1)
+    h.headers["Content-Length"] = str(len(body))
+    h.rfile, h.wfile = io.BytesIO(body), io.BytesIO()
+    return h
+
+
+def response(h: server.Handler) -> tuple[int, bytes]:
+    raw = cast(io.BytesIO, h.wfile).getvalue()
+    head, _, body = raw.partition(b"\r\n\r\n")
+    return int(head.split(b" ")[1]), body
+
+
+def test_get_answers_an_unexpected_error_with_the_error_page(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def explode() -> bytes:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(server, "tabs_page", explode)
+    h = request("GET", "/")
+    h.do_GET()
+    code, body = response(h)
+    assert code == 500
+    assert b"Could not open that" in body
+    assert b"Unexpected error: RuntimeError: boom" in body
+    assert "RuntimeError: boom" in capsys.readouterr().err
+
+
+def test_api_answers_an_unexpected_error_as_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    def explode(*args: Any, **kwargs: Any) -> dict:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(server.comments, "fetch", explode)
+    h = request("GET", "/api/o/r/1/comments")
+    h.do_GET()
+    code, body = response(h)
+    assert (code, json.loads(body)) == (500, {"error": "Unexpected error: RuntimeError: boom"})
+
+    monkeypatch.setattr(server.comments, "resolve", explode)
+    h = request("POST", "/api/o/r/1/resolve", json.dumps({"thread": "T_1"}).encode())
+    h.do_POST()
+    code, body = response(h)
+    assert (code, json.loads(body)) == (500, {"error": "Unexpected error: RuntimeError: boom"})

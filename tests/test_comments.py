@@ -1,3 +1,4 @@
+import subprocess
 from typing import Any
 
 import pytest
@@ -155,3 +156,12 @@ def test_request_changes_without_a_summary_is_refused(monkeypatch: pytest.Monkey
     monkeypatch.setattr(comments, "graphql", fake_graphql)
     with pytest.raises(comments.CommentError, match="needs a summary"):
         comments.submit("acme", "widgets", 1, event="REQUEST_CHANGES", body="  ")
+
+
+def test_graphql_explains_a_missing_gh(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        raise FileNotFoundError(2, "No such file or directory", args[0])
+
+    monkeypatch.setattr(comments.subprocess, "run", missing)
+    with pytest.raises(comments.CommentError, match=r"The GitHub CLI \(gh\) is not installed or not on PATH"):
+        comments.graphql("query { viewer { login } }")
