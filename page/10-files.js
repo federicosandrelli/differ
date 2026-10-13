@@ -86,14 +86,13 @@ function firstHitKey(f) {
   for (const [, [, o, n]] of hitLines(f)) return hunkKey(f, o, n);
   return null;
 }
-// Wrap every occurrence of the query in <mark>, in the text of an HTML fragment only.
+// Wrap every occurrence of the query in <mark>. The query is found in the plain text of the HTML fragment,
+// so a match can span several highlighter tokens but never starts or ends inside an entity such as &gt;.
 function markHtml(html, q) {
   if (!q) return html;
-  const needle = esc(q).toLowerCase();
-  return html.split(/(<[^>]+>)/).map(part => {
-    if (part.startsWith('<')) return part;
-    let out = '', i = 0, lower = part.toLowerCase();
-    for (;;) { const j = lower.indexOf(needle, i); if (j < 0) break; out += part.slice(i, j) + '<mark>' + part.slice(j, j + needle.length) + '</mark>'; i = j + needle.length; }
-    return out + part.slice(i);
-  }).join('');
+  const needle = caseFold(q);
+  const text = caseFold(html.split(/(<[^>]+>)/).filter((_, i) => i % 2 === 0).map(unesc).join(''));
+  const ranges = [];
+  for (let j = text.indexOf(needle); j >= 0; j = text.indexOf(needle, j + needle.length)) ranges.push([j, j + needle.length]);
+  return wrapRanges(html, ranges, '<mark>', '</mark>');
 }
