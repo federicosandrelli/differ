@@ -54,7 +54,7 @@ document.addEventListener('input', (e) => {
   const box = e.target, d = box.dataset;
   if (d.composeText !== undefined && state.compose) { state.compose.text = box.value; return; }
   if (d.replyText !== undefined) { state.replyOpen.set(d.replyText, box.value); return; }
-  if (d.reviewText !== undefined) { state.reviewText = box.value; return; }
+  if (d.reviewText !== undefined) { state.reviewText = box.value; const b = document.querySelector('[data-submit="REQUEST_CHANGES"]'); if (b) b.disabled = state.busy || !hasReviewSummary(); return; }
   if (d.convText !== undefined) { state.convText = box.value; return; }
   if (d.bugText !== undefined) { state.bug.text = box.value; return; }
   if (!box.classList.contains('search')) return;
