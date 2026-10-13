@@ -274,6 +274,8 @@ def submit(owner: str, repo: str, number: int, *, event: str, body: str = "") ->
     """Submit the pending review, or a review without inline comments, as APPROVE, REQUEST_CHANGES or COMMENT."""
     if event not in ("APPROVE", "REQUEST_CHANGES", "COMMENT"):
         raise CommentError(f"Unknown review event {event!r}")
+    if event == "REQUEST_CHANGES" and not body.strip():
+        raise CommentError("Requesting changes needs a summary.")
     pr_id, head, pending = _pending_review(owner, repo, number)
     if pending:
         graphql(

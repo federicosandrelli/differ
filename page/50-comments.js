@@ -53,6 +53,7 @@ function threadCount(f) {
   for (const ts of e.rows.values()) n += ts.filter(t => !t.resolved).length;
   return n;
 }
+const hasReviewSummary = () => !!state.reviewText.trim();
 function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filter(c => c.pending).length, 0); }
 const excerpt = (s) => { const t = s.replace(/```[\s\S]*?```/g, '').replace(/\s+/g, ' ').trim(); return t.length > 90 ? t.slice(0, 90) + '…' : t; };
 const lineRange = (a, b) => a && a !== b ? `${a}–${b}` : `${b}`;
@@ -126,8 +127,8 @@ function commentNotices() {
 }
 function reviewPanelHtml() {
   const n = pendingCount();
-  return `<div class="form review"><textarea data-review-text placeholder="${n ? 'Review summary (optional)' : 'Review summary'}">${esc(state.reviewText)}</textarea>
-    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn('data-submit="REQUEST_CHANGES" title="Requesting changes needs a review summary"', 'Request changes', false, !state.reviewText.trim())}${btn('data-submit="COMMENT"', 'Comment', true)}
+  return `<div class="form review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
+    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn('data-submit="REQUEST_CHANGES" title="Requesting changes needs a review summary"', 'Request changes', false, !hasReviewSummary())}${btn('data-submit="COMMENT"', 'Comment', true)}
     <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
     <div class="hint">${n ? `${plural(n, 'pending comment')} go out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
 }
@@ -225,7 +226,7 @@ async function commentClick(t, e) {
   if (d.outdated !== undefined) { e.preventDefault(); state.showOutdated.has(d.outdated) ? state.showOutdated.delete(d.outdated) : state.showOutdated.add(d.outdated); render(); return true; }
   if (d.reviewPanel !== undefined) { e.preventDefault(); state.reviewPanel = !state.reviewPanel; if (state.reviewPanel) state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
   if (d.submit !== undefined) {
-    if (!pendingCount() && !C.pending && !state.reviewText.trim() && d.submit === 'COMMENT') { state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
+    if (!hasReviewSummary() && (d.submit === 'REQUEST_CHANGES' || (d.submit === 'COMMENT' && !pendingCount() && !C.pending))) { state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
     if (await post('submit', { event: d.submit, body: state.reviewText })) { state.reviewText = ''; state.reviewPanel = false; renderSide(); }
     return true;
   }

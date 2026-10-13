@@ -157,7 +157,11 @@ def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str,
     expect(button).to_be_enabled()
     box.fill("")
     expect(button).to_be_disabled()
+    button.click(force=True)
     box.fill("Please add a test")
+    page.click("#side a[data-review-panel]")
+    page.click("#side a[data-review-panel]")
+    expect(button).to_be_enabled()
     button.click()
     expect(page.locator("textarea[data-review-text]")).to_have_count(0)
 

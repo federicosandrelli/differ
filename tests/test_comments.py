@@ -146,3 +146,12 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
         }
     ]
     assert [c["id"] for c in result["comments"]] == ["k1"]
+
+
+def test_request_changes_without_a_summary_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_graphql(query: str, **variables: Any) -> dict:
+        raise AssertionError("GitHub must not be called")
+
+    monkeypatch.setattr(comments, "graphql", fake_graphql)
+    with pytest.raises(comments.CommentError, match="needs a summary"):
+        comments.submit("acme", "widgets", 1, event="REQUEST_CHANGES", body="  ")
