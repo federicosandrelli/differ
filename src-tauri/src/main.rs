@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -70,6 +70,84 @@ fn log_script(log: Option<&PathBuf>) -> String {
             format!("window.differServerLog = \"{quoted}\";")
         }
         None => String::new(),
+    }
+}
+
+const PYTHON_REQUIRED: (u32, u32) = (3, 13);
+
+fn find_on_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
+// The Homebrew interpreter comes first: the login shell's PATH may put the Xcode python3 (3.9) or a
+// pyenv shim ahead of it, and server.py needs 3.13.
+fn python_command() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(prefix) = std::env::var_os("HOMEBREW_PREFIX") {
+        candidates.push(PathBuf::from(prefix).join("bin/python3.13"));
+    }
+    candidates.push(PathBuf::from("/opt/homebrew/bin/python3.13"));
+    candidates.push(PathBuf::from("/usr/local/bin/python3.13"));
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .or_else(|| find_on_path("python3.13"))
+        .or_else(|| find_on_path("python3"))
+}
+
+fn python_version(python: &Path) -> Option<(u32, u32)> {
+    let output = Command::new(python)
+        .args([
+            "-c",
+            "import sys; print(sys.version_info[0], sys.version_info[1])",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut parts = text.split_whitespace().map(|part| part.parse::<u32>().ok());
+    Some((parts.next()??, parts.next()??))
+}
+
+fn checked_python() -> Result<PathBuf, String> {
+    let Some(python) = python_command() else {
+        return Err("No python3 was found.".to_string());
+    };
+    match python_version(&python) {
+        Some(version) if version >= PYTHON_REQUIRED => Ok(python),
+        Some((major, minor)) => Err(format!(
+            "Found {} (Python {major}.{minor}).",
+            python.display()
+        )),
+        None => Err(format!(
+            "Found {}, but it did not report its version.",
+            python.display()
+        )),
+    }
+}
+
+fn python_or_exit() -> PathBuf {
+    match checked_python() {
+        Ok(python) => python,
+        Err(found) => {
+            let (major, minor) = PYTHON_REQUIRED;
+            let message = format!(
+                "differ needs Python {major}.{minor} or newer. Install it with: brew install python@{major}.{minor}\n\n{found}"
+            );
+            eprintln!("{message}");
+            rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("differ")
+                .set_description(message)
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            std::process::exit(1);
+        }
     }
 }
 
@@ -145,9 +223,10 @@ fn main() {
             }
         })
         .setup(|app| {
+            let python = python_or_exit();
             let port = pick_port()?;
             let log = server_log();
-            let mut server_command = Command::new("python3");
+            let mut server_command = Command::new(python);
             server_command
                 .arg(server_script(app)?)
                 .arg(port.to_string())

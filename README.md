@@ -81,8 +81,14 @@ npx tauri dev        # run from source
 npx tauri build      # differ.app and a .dmg under src-tauri/target/release/bundle/
 ```
 
-The app needs Rust (`cargo`) to build, and `python3` 3.13 on the login
-shell's PATH to run: it ships the Python files, not an interpreter.
+The app needs Rust (`cargo`) to build. It ships the Python files, not an
+interpreter, and needs Python 3.13 or newer to run. It looks for the
+interpreter in this order and takes the first that exists:
+`$HOMEBREW_PREFIX/bin/python3.13` when `HOMEBREW_PREFIX` is set,
+`/opt/homebrew/bin/python3.13`, `/usr/local/bin/python3.13`, then `python3.13`
+and `python3` on the login shell's PATH. When none is found, or the one found
+is older than 3.13, the app shows an error dialog and quits. The Homebrew cask
+will pull in `python@3.13` and `gh`; `git` and `gh` stay external either way.
 
 ## Checks
 
