@@ -113,6 +113,12 @@ npm install
 npm run lint
 ```
 
+The desktop app has its own CI job, `desktop`, on macOS: `cargo fmt --check`
+and `cargo clippy -- -D warnings` in `src-tauri/`, then
+`npx tauri build --no-bundle`. It runs on every push to `main`, and on a pull
+request that changes `src-tauri/`, `web/`, `package.json`,
+`package-lock.json` or the workflow itself.
+
 ## How a page is built
 
 `build.py`:
