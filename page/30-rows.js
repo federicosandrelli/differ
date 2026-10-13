@@ -230,22 +230,23 @@ function wordDiff(a, b) {
   }).filter(([s, e]) => e > s);
   return { a: join(ra, a), b: join(rb, b) };
 }
-// Wrap plain-text ranges of a highlighted line in <span class="ic">, walking only its text nodes.
-function wrapRanges(html, ranges) {
+// Wrap plain-text ranges of a highlighted line in the open and close tags, walking only its text nodes. A
+// range that crosses a tag is closed before the tag and reopened after it, so the HTML stays well formed.
+function wrapRanges(html, ranges, open = '<span class="ic">', close = '</span>') {
   if (!ranges || !ranges.length) return html;
   const ENT = /&(?:amp|lt|gt|quot|#x27|#39);|./gs;
   let pos = 0, ri = 0;
   return html.split(/(<[^>]+>)/).map(part => {
     if (part.startsWith('<') && part.endsWith('>') && part.length > 1 && !part.startsWith('&')) return part;
-    let out = '', open = false;
+    let out = '', wrapped = false;
     for (const m of part.matchAll(ENT)) {
       while (ri < ranges.length && pos >= ranges[ri][1]) ri++;
       const inside = ri < ranges.length && pos >= ranges[ri][0] && pos < ranges[ri][1];
-      if (inside && !open) { out += '<span class="ic">'; open = true; }
-      if (!inside && open) { out += '</span>'; open = false; }
+      if (inside && !wrapped) { out += open; wrapped = true; }
+      if (!inside && wrapped) { out += close; wrapped = false; }
       out += m[0]; pos++;
     }
-    if (open) out += '</span>';
+    if (wrapped) out += close;
     return out;
   }).join('');
 }
