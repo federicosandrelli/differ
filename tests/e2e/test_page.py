@@ -272,6 +272,22 @@ def test_a_comment_draft_stays_on_its_line_and_joins_a_box_extended_onto_it(page
     page.click("button[data-compose-cancel]")
 
 
+def test_dragging_from_a_line_number_opens_a_comment_on_the_lines_in_between(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    section = page.locator(APP)
+    hello = section.locator("tr.add", has_text='print("hello")').locator("td.n").first
+    main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n").first
+    hello.scroll_into_view_if_needed()
+    start, end = hello.bounding_box(), main.bounding_box()
+    page.mouse.move(start["x"] + 5, start["y"] + 5)
+    page.mouse.down()
+    page.mouse.move(end["x"] + 5, end["y"] + 5, steps=5)
+    expect(section.locator("tr.sel")).to_have_count(2)
+    page.mouse.up()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on lines 10–11")
+    expect(page.locator("textarea[data-compose-text]")).to_be_focused()
+
+
 def test_escape_in_a_reply_box_keeps_the_reply(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.click("button[data-reply='T1']")
