@@ -131,17 +131,34 @@ function importSegments(f, rows) {
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
 const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
+// The new line numbers above each rename run that holds the rename's origin, from the start of the innermost
+// class or function around the run up to the run.
+function originContext(f) {
+  const lines = new Set();
+  for (const r of f.runs) {
+    if (r.class !== 'rename' || !r.origin || !r.added.length) continue;
+    const first = r.added[0];
+    const around = (f.symbols || []).filter(s => s.start <= first && first <= s.end);
+    if (!around.length) continue;
+    const start = Math.max(...around.map(s => s.start));
+    for (let n = start; n < first; n++) lines.add(n);
+  }
+  return lines;
+}
+
 // A context block shows RADIUS lines next to each visible neighbour and folds the middle, unless the
-// reader opened it: head and tail show, mid shows when open.
-function contextBlock(f, blocks, bi, register) {
+// reader opened it: head and tail show, mid shows when open. The tail also shows the lines in keep.
+function contextBlock(f, blocks, bi, register, keep) {
   const rs = blocks[bi].rows;
   const whole = { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
   const visible = (nb) => nb && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
   const leftVisible = bi > 0 && visible(blocks[bi - 1]);
   const rightVisible = bi < blocks.length - 1 && visible(blocks[bi + 1]);
   if (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible)) return whole;
+  const kept = rs.findIndex(r => keep.has(r.newNo));
+  const tailLength = Math.max(rightVisible ? RADIUS : 0, kept < 0 ? 0 : rs.length - kept);
   const head = leftVisible ? rs.slice(0, RADIUS) : [];
-  const tail = rightVisible ? rs.slice(rs.length - RADIUS) : [];
+  const tail = rs.slice(rs.length - tailLength);
   const mid = rs.slice(head.length, rs.length - tail.length);
   if (!mid.length) return whole;
   const key = `${f.path}:${mid[0].newNo}`;
@@ -156,7 +173,7 @@ function contextBlock(f, blocks, bi, register) {
 //   { run, rows }                     a change run; a noise run folds, shown when open
 // Blocks of plain rows leave their folds out of FOLDS, whose entries would keep the rows alive.
 function fileBlocks(f, plain) {
-  const rows = buildRows(f, plain), register = plain ? (id) => id : fold;
+  const rows = buildRows(f, plain), register = plain ? (id) => id : fold, keep = originContext(f);
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);
@@ -169,7 +186,7 @@ function fileBlocks(f, plain) {
       const keys = b.group.map(r => runKey(f, r));
       return { ...b, fold: register(`${f.path}#runs:${b.group.map(r => r.index).join(',')}`, () => keys.forEach(k => state.expanded.add(k))), open: false };
     }
-    if (b.ctx) return contextBlock(f, blocks, bi, register);
+    if (b.ctx) return contextBlock(f, blocks, bi, register, keep);
     if (!isNoise(b.run)) return { ...b, fold: null, open: true };
     const k = runKey(f, b.run);
     return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b) };
