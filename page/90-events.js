@@ -168,10 +168,10 @@ window.addEventListener('hashchange', () => {
     if (!at || at.file !== drag.start.file || at.side !== drag.start.side || at.line === drag.end.line) return;
     drag.end = at;
     const lo = Math.min(drag.start.line, at.line), hi = Math.max(drag.start.line, at.line);
-    for (const tr of e.target.closest('table').querySelectorAll('tr[id]')) {
-      const r = rowAt(tr.id);
-      tr.classList.toggle('sel', !!r && r.side === at.side && r.line >= lo && r.line <= hi);
-    }
+    const trs = [...e.target.closest('table').querySelectorAll('tr[id]')];
+    const sel = trs.map(tr => { const r = rowAt(tr.id); return !!r && r.side === at.side && r.line >= lo && r.line <= hi; });
+    const between = markBetween(trs, sel);
+    trs.forEach((tr, i) => { tr.classList.toggle('sel', sel[i]); tr.classList.toggle('between', between[i]); });
   });
   document.addEventListener('mouseup', () => { if (drag) finish(); });
   function finish() {

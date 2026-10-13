@@ -43,7 +43,14 @@ function attachThreads(f, rows) {
     const n = c.side === 'RIGHT' ? (r.type !== 'del' ? r.newNo : null) : (r.type === 'del' ? r.oldNo : null);
     if (n != null && n >= c.startLine && n <= c.line) { r.sel = true; if (n === c.line) r.compose = true; }
   }
+  if (c) markBetween(rows, rows.map(r => !!r.sel)).forEach((b, i) => { rows[i].between = b; });
   return rows;
+}
+// Which rows lie between the first and last selected rows without being selected themselves: the other side's
+// lines inside a range.
+function markBetween(rows, sel) {
+  const first = sel.indexOf(true), last = sel.lastIndexOf(true);
+  return rows.map((_, i) => !sel[i] && i > first && i < last);
 }
 // A row that must stay in view whatever folds around it: a thread, or the comment being written.
 const pinned = (r) => r.threads || r.compose;
