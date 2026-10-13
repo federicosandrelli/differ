@@ -21,8 +21,6 @@ function runSummary(r) {
   if (r.class === 'moved') return `<span class="cls">moved</span> ${n} lines moved ${r.removed.length ? 'to' : 'from'} <code>${esc(r.moved_to.path.split('/').pop())}:${r.moved_to.line}</code>`;
   return `${n} lines`;
 }
-const RENAME_RUNS = Object.fromEntries(D.renames.map(r => [r.from + '\u0000' + r.to, r.runs]));
-function showOriginHead(r) { return r.class === 'rename' && r.origin && r.rename && (RENAME_RUNS[r.rename.join('\u0000')] || 0) >= 2; }
 
 const foldRow = (id, label) => `<tr class="collapsed" data-fold="${esc(id)}"><td colspan="4"><span class="lbl">▸ ${label}</span></td></tr>`;
 const openRow = (id, label) => `<tr class="runhead" data-fold="${esc(id)}"><td colspan="4"><span class="lbl">▾ ${label}</span></td></tr>`;
@@ -76,17 +74,16 @@ function codeRows(f) {
       const r = b.run;
       if (b.fold) html.push((b.open ? openRow : foldRow)(b.fold, runSummary(r)));
       if (!b.open) continue;
-      if (r && showOriginHead(r)) html.push(`<tr class="runhead"><td colspan="4"><span class="lbl">rename origin · <code>${esc(r.rename[0])}</code> → <code>${esc(r.rename[1])}</code></span></td></tr>`);
       if (r && r.removed.length === r.added.length && b.rows.length === r.removed.length * 2) markPairs(b.rows);
       draw(b.rows);
     }
   }
   return { html, index, cols };
 }
-// How many rows codeRows draws for a block, leaving out threads: the shown rows, the fold row (an open context
-// block has none) and the rename origin heading.
+// How many rows codeRows draws for a block, leaving out threads: the shown rows and the fold row (an open context
+// block has none).
 function drawnRows(b) {
   const shown = b.rows.length - hiddenRows(b).length;
-  return shown + (b.fold && !(b.ctx && b.open) ? 1 : 0) + (b.open && b.run && showOriginHead(b.run) ? 1 : 0);
+  return shown + (b.fold && !(b.ctx && b.open) ? 1 : 0);
 }
 const tableHtml = (rows) => `<table class="diff"><colgroup><col style="width:38px"><col style="width:38px"><col style="width:16px"><col></colgroup>${rows.join('')}</table>`;
