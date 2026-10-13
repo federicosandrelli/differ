@@ -320,12 +320,27 @@ def detect_moves(files: list[FileDiff]) -> None:
                     target.runs[tri].moved_to = {"path": fd.path, "line": run.removed[0][0]}
 
 
+TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
+TEST_DIRS = {"__tests__", "__snapshots__", "test_helpers"}
+JS_EXT = r"(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)"
+TEST_NAME = re.compile(
+    r"^test_|^conftest\.py$"
+    r"|_test\.(?:py|go|rb|dart|exs)$|_spec\.rb$"
+    rf"|\.(?:test|spec|cy)\.{JS_EXT}$|-test\.{JS_EXT}$"
+    r"|\wTests?\.(?:java|kt|cs|swift|php)$|[a-z0-9]IT\.(?:java|kt)$"
+)
+
+
 def file_kind(path: str) -> str:
     if path.startswith((".claude/", "docs/")) or path.endswith(".md"):
         return "docs"
-    parts = path.split("/")
-    name = parts[-1]
-    if parts[0] in ("tests", "e2e") or name.startswith("test_") or name == "conftest.py" or "test_helpers" in parts:
+    *dirs, name = path.split("/")
+    if (
+        (dirs and dirs[0] in TOP_LEVEL_TEST_DIRS)
+        or any(d in TEST_DIRS or d.endswith("Tests") for d in dirs)
+        or "/src/test/" in f"/{path}"
+        or TEST_NAME.search(name)
+    ):
         return "test"
     return "implementation"
 
