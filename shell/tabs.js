@@ -13,14 +13,14 @@
   let tabs = [], active = home;
 
   const lsGet = () => { try { return JSON.parse(localStorage.getItem('dr:tabs')) || {}; } catch (e) { return {}; } };
-  const save = () => { try { localStorage.setItem('dr:tabs', JSON.stringify({ active: active.key, tabs: tabs.map(t => ({ url: t.url, title: t.title, badge: t.badge })) })); } catch (e) {} };
+  const save = () => { try { localStorage.setItem('dr:tabs', JSON.stringify({ active: active.key, tabs: tabs.map(t => ({ url: t.url, title: t.title, status: t.status, badge: t.badge })) })); } catch (e) {} };
 
   function frameOf(tab) {
     if (!tab.frame) { tab.frame = document.createElement('iframe'); tab.frame.src = tab.url; panes.appendChild(tab.frame); }
     return tab.frame;
   }
   function draw() {
-    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}"><span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.badge ? `<span class="badge" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" title="Close tab">×</button></div>`;
+    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}">${t.status && !t.warning ? `<span class="pr-icon st-${esc(t.status)}" aria-hidden="true"></span>` : ''}<span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.badge ? `<span class="badge" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" title="Close tab">×</button></div>`;
     bar.innerHTML = `<div class="tab home ${active === home ? 'on' : ''}" data-key="home" title="Pull requests">${HOME_ICON}</div>` + tabs.map(pill).join('');
     document.title = active.title;
   }
@@ -35,7 +35,7 @@
     const key = keyOf(url);
     if (key === '' || key === '/home') return activate(home);
     let tab = tabs.find(t => t.key === key);
-    if (!tab) { tab = { key, url, title: '…', badge: 0, frame: null }; tabs.push(tab); }
+    if (!tab) { tab = { key, url, title: '…', status: '', badge: 0, frame: null }; tabs.push(tab); }
     activate(tab);
   }
   function close(tab) {
@@ -117,7 +117,7 @@
     if (m.type === 'badge') { tab.badge = m.n; draw(); save(); }
     if (m.type === 'draft') tab.draft = !!m.on;
     if (m.type === 'page') {
-      tab.url = m.url; tab.title = m.title; tab.draft = false;
+      tab.url = m.url; tab.title = m.title; tab.status = m.status || ''; tab.draft = false;
       const key = keyOf(m.url), twin = tabs.find(t => t !== tab && t.key === key);
       if (twin) { close(tab); activate(twin); return; }
       tab.key = key; draw(); save();
@@ -127,6 +127,6 @@
   const savedZoom = (() => { try { return parseFloat(localStorage.getItem('dr:zoom')); } catch (e) { return NaN; } })();
   if (savedZoom > 0 && savedZoom !== 1) setZoom(savedZoom);
   const saved = lsGet();
-  tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', badge: t.badge || 0, frame: null }));
+  tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', status: t.status || '', badge: t.badge || 0, frame: null }));
   activate(byKey(saved.active) || home);
 })();

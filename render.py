@@ -15,6 +15,7 @@ import json
 import re
 import subprocess
 import sys
+import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -153,10 +154,63 @@ def theme_css() -> str:
 """
 
 
+# The icon of each pull request status, as the inner paths of a 24×24 stroked SVG, and the palette colour it takes.
+PR_ICONS = {
+    "open": (
+        '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/>',
+        "add-fg",
+    ),
+    "draft": (
+        '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M18 6V5M18 11v-1M6 9v12"/>',
+        "fg3",
+    ),
+    "merged": (
+        '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
+        "ren-fg",
+    ),
+    "closed": (
+        '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12M21 3l-6 6M21 9l-6-6M18 11.5V15"/>',
+        "del-fg",
+    ),
+}
+
+
+def pr_status(pr: dict) -> str:
+    """The pull request's status as a key of PR_ICONS: "draft" for an open draft, else its state in lower case.
+    Empty for a state without an icon."""
+    status = "draft" if pr.get("draft") and pr.get("state") == "OPEN" else (pr.get("state") or "").lower()
+    return status if status in PR_ICONS else ""
+
+
+def pr_icon(status: str) -> str:
+    """The status icon as HTML, coloured by the .pr-icon rules of the theme head. Empty for an unknown status."""
+    if status not in PR_ICONS:
+        return ""
+    label = status.capitalize()
+    return f'<span class="pr-icon st-{status}" role="img" aria-label="{label}" title="{label}"></span>'
+
+
+def pr_icon_css() -> str:
+    """Draw each status icon as a mask over its colour, so any document can show one with a single span."""
+    rules = [
+        ".pr-icon { display: inline-block; flex: none; width: 14px; height: 14px; vertical-align: -2px; "
+        "background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; "
+        "mask: var(--icon) center / contain no-repeat; }"
+    ]
+    for status, (paths, color) in PR_ICONS.items():
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" '
+            f'stroke-linecap="round" stroke-linejoin="round">{paths}</svg>'
+        )
+        url = "data:image/svg+xml," + urllib.parse.quote(svg)
+        rules.append(f'.pr-icon.st-{status} {{ --icon: url("{url}"); color: var(--{color}); }}')
+    return "\n".join(rules)
+
+
 def theme_head() -> str:
-    """The theme variables and the script that applies the saved theme, for the head of a document so it
-    never flashes the default theme."""
-    return f"<style>{theme_css()}</style>\n<script>{(SHELL_DIR / 'theme.js').read_text()}</script>"
+    """The theme variables, the status icons and the script that applies the saved theme, for the head of a
+    document so it never flashes the default theme."""
+    return f"<style>{theme_css()}\n{pr_icon_css()}</style>\n<script>{(SHELL_DIR / 'theme.js').read_text()}</script>"
 
 
 TEMPLATE = """<!doctype html>
@@ -165,6 +219,7 @@ TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
+<meta name="pr-status" content="__STATUS__">
 __THEME__
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
@@ -222,6 +277,7 @@ def render_page(classified: dict, annotations: dict) -> str:
     return fill(
         TEMPLATE,
         TITLE=html.escape(title),
+        STATUS=pr_status(annotations["pr"]),
         THEME=theme_head(),
         CSS=(PAGE_DIR / "page.css").read_text(),
         JS=js,

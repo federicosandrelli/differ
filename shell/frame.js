@@ -1,7 +1,9 @@
 // The page side of the tabbed shell. Inside the shell (the page at /) every page runs in an iframe and leaves
 // navigation to the shell: a link to another page opens or switches a tab, a link to GitHub opens outside, and
-// the shell learns the page's title and its number of unresolved threads. SHELL is null when the page is the
-// top-level document. The messages between the two sides are known only here and in tabs.js.
+// the shell learns the page's title, its pull request status and its number of unresolved threads. SHELL is null
+// when the page is the top-level document. PR_STATUS is the status a review page names in its head (a key of
+// PR_ICONS in render.py), or empty. The messages between the two sides are known only here and in tabs.js.
+const PR_STATUS = (document.querySelector('meta[name="pr-status"]') || {}).content || '';
 const SHELL = window.parent === window ? null : {
   tell(message) { window.parent.postMessage(message, location.origin); },
   open(url) { this.tell({ type: 'open', url }); },
@@ -9,7 +11,7 @@ const SHELL = window.parent === window ? null : {
   step(dir) { this.tell({ type: 'step', dir }); },
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
   badge(n) { this.tell({ type: 'badge', n }); },
-  page(url, title) { this.tell({ type: 'page', url, title }); },
+  page(url, title, status) { this.tell({ type: 'page', url, title, status }); },
   draft(on) { if (on !== this.drafting) { this.drafting = on; this.tell({ type: 'draft', on }); } },
   drafting: false,
 };
@@ -49,5 +51,5 @@ if (SHELL) {
   window.addEventListener('message', (e) => {
     if (e.origin === location.origin && e.data && e.data.type === 'shown') document.dispatchEvent(new Event('tab-shown'));
   });
-  SHELL.page(location.pathname + location.search, document.title);
+  SHELL.page(location.pathname + location.search, document.title, PR_STATUS);
 }
