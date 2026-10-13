@@ -204,7 +204,7 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
 
 def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str, gh_state: Path) -> None:
     open_pr(page, server_url)
-    page.click("#side a[data-review-panel]")
+    page.click("#side button[data-review-panel]")
     box = page.locator("textarea[data-review-text]")
     button = page.locator("button[data-submit='REQUEST_CHANGES']")
     expect(button).to_be_disabled()
@@ -216,8 +216,8 @@ def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str,
     expect(button).to_be_disabled()
     button.click(force=True)
     box.fill("Please add a test")
-    page.click("#side a[data-review-panel]")
-    page.click("#side a[data-review-panel]")
+    page.click("#side button[data-review-panel]")
+    page.click("#side button[data-review-panel]")
     expect(button).to_be_enabled()
     button.click()
     expect(page.locator("textarea[data-review-text]")).to_have_count(0)
@@ -302,3 +302,16 @@ def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: s
     page.click("#tabs .tab.home")
     expect(page.locator("#tabs .tab.home")).to_have_class(re.compile(r"\bon\b"))
     expect(page.frame_locator("#panes iframe.on").locator("input[name=pr]")).to_be_visible()
+
+
+def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, server_url: str, gh_state: Path) -> None:
+    open_pr(page, server_url)
+    page.click("#side button[data-review-panel]")
+    box = page.locator("textarea[data-review-text]")
+    box.fill("Looks good")
+    box.press("Meta+Enter")
+    expect(page.locator("textarea[data-review-text]")).to_have_count(0)
+
+    mutations = [json.loads(line) for line in (gh_state / "mutations.log").read_text().splitlines()]
+    posted = [m["variables"] for m in mutations if m["variables"].get("event") == "COMMENT"]
+    assert [p["body"] for p in posted] == ["Looks good"]

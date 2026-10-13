@@ -67,10 +67,14 @@ function statusChip() {
   if (!PR_STATUS) return '';
   return `<span class="status st-${PR_STATUS}"><span class="pr-icon st-${PR_STATUS}" aria-hidden="true"></span>${PR_STATUS[0].toUpperCase() + PR_STATUS.slice(1)}</span>`;
 }
+function reviewButton() {
+  const n = pendingCount();
+  return `<button data-review-panel class="review ${state.reviewPanel ? 'on' : 'primary'}">Review${n ? `<span class="count">${n}</span>` : ''}</button>`;
+}
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
-    <div class="meta">${statusChip()}<span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a>${API ? ` · <a href="#" data-review-panel class="${state.reviewPanel ? 'on' : ''}">Review${pendingCount() ? ` (${pendingCount()})` : ''}</a>` : ''}</span></div></div>
+    <div class="meta">${statusChip()}<span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
     ${commentNotices()}${state.reviewPanel ? reviewPanelHtml() : ''}
     <div class="controls"><span class="seg">
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
