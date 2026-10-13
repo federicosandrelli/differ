@@ -45,8 +45,8 @@ top of their file. The overview has the conversation (comments and submitted
 reviews) and a table of every thread. The tree counts unresolved threads per
 file.
 
-Hover a line and click `+` to comment on it; shift-click another line number
-to comment on a range. "Suggest a change" inserts a `suggestion` block with
+Hover a line and click `+` to comment on it. To comment on a range, drag from
+`+` to the last line, or shift-click another line number. "Suggest a change" inserts a `suggestion` block with
 the selected lines, which the page renders as a diff. A comment can go into a
 pending review ("Start a review" / "Add review comment") or out at once ("Add
 single comment"); threads take replies the same way, and can be resolved.
