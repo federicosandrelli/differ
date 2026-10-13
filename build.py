@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -26,6 +27,8 @@ CACHE = Path(os.environ.get("DIFF_REVIEW_CACHE", Path.home() / ".cache" / "diff-
 OWNER = r"[A-Za-z0-9][A-Za-z0-9-]*"
 REPO = r"(?!-)(?!\.+(?![\w.-]))[\w.-]+"
 PR_REF = re.compile(rf"(?:https?://github\.com/)?(?<![\w.-])({OWNER})/({REPO})(?:/pull/|/pulls/|#)(\d+)")
+PAGES_KEPT = 2
+PAGE_MAX_AGE = 30 * 86400
 
 Log = Callable[[str], None]
 TIMEOUT = 120
@@ -137,6 +140,23 @@ def latest_page(owner: str, repo: str, number: int) -> Path | None:
 
 def forget_pages(owner: str, repo: str, number: int) -> None:
     shutil.rmtree(page_path(owner, repo, number, "x").parent, ignore_errors=True)
+
+
+def prune(owner: str, repo: str, number: int) -> None:
+    """Delete the work directory of the pull request and all of its pages but the newest PAGES_KEPT."""
+    shutil.rmtree(CACHE / "work" / owner / repo / str(number), ignore_errors=True)
+    pages = sorted(page_path(owner, repo, number, "x").parent.glob("*.html"), key=lambda p: p.stat().st_mtime)
+    for page in pages[:-PAGES_KEPT]:
+        page.unlink(missing_ok=True)
+
+
+def prune_all() -> None:
+    """Delete every work directory and the pages older than PAGE_MAX_AGE. The bare clones in repos/ stay."""
+    shutil.rmtree(CACHE / "work", ignore_errors=True)
+    cutoff = time.time() - PAGE_MAX_AGE
+    for page in (CACHE / "pages").glob("*/*/*/*.html"):
+        if page.stat().st_mtime < cutoff:
+            page.unlink(missing_ok=True)
 
 
 def ensure_repo(owner: str, repo: str, log: Log) -> Path:
@@ -275,6 +295,7 @@ def build(ref: str, log: Log = print) -> Path:
     html = render.render_page(classified, annotations)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(html)
+    prune(owner, repo, number)
     log("Done")
     return target
 
