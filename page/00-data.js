@@ -35,6 +35,8 @@ const setReviewed = (f, v) => lsSet(LS(f.path), v ? '1' : null);
 const sectionOpen = (f) => state.openOverride.has(f.path) ? state.openOverride.get(f.path) : !isReviewed(f);
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// highlight.js escapes like esc and also turns ' into &#x27;.
+const unesc = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#(?:x27|39);/g, "'").replace(/&amp;/g, '&');
 const fmt = (n) => n.toLocaleString('en-GB');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 function ago(iso) {
