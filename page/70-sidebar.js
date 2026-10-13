@@ -6,7 +6,7 @@ function allFolders(node, acc) { for (const d of node.dirs.values()) { acc.push(
 function guides(depth) {
   if (!depth) return '';
   const img = [], pos = [], size = [];
-  for (let k = 0; k < depth; k++) { img.push('linear-gradient(var(--line), var(--line))'); pos.push(`${17 + k * 19}px 0`); size.push('1px 100%'); }
+  for (let k = 0; k < depth; k++) { img.push('linear-gradient(var(--border), var(--border))'); pos.push(`${17 + k * 19}px 0`); size.push('1px 100%'); }
   return `background-image:${img.join(',')};background-position:${pos.join(',')};background-size:${size.join(',')}`;
 }
 // Outline folder and speech-bubble icons drawn inline, so the page needs no icon font.
