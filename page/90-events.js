@@ -63,6 +63,14 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('input', () => { if (SHELL) SHELL.draft(hasDraft()); });
 
+// Cmd+F searches for the first line of the selected text, as an editor's find does.
+function openSearch() {
+  const text = String(window.getSelection()).split('\n').map(l => l.trim()).find(Boolean);
+  const box = document.querySelector('#side .search');
+  if (text && box) { box.value = text; box.dispatchEvent(new Event('input', { bubbles: true })); }
+  focusBox('#side .search');
+}
+
 function stepHit(dir) {
   const all = allHits();
   if (!all.length) return;
@@ -74,7 +82,7 @@ function stepHit(dir) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); focusBox('#side .search'); return; }
+  if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
