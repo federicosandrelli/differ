@@ -13,7 +13,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Page
 
 from helpers import commit_tree, git, make_repo
 
@@ -185,9 +184,3 @@ def server_url(gh_state: Path, tmp_path_factory: pytest.TempPathFactory) -> Iter
     yield url
     proc.terminate()
     proc.wait(timeout=5)
-
-
-@pytest.fixture(autouse=True)
-def offline(page: Page) -> None:
-    """The page loads highlight.js from a CDN; the tests run without it, as the page does when it is unreachable."""
-    page.route("**/highlight.min.js", lambda route: route.abort())

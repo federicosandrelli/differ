@@ -125,15 +125,16 @@ ${env}
 
 ## How the page works
 
-- README.md and CONTEXT.md describe the app and its terms. The page is one HTML file: render.py inlines page/page.css, shell/theme.js, shell/frame.js and page/*.js in name order; build.py caches it under ~/.cache/diff-review/pages/ and rebuilds it when a source file is newer than the page, or when the page is opened with ?refresh=1.
+- README.md and CONTEXT.md describe the app and its terms. The page is one HTML file: render.py inlines page/page.css, shell/theme.js, page/vendor/highlight.min.js, shell/frame.js and page/*.js in name order; build.py caches it under ~/.cache/diff-review/pages/ and rebuilds it when a source file is newer than the page, or when the page is opened with ?refresh=1.
 - Run \`python3 server.py 8765\` and open http://localhost:8765${location.pathname} to see this pull request. server.py and comments.py answer the comments API under /api/.
 - A "page line" above is a line of the built HTML; the file:line before it is where that line comes from.
 `;
 }
 
 // ---------- page lines back to source files
-// The page's script is the source files concatenated with a "// ---- name" line before each. With the document's
-// text, a line of the page maps to a file and a line of it. The map stays empty when the text cannot be fetched.
+// The page's script is the source files concatenated with a "// ---- name" line before each: the name of a file
+// in shell/ or page/, or vendor/highlight.min.js under page/. With the document's text, a line of the page maps to
+// a file and a line of it. The map stays empty when the text cannot be fetched.
 let pageMap = null;
 async function loadPageMap() {
   if (pageMap !== null) return;

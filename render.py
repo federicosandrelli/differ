@@ -4,9 +4,10 @@
 Usage: render.py <classified.json> <annotations.json> <out.html>
        render.py --splash
 
-The page's script is shell/frame.js followed by page/*.js in name order (hence the numeric prefixes), and its
-stylesheet page/page.css. Both are inlined, so a page works from disk as well as from the server. The theme
-(shell/theme.js and the palettes here) goes into the head of every document the server sends.
+The page's script is page/vendor/highlight.min.js, then shell/frame.js, then page/*.js in name order (hence the
+numeric prefixes), and its stylesheet page/page.css. Both are inlined, so a page works from disk as well as from
+the server, and never loads anything from the network. The theme (shell/theme.js and the palettes here) goes
+into the head of every document the server sends.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PAGE_DIR = ROOT / "page"
+VENDOR_DIR = PAGE_DIR / "vendor"
 SHELL_DIR = ROOT / "shell"
 
 
@@ -292,7 +294,6 @@ TEMPLATE = """<!doctype html>
 <title>__TITLE__</title>
 <meta name="pr-status" content="__STATUS__">
 __THEME__
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
 __CSS__</style>
 </head>
@@ -311,6 +312,11 @@ def scripts() -> list[Path]:
     return sorted(PAGE_DIR.glob("*.js"))
 
 
+def vendored() -> list[Path]:
+    """The third-party scripts a page inlines before its own."""
+    return [VENDOR_DIR / "highlight.min.js"]
+
+
 def frame_script() -> str:
     """The script that lets a page run inside the tabbed shell; the review page gets it with the other scripts."""
     return (SHELL_DIR / "frame.js").read_text()
@@ -318,7 +324,14 @@ def frame_script() -> str:
 
 def sources() -> list[Path]:
     """Every file whose content ends up in a page, so a page older than any of them is rebuilt."""
-    return [ROOT / "render.py", PAGE_DIR / "page.css", SHELL_DIR / "theme.js", SHELL_DIR / "frame.js", *scripts()]
+    return [
+        ROOT / "render.py",
+        PAGE_DIR / "page.css",
+        SHELL_DIR / "theme.js",
+        *vendored(),
+        SHELL_DIR / "frame.js",
+        *scripts(),
+    ]
 
 
 def app_info() -> dict:
@@ -340,11 +353,18 @@ def app_info() -> dict:
     }
 
 
+def script_name(path: Path) -> str:
+    """The name on a script's marker line: the file name, or the path under page/ for a vendored script."""
+    return str(path.relative_to(PAGE_DIR)) if path.is_relative_to(VENDOR_DIR) else path.name
+
+
 def render_page(classified: dict, annotations: dict) -> str:
     data = {**classified, "annotations": annotations, "app": app_info()}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{annotations['pr']['number']} {annotations['pr']['title']}"
-    js = "\n".join(f"// ---- {path.name}\n{path.read_text()}" for path in [SHELL_DIR / "frame.js", *scripts()])
+    js = "\n".join(
+        f"// ---- {script_name(path)}\n{path.read_text()}" for path in [*vendored(), SHELL_DIR / "frame.js", *scripts()]
+    )
     return fill(
         TEMPLATE,
         TITLE=html.escape(title),
