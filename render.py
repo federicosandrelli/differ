@@ -6,8 +6,8 @@ Usage: render.py <classified.json> <annotations.json> <out.html>
 
 The page's script is page/vendor/highlight.min.js, then shell/frame.js, then page/*.js in name order (hence the
 numeric prefixes), and its stylesheet page/page.css. Both are inlined, so a page works from disk as well as from
-the server, and never loads anything from the network. The theme (shell/theme.js and the palettes here) goes
-into the head of every document the server sends.
+the server, and never loads anything from the network. The theme (shell/theme.js and the palettes here) and
+the tooltip (shell/tooltip.js) go into the head of every document the server sends.
 """
 
 from __future__ import annotations
@@ -280,11 +280,22 @@ def search_clear_css() -> str:
     )
 
 
+def tooltip_css() -> str:
+    """The tooltip that shell/tooltip.js draws for every title: it fades in and out quickly."""
+    return (
+        ".tooltip { position: fixed; top: 0; left: 0; z-index: 1000; max-width: 360px; padding: 4px 8px; "
+        "border-radius: 6px; background: var(--text); color: var(--bg-canvas); font: 12px/1.4 var(--sans); "
+        "white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; opacity: 0; transition: opacity .08s; }\n"
+        ".tooltip.on { opacity: 1; }"
+    )
+
+
 def theme_head() -> str:
-    """The theme variables, the status icons, the search clear button and the script that applies the saved
-    theme, for the head of a document so it never flashes the default theme."""
-    css = "\n".join([theme_css(), pr_icon_css(), search_clear_css()])
-    return f"<style>{css}</style>\n<script>{(SHELL_DIR / 'theme.js').read_text()}</script>"
+    """The theme variables, the status icons, the search clear button, the tooltip and the scripts that apply
+    the saved theme and draw the tooltip, for the head of a document so it never flashes the default theme."""
+    css = "\n".join([theme_css(), pr_icon_css(), search_clear_css(), tooltip_css()])
+    js = "\n".join((SHELL_DIR / name).read_text() for name in ("theme.js", "tooltip.js"))
+    return f"<style>{css}</style>\n<script>{js}</script>"
 
 
 TEMPLATE = """<!doctype html>
@@ -329,6 +340,7 @@ def sources() -> list[Path]:
         ROOT / "render.py",
         PAGE_DIR / "page.css",
         SHELL_DIR / "theme.js",
+        SHELL_DIR / "tooltip.js",
         *vendored(),
         SHELL_DIR / "frame.js",
         *scripts(),

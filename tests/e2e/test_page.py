@@ -315,3 +315,17 @@ def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, se
     mutations = [json.loads(line) for line in (gh_state / "mutations.log").read_text().splitlines()]
     posted = [m["variables"] for m in mutations if m["variables"].get("event") == "COMMENT"]
     assert [p["body"] for p in posted] == ["Looks good"]
+
+
+def test_a_title_shows_as_a_quick_tooltip_and_comes_back_after_the_pointer_leaves(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.click("#side button[data-review-panel]")
+    button = page.locator("button[data-submit='REQUEST_CHANGES']")
+    tip = page.locator(".tooltip")
+    button.hover()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(tip).to_have_text("Requesting changes needs a review summary")
+    expect(button).not_to_have_attribute("title", re.compile(".*"))
+    page.locator("#side h1").hover()
+    expect(tip).not_to_have_class(re.compile(r"\bon\b"))
+    expect(button).to_have_attribute("title", "Requesting changes needs a review summary")

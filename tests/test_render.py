@@ -43,7 +43,16 @@ def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
 
 def test_sources_lists_every_file_a_page_inlines() -> None:
     names = {p.name for p in render.sources()}
-    assert {"render.py", "page.css", "theme.js", "highlight.min.js", "frame.js", "00-data.js", "90-events.js"} <= names
+    assert {
+        "render.py",
+        "page.css",
+        "theme.js",
+        "tooltip.js",
+        "highlight.min.js",
+        "frame.js",
+        "00-data.js",
+        "90-events.js",
+    } <= names
 
 
 def test_splash_page_is_written_from_the_dark_palette() -> None:
