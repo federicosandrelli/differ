@@ -260,7 +260,7 @@ def test_detect_moves_ignores_short_blocks() -> None:
         ("test/browser/run.js", "test"),
         ("cypress/support/commands.js", "test"),
         ("web/login.cy.ts", "test"),
-        ("apps/web/playwright/login.ts", "test"),
+        ("playwright/login.ts", "test"),
         ("pkg/server_test.go", "test"),
         ("pkg/module_test.py", "test"),
         ("core/src/test/java/app/Parser.java", "test"),
@@ -284,6 +284,8 @@ def test_detect_moves_ignores_short_blocks() -> None:
         ("src/attest.go", "implementation"),
         ("src/Contests/Entry.cs", "implementation"),
         ("lib/test/helper.js", "implementation"),
+        ("src/main/java/org/junit/Test.java", "implementation"),
+        ("packages/playwright/src/index.ts", "implementation"),
     ],
 )
 def test_file_kind(path: str, kind: str) -> None:

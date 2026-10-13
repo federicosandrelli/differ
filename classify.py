@@ -320,14 +320,14 @@ def detect_moves(files: list[FileDiff]) -> None:
                     target.runs[tri].moved_to = {"path": fd.path, "line": run.removed[0][0]}
 
 
-TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec"}
-TEST_DIRS = {"__tests__", "__snapshots__", "cypress", "playwright", "test_helpers"}
+TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
+TEST_DIRS = {"__tests__", "__snapshots__", "test_helpers"}
 JS_EXT = r"(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)"
 TEST_NAME = re.compile(
     r"^test_|^conftest\.py$"
     r"|_test\.(?:py|go|rb|dart|exs)$|_spec\.rb$"
     rf"|\.(?:test|spec|cy)\.{JS_EXT}$|-test\.{JS_EXT}$"
-    r"|Tests?\.(?:java|kt|cs|swift|php)$|[a-z0-9]IT\.(?:java|kt)$"
+    r"|\wTests?\.(?:java|kt|cs|swift|php)$|[a-z0-9]IT\.(?:java|kt)$"
 )
 
 
