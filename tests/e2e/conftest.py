@@ -25,6 +25,7 @@ OLD = {
     "src/cli.py": "from app import old_name\n\nprint(old_name(1))\n",
     "package-lock.json": '{"v": 1}\n',
     "README.md": "# Widgets\n",
+    "docs/notes.txt": "Widgets are small.\n",
 }
 NEW = {
     "src/app.py": (
@@ -34,6 +35,7 @@ NEW = {
     "src/cli.py": "from app import new_name\n\nprint(new_name(1))\n",
     "package-lock.json": '{"v": 2}\n',
     "README.md": "# Widgets\n\nNow with a greeting.\n",
+    "notes/notes.txt": "Widgets are small.\n",
 }
 TITLE = "Rename old_name to new_name"
 

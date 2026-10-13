@@ -49,6 +49,8 @@ class FileDiff:
     new_path: str | None
     status: str
     binary: bool = False
+    similarity: int | None = None
+    mode_changed: bool = False
     hunks: list[Hunk] = field(default_factory=list)
     runs: list[Run] = field(default_factory=list)
 
@@ -81,8 +83,11 @@ def parse_patch(text: str) -> list[FileDiff]:
                 current.new_path = None
             elif raw.startswith("similarity index"):
                 current.status = "R"
+                current.similarity = int(raw.removeprefix("similarity index ").rstrip("%"))
             elif raw.startswith("Binary files "):
                 current.binary = True
+            elif raw.startswith("old mode"):
+                current.mode_changed = True
             if not raw.startswith("@@"):
                 continue
         if raw.startswith("@@"):
@@ -543,6 +548,8 @@ def file_json(entry: dict, marked: set[str]) -> dict:
         "old_path": fd.old_path,
         "new_path": fd.new_path,
         "status": fd.status,
+        "similarity": fd.similarity,
+        "mode_changed": fd.mode_changed,
         "kind": file_kind(fd.path),
         "generated": is_generated(fd.path, entry["content"], marked),
         "lang": language(fd.path),

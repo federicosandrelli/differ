@@ -32,16 +32,18 @@ def test_start_page_builds_and_opens_a_pull_request(page: Page, server_url: str)
 def test_tree_hides_noise_only_and_generated_files_until_asked(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     notices = page.locator("#side .list .notice")
-    expect(notices.nth(0)).to_have_text("1 file with only noise hidden · show")
+    expect(notices.nth(0)).to_have_text("2 files with only noise hidden · show")
     expect(notices.nth(1)).to_have_text("1 generated file hidden · show")
     expect(page.locator("#side .leaf[data-path='src/cli.py']")).to_have_count(0)
+    expect(page.locator("#side .leaf[data-path='notes/notes.txt']")).to_have_count(0)
     expect(page.locator("#side .leaf[data-path='package-lock.json']")).to_have_count(0)
     page.click("#side .list .notice a[data-noiseonly]")
     expect(page.locator("#side .leaf[data-path='src/cli.py']")).to_be_visible()
-    expect(page.locator("#side .list .notice").nth(0)).to_have_text("Showing 1 file with only noise · hide")
+    expect(page.locator("#side .leaf[data-path='notes/notes.txt']")).to_be_visible()
+    expect(page.locator("#side .list .notice").nth(0)).to_have_text("Showing 2 files with only noise · hide")
     page.click("#side .list .notice a[data-generated]")
     expect(page.locator("#side .leaf[data-path='package-lock.json']")).to_be_visible()
-    expect(page.locator("#side .leaf")).to_have_count(4)
+    expect(page.locator("#side .leaf")).to_have_count(5)
 
 
 def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_url: str) -> None:
