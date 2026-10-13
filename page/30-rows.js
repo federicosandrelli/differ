@@ -2,14 +2,15 @@
 // blocks of context and change runs, with every fold decided. fileBlocks gives the diff table what to draw,
 // reveal opens whatever hides a row, and toggleFold answers a click on a fold row; the fold keys stay in here.
 
-function buildRows(f) {
+// Plain rows skip the syntax highlighting and hold the text as their HTML, enough to decide the folds.
+function buildRows(f, plain) {
   const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
   for (const r of f.runs) {
     r.removed.forEach(n => runOfOld.set(n, r)); r.added.forEach(n => runOfNew.set(n, r));
     if (r.class === 'rename' && r.origin) continue;
     (r.pair_rename || []).forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
   }
-  const hl = highlightLines(f);
+  const hl = plain ? contentLines(f) : highlightLines(f);
   const raw = contentLines(f);
   const rows = [];
   if (f.content_side === 'old') {
@@ -24,7 +25,7 @@ function buildRows(f) {
       let anchor = null;
       for (let j = i + 1; j < L.length; j++) if (L[j][2] != null) { anchor = L[j][2]; break; }
       if (anchor == null) anchor = h.new_start + L.filter(x => x[2] != null).length;
-      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
+      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: plain ? t : hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
     }
   }
   for (let i = 1; i <= raw.length + 1; i++) {
@@ -96,7 +97,7 @@ function mergeCollapsed(f, blocks) {
       const c = blocks[j];
       if (isCollapsed(f, c) && c.run.class === cls) { group.push(c.run); lastRun = j; j++; continue; }
       const nextSame = j + 1 < blocks.length && isCollapsed(f, blocks[j + 1]) && blocks[j + 1].run.class === cls;
-      if (c.ctx && nextSame && (c.rows.length <= RADIUS * 2 + 2 || (cls === 'import' && c.rows.every(r => importSet.has(r.newNo) || !r.html.trim())))) { j++; continue; }
+      if (c.ctx && nextSame && (c.rows.length <= RADIUS * 2 + 2 || (cls === 'import' && c.rows.every(r => importSet.has(r.newNo) || !r.text.trim())))) { j++; continue; }
       break;
     }
     merged.push(group.length > 1 ? { group, cls, rows: blocks.slice(i, lastRun + 1).flatMap(x => x.rows) } : b);
@@ -153,8 +154,8 @@ function contextBlock(f, blocks, bi) {
 //   { group, cls, rows }              noise runs folded together, always closed
 //   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
 //   { run, rows }                     a change run; a noise run folds, shown when open
-function fileBlocks(f) {
-  const rows = buildRows(f);
+function fileBlocks(f, plain) {
+  const rows = buildRows(f, plain);
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);

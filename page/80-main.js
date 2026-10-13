@@ -10,6 +10,7 @@ const NEAR = 2000;   // px beyond the viewport within which chunks hold their ro
 const FAR = 6000;    // px beyond the viewport past which chunks and bodies are emptied
 const CHUNK = 100;   // rows per chunk
 const ROW_PX = 20.6; // the height of a code row, to size a chunk before it is first filled
+const EMPTY_PX = 67; // the height of the note on a file without changes
 let overviewEl = null;
 let sections = [];   // [{ f, el }] in page order
 const bodies = new Map(); // path -> { key, outdated, rows, index, cols }: the body's HTML parts for the key it was computed from
@@ -51,11 +52,10 @@ function bodyParts(f) {
   }
   return parts;
 }
-// About how tall the body will be, from the rows the diff view shows: the changed lines with their context.
+// About how tall the body will be, from the rows the diff view draws with every fold decided.
 function estimateHeight(f) {
-  const lines = contentLines(f).length, changed = f.stats.raw, runs = f.runs.length;
-  const rows = Math.min(lines + changed, changed + runs * (2 * RADIUS + 2));
-  return Math.round(rows * ROW_PX + 14);
+  if (!f.runs.length) return EMPTY_PX + 14;
+  return Math.round(fileBlocks(f, true).reduce((n, b) => n + drawnRows(b), 0) * ROW_PX + 14);
 }
 
 const sectionEl = (f) => document.getElementById(`sec-${f.index}`);
@@ -69,14 +69,17 @@ const near = ([top, bottom]) => bottom >= main.scrollTop - NEAR && top <= main.s
 const far = ([top, bottom]) => bottom < main.scrollTop - FAR || top > main.scrollTop + main.clientHeight + FAR;
 
 // Replace an element's content and let the content size it, keeping what is on screen still when the
-// element is above the viewport. Each textarea takes its draft from the state, because the kept HTML of a
-// body can predate the latest typing.
+// element is above the viewport. An empty box that reaches into the viewport from above holds no line to
+// keep, so the top of the viewport keeps its share of the box's height. Each textarea takes its draft from
+// the state, because the kept HTML of a body can predate the latest typing.
 function replaceContent(el, html) {
-  const above = span(el)[1] <= main.scrollTop + 1, before = el.offsetHeight;
+  const [top, bottom] = span(el), before = el.offsetHeight, empty = !el.firstChild;
+  const above = bottom <= main.scrollTop + 1, into = main.scrollTop - top;
   el.style.height = '';
   el.innerHTML = html;
   for (const box of el.getElementsByTagName('textarea')) box.value = draftText(box);
   if (above) main.scrollTop += el.offsetHeight - before;
+  else if (empty && into > 0 && before) main.scrollTop += into * (el.offsetHeight / before - 1);
 }
 function fillChunk(parts, chunk) {
   if (chunk.dataset.filled) return;

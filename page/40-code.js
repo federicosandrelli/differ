@@ -83,4 +83,10 @@ function codeRows(f) {
   }
   return { html, index, cols };
 }
+// How many rows codeRows draws for a block, leaving out threads: the shown rows, the fold row (an open context
+// block has none) and the rename origin heading.
+function drawnRows(b) {
+  const fold = b.fold && !(b.ctx && b.open) ? 1 : 0, origin = b.open && b.run && showOriginHead(b.run) ? 1 : 0;
+  return b.rows.length - hiddenRows(b).length + fold + origin;
+}
 const tableHtml = (rows) => `<table class="diff"><colgroup><col style="width:38px"><col style="width:38px"><col style="width:16px"><col></colgroup>${rows.join('')}</table>`;
