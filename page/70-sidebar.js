@@ -64,17 +64,9 @@ function updateSearchMeta() {
 }
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
-const PR_ICON_PATHS = {
-  open: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/>',
-  draft: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M18 6V5M18 11v-1M6 9v12"/>',
-  merged: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
-  closed: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12M21 3l-6 6M21 9l-6-6M18 11.5V15"/>',
-};
 function statusChip() {
-  const st = PR.draft && PR.state === 'OPEN' ? 'draft' : (PR.state || '').toLowerCase();
-  if (!PR_ICON_PATHS[st]) return '';
-  const icon = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PR_ICON_PATHS[st]}</svg>`;
-  return `<span class="status st-${st}">${icon}${st[0].toUpperCase() + st.slice(1)}</span>`;
+  if (!PR_STATUS) return '';
+  return `<span class="status st-${PR_STATUS}"><span class="pr-icon st-${PR_STATUS}" aria-hidden="true"></span>${PR_STATUS[0].toUpperCase() + PR_STATUS.slice(1)}</span>`;
 }
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;

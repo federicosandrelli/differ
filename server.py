@@ -37,6 +37,7 @@ STATUS = re.compile(r"^/status/([\w.-]+)/([\w.-]+)/(\d+)$")
 API = re.compile(r"^/api/([\w.-]+)/([\w.-]+)/(\d+)/(\w+)$")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
+PR_STATUS = re.compile(rb'<meta name="pr-status" content="(\w*)">')
 HEAD_TTL = 20
 RECENT = build.CACHE / "recent.json"
 RECENT_MAX = 10
@@ -109,7 +110,8 @@ def start_job(key: tuple[str, str, int]) -> Job:
 
 
 def recent_pages() -> list[dict]:
-    """The pull requests opened last, newest first: owner, repo, number, title and the time of the last open."""
+    """The pull requests opened last, newest first: owner, repo, number, title, status and the time of the last
+    open."""
     try:
         return json.loads(RECENT.read_text())
     except (OSError, ValueError):
@@ -117,13 +119,23 @@ def recent_pages() -> list[dict]:
 
 
 def note_opened(key: tuple[str, str, int], page: bytes) -> None:
-    """Move the pull request to the top of the recently opened list, titled from the page just served."""
+    """Move the pull request to the top of the recently opened list, with the title and status of the page just
+    served."""
     owner, repo, number = key
     m = TITLE.search(page[:4096])
     title = html.unescape(m.group(1).decode(errors="replace")) if m else f"{owner}/{repo}#{number}"
+    s = PR_STATUS.search(page[:4096])
+    status = s.group(1).decode() if s else ""
     with lock:
         rest = [p for p in recent_pages() if (p["owner"], p["repo"], p["number"]) != key]
-        entry = {"owner": owner, "repo": repo, "number": number, "title": title, "opened": time.time()}
+        entry = {
+            "owner": owner,
+            "repo": repo,
+            "number": number,
+            "title": title,
+            "status": status,
+            "opened": time.time(),
+        }
         RECENT.parent.mkdir(parents=True, exist_ok=True)
         RECENT.write_text(json.dumps([entry, *rest][:RECENT_MAX]))
 
@@ -159,7 +171,7 @@ def tabs_page() -> bytes:
 def pr_item(p: dict) -> str:
     ref = f"{p['owner']}/{p['repo']}#{p['number']}"
     return (
-        f'<a class="item" href="/{p["owner"]}/{p["repo"]}/pull/{p["number"]}"><span class="t">{html.escape(p["title"])}</span>'
+        f'<a class="item" href="/{p["owner"]}/{p["repo"]}/pull/{p["number"]}"><span class="t">{render.pr_icon(p.get("status", ""))}{html.escape(p["title"])}</span>'
         f'<span class="w">{html.escape(ago(p["opened"]))}</span><span class="m">{html.escape(ref)}</span></a>'
     )
 
