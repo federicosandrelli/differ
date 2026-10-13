@@ -37,6 +37,10 @@ const sectionOpen = (f) => state.openOverride.has(f.path) ? state.openOverride.g
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fmt = (n) => n.toLocaleString('en-GB');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+function fileSize(bytes) {
+  if (bytes < 1024) return plural(bytes, 'byte');
+  return bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
 function ago(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60]]) if (s >= n) return `${Math.floor(s / n)}${u} ago`;

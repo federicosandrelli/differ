@@ -65,8 +65,21 @@ def test_parse_patch_reads_statuses_and_line_numbers(tmp_path: Path) -> None:
 def test_parse_patch_keeps_a_binary_file_without_hunks(tmp_path: Path) -> None:
     work = make_work(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
     (fd,) = classify.parse_patch((work / "diff.patch").read_text())
-    assert fd.path == "img.bin" and fd.hunks == []
+    assert fd.path == "img.bin" and fd.hunks == [] and fd.binary
     assert classify.read_source(work / "new" / "img.bin") == ""
+
+
+def test_classify_gives_a_binary_file_its_size_on_each_side(tmp_path: Path) -> None:
+    work = make_work(
+        tmp_path,
+        old={"changed.png": b"\0" * 10, "gone.png": b"\0\1" * 10, "notes.txt": "a\n"},
+        new={"changed.png": b"\0" * 30, "added.png": b"\0\2\3\4" * 10, "notes.txt": "b\n"},
+    )
+    files = {f["path"]: f for f in classify.classify(work)["files"]}
+    assert files["changed.png"]["binary"] == {"old": 10, "new": 30}
+    assert files["gone.png"]["binary"] == {"old": 20, "new": None}
+    assert files["added.png"]["binary"] == {"old": None, "new": 40}
+    assert files["notes.txt"]["binary"] is None
 
 
 def test_build_runs_groups_changed_lines_between_context() -> None:

@@ -48,6 +48,7 @@ class FileDiff:
     old_path: str | None
     new_path: str | None
     status: str
+    binary: bool = False
     hunks: list[Hunk] = field(default_factory=list)
     runs: list[Run] = field(default_factory=list)
 
@@ -80,6 +81,8 @@ def parse_patch(text: str) -> list[FileDiff]:
                 current.new_path = None
             elif raw.startswith("similarity index"):
                 current.status = "R"
+            elif raw.startswith("Binary files "):
+                current.binary = True
             if not raw.startswith("@@"):
                 continue
         if raw.startswith("@@"):
@@ -423,6 +426,16 @@ def read_source(path: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def binary_sizes(root: Path, fd: FileDiff) -> dict | None:
+    """The size in bytes of a binary file on each side, None on the side where it does not exist."""
+    if not fd.binary:
+        return None
+    return {
+        side: (root / side / path).stat().st_size if path else None
+        for side, path in (("old", fd.old_path), ("new", fd.new_path))
+    }
+
+
 def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list[dict]:
     """Classify every run and return one entry per file with its content, symbols and import lines."""
     ordered = sorted(rename_info, key=lambda p: -len(p[0]))
@@ -444,6 +457,7 @@ def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list
                 "symbols": symbols,
                 "content": content,
                 "content_side": content_side,
+                "binary": binary_sizes(root, fd),
                 "import_lines": imports,
                 "old_import_lines": old_imports,
             }
@@ -518,6 +532,7 @@ def file_json(entry: dict, marked: set[str]) -> dict:
         "lang": language(fd.path),
         "content": entry["content"],
         "content_side": entry["content_side"],
+        "binary": entry["binary"],
         "hunks": hunks_json,
         "runs": runs_json,
         "symbols": entry["symbols"],
