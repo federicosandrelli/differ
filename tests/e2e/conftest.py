@@ -37,6 +37,7 @@ NEW = {
     "notes/notes.txt": "Widgets are small.\n",
 }
 TITLE = "Rename old_name to new_name"
+LONG = {"src/long.py": "".join(f"x{n} = {n}\n" for n in range(1, 151))}
 
 MODEL_FIELDS = (
     "    id: int\n    customer: str\n    amount: float\n    currency: str\n    created: str\n    shipped: bool\n"
@@ -139,11 +140,13 @@ def gh_state(tmp_path_factory: pytest.TempPathFactory) -> Path:
     with_logo = commit_tree(repo, {**NEW, "src/logo.png": b"\x89PNG\0" * 1000}, "logo")
     models_base = commit_tree(repo, {**NEW, **MODELS_OLD}, "models base")
     models_head = commit_tree(repo, {**NEW, **MODELS_NEW}, "models head")
+    with_long = commit_tree(repo, {**NEW, **LONG}, "long")
     for number, pr_base, pr_head in (
         (1, base, head),
         (2, base, head),
         (3, base, with_logo),
         (4, models_base, models_head),
+        (5, head, with_long),
     ):
         git(repo, "update-ref", f"refs/pull/{number}/head", pr_head)
         (state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, pr_base, pr_head)))
