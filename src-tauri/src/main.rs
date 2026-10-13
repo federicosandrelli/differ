@@ -137,6 +137,8 @@ fn main() {
                 .title("differ")
                 .theme(Some(Theme::Dark))
                 .inner_size(1440.0, 900.0)
+                // The page's default 420px sidebar plus a diff pane wide enough for a whole file header.
+                .min_inner_size(1024.0, 640.0)
                 .title_bar_style(TitleBarStyle::Overlay)
                 .hidden_title(true)
                 // Centred on the 40px tab strip the shell draws across the title bar.
