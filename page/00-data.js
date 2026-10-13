@@ -39,7 +39,8 @@ const fmt = (n) => n.toLocaleString('en-GB');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 function fileSize(bytes) {
   if (bytes < 1024) return plural(bytes, 'byte');
-  return bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  const kb = (bytes / 1024).toFixed(1);
+  return kb < 1024 ? `${kb} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 }
 function ago(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);

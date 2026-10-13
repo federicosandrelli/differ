@@ -23,13 +23,10 @@ function renamedFrom(f) {
   const tail = o.slice(Math.max(0, i - 1)).join('/');
   return `<span class="dir" title="${esc(f.old_path)}">renamed from ${i > 1 ? '…/' : ''}${esc(tail)}</span>`;
 }
-function binarySize(f) {
-  const { old, new: now } = f.binary;
-  return old == null ? fileSize(now) : now == null ? fileSize(old) : `${fileSize(old)} → ${fileSize(now)}`;
-}
+const binarySize = (f) => [f.binary.old, f.binary.new].filter(n => n != null).map(fileSize).join(' → ');
 function binaryHtml(f) {
-  const what = f.status === 'A' ? 'added' : f.status === 'D' ? 'deleted' : 'changed';
-  return `<div class="empty">Binary file ${what} · ${binarySize(f)}</div>`;
+  const what = f.status === 'A' ? 'added' : f.status === 'D' ? 'deleted' : 'changed', size = binarySize(f);
+  return `<div class="empty">Binary file ${what}${size ? ` · ${size}` : ''}</div>`;
 }
 const countsHtml = (f) => f.binary ? `<span class="counts">${binarySize(f)}</span>`
   : `<span class="counts"><span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span></span>`;

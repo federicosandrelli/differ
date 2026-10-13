@@ -427,13 +427,14 @@ def read_source(path: Path) -> str:
 
 
 def binary_sizes(root: Path, fd: FileDiff) -> dict | None:
-    """The size in bytes of a binary file on each side, None on the side where it does not exist."""
+    """A binary file's size in bytes on each side, None on a side without the exported file; None for a text file."""
     if not fd.binary:
         return None
-    return {
-        side: (root / side / path).stat().st_size if path else None
-        for side, path in (("old", fd.old_path), ("new", fd.new_path))
-    }
+    sizes: dict[str, int | None] = {}
+    for side, path in (("old", fd.old_path), ("new", fd.new_path)):
+        target = root / side / path if path else None
+        sizes[side] = target.stat().st_size if target and target.is_file() else None
+    return sizes
 
 
 def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list[dict]:

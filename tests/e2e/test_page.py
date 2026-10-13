@@ -44,6 +44,14 @@ def test_tree_hides_noise_only_and_generated_files_until_asked(page: Page, serve
     expect(page.locator("#side .leaf")).to_have_count(4)
 
 
+def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/3")
+    section = page.locator("section[data-file='src/logo.png']")
+    section.scroll_into_view_if_needed()
+    expect(section.locator(".fhead .counts")).to_have_text("4.9 KB")
+    expect(section.locator(".code > .empty")).to_have_text("Binary file added · 4.9 KB")
+
+
 def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)

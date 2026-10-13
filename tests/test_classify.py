@@ -82,6 +82,13 @@ def test_classify_gives_a_binary_file_its_size_on_each_side(tmp_path: Path) -> N
     assert files["notes.txt"]["binary"] is None
 
 
+def test_binary_sizes_leaves_out_a_side_without_the_exported_file(tmp_path: Path) -> None:
+    (tmp_path / "new").mkdir()
+    (tmp_path / "new" / "a.png").write_bytes(b"\0" * 5)
+    fd = FileDiff(old_path="missing.png", new_path="a.png", status="M", binary=True)
+    assert classify.binary_sizes(tmp_path, fd) == {"old": None, "new": 5}
+
+
 def test_build_runs_groups_changed_lines_between_context() -> None:
     fd = FileDiff(old_path="f", new_path="f", status="M")
     fd.hunks.append(
