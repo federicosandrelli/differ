@@ -215,7 +215,7 @@ def test_refresh_statuses_skips_github_while_another_refresh_runs(
 
 
 def request(method: str, path: str, body: bytes = b"") -> server.Handler:
-    h = handler("http://localhost:8765", "application/json")
+    h = handler("http://localhost:8765", "application/json", host="localhost:8765")
     h.command, h.path, h.request_version = method, path, "HTTP/1.1"
     h.requestline = f"{method} {path} HTTP/1.1"
     h.client_address = ("127.0.0.1", 1)
