@@ -5,7 +5,8 @@ Usage: server.py [port]   (default 8765)
 
   /                                  the tabbed shell: the start page as a home tab, and a tab per open page
   /home                              the start page: a search bar and the ten pull requests opened last
-  /recent                            the list of pull requests opened last, as an HTML fragment
+  /recent                            the list of pull requests opened last, as an HTML fragment, with each
+                                     status fetched from GitHub
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
@@ -22,6 +23,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -140,6 +142,53 @@ def note_opened(key: tuple[str, str, int], page: bytes) -> None:
         RECENT.write_text(json.dumps([entry, *rest][:RECENT_MAX]))
 
 
+def live_statuses(pages: list[dict]) -> dict[tuple[str, str, int], str]:
+    """The status of each pull request on GitHub now, by owner, repo and number, from one query. A pull request
+    GitHub can't return is missing, and every one is missing when gh fails."""
+    if not pages:
+        return {}
+    params, fields, variables = [], [], {}
+    for i, p in enumerate(pages):
+        params.append(f"$o{i}: String!, $r{i}: String!, $n{i}: Int!")
+        fields.append(
+            f"p{i}: repository(owner: $o{i}, name: $r{i}) {{ pullRequest(number: $n{i}) {{ state isDraft }} }}"
+        )
+        variables |= {f"o{i}": p["owner"], f"r{i}": p["repo"], f"n{i}": p["number"]}
+    query = f"query({', '.join(params)}) {{ {' '.join(fields)} }}"
+    try:
+        r = subprocess.run(
+            ["gh", "api", "graphql", "--input", "-"],
+            input=json.dumps({"query": query, "variables": variables}),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        data = json.loads(r.stdout).get("data")
+    except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError):
+        return {}
+    statuses = {}
+    for i, p in enumerate(pages):
+        repo = data.get(f"p{i}") if isinstance(data, dict) else None
+        pr = repo.get("pullRequest") if isinstance(repo, dict) else None
+        if isinstance(pr, dict):
+            status = render.pr_status({"state": pr.get("state"), "draft": pr.get("isDraft")})
+            statuses[(p["owner"], p["repo"], p["number"])] = status
+    return statuses
+
+
+def refresh_statuses() -> None:
+    """Save the status GitHub reports now for each pull request in the recently opened list. A pull request
+    GitHub can't return keeps the status saved before."""
+    live = live_statuses(recent_pages())
+    if not live:
+        return
+    with lock:
+        pages = recent_pages()
+        for p in pages:
+            p["status"] = live.get((p["owner"], p["repo"], p["number"]), p.get("status", ""))
+        RECENT.write_text(json.dumps(pages))
+
+
 def ago(ts: float) -> str:
     s = max(0, int(time.time() - ts))
     for unit, n in (("d", 86400), ("h", 3600), ("m", 60)):
@@ -181,7 +230,8 @@ def recent_items() -> str:
 
 
 def start_page() -> bytes:
-    """The start page; in the tabbed shell its list is fetched again each time its tab comes to the front."""
+    """The start page, with the statuses saved last. Its list, with each status fetched from GitHub, is fetched
+    again when the page loads and each time its tab comes to the front."""
     return shell("Pull request review", render.fill(shell_file("start.html"), RECENT=recent_items()))
 
 
@@ -224,6 +274,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/home":
                 return self.send(200, start_page())
             if url.path == "/recent":
+                refresh_statuses()
                 return self.send(200, recent_items().encode())
             if url.path == "/open":
                 owner, repo, number = build.parse_ref((query.get("pr") or [""])[0])
