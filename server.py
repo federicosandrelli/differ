@@ -435,6 +435,7 @@ def main() -> None:
         sys.exit(f"Port {port} is already in use on {taken}. Stop that process or pass another port: server.py <port>")
     if "--exit-with-parent" in sys.argv:
         threading.Thread(target=exit_with_parent, daemon=True).start()
+    build.prune_all()
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"Serving pull request reviews on http://localhost:{port}/")
     server.serve_forever()
