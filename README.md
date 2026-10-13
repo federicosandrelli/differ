@@ -103,6 +103,22 @@ uv run pytest
 and drive the pages in Chromium through Playwright; they need
 `uv run playwright install chromium` once.
 
+ESLint checks the scripts under `page/` and `shell/`. `eslint.config.js`
+reads the names each file declares at the top level, since `render.py`
+inlines the files into one script and a name declared in one is a global in
+the others:
+
+```sh
+npm install
+npm run lint
+```
+
+The desktop app has its own CI job, `desktop`, on macOS: `cargo fmt --check`
+and `cargo clippy -- -D warnings` in `src-tauri/`, then
+`npx tauri build --no-bundle`. It runs on every push to `main`, and on a pull
+request that changes `src-tauri/`, `web/`, `package.json`,
+`package-lock.json` or the workflow itself.
+
 ## How a page is built
 
 `build.py`:

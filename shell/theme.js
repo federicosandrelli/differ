@@ -4,14 +4,14 @@
 const Theme = (() => {
   const THEMES = ['auto', 'light', 'sepia', 'dark'], DEFAULT = 'dark', KEY = 'dr:theme';
   const valid = (t) => THEMES.includes(t) ? t : DEFAULT;
-  const get = () => { try { return valid(localStorage.getItem(KEY)); } catch (e) { return DEFAULT; } };
+  const get = () => { try { return valid(localStorage.getItem(KEY)); } catch { return DEFAULT; } };
   function apply(t) {
     if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
     const win = window.__TAURI__ && window.__TAURI__.window;
     if (win) win.getCurrentWindow().setTheme(t === 'auto' ? null : t === 'dark' ? 'dark' : 'light').catch(() => {});
     for (const b of document.querySelectorAll('button[data-theme]')) b.classList.toggle('on', b.dataset.theme === t);
   }
-  function set(t) { try { localStorage.setItem(KEY, t); } catch (e) {} apply(t); }
+  function set(t) { try { localStorage.setItem(KEY, t); } catch {} apply(t); }
   apply(get());
   document.addEventListener('DOMContentLoaded', () => apply(get()));
   document.addEventListener('click', (e) => { const b = e.target.closest('button[data-theme]'); if (b) set(b.dataset.theme); });

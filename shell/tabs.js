@@ -12,8 +12,8 @@
   const home = { key: 'home', url: '/home', title: 'Pull requests', badge: 0, frame: null };
   let tabs = [], active = home;
 
-  const lsGet = () => { try { return JSON.parse(localStorage.getItem('dr:tabs')) || {}; } catch (e) { return {}; } };
-  const save = () => { try { localStorage.setItem('dr:tabs', JSON.stringify({ active: active.key, tabs: tabs.map(t => ({ url: t.url, title: t.title, status: t.status, badge: t.badge })) })); } catch (e) {} };
+  const lsGet = () => { try { return JSON.parse(localStorage.getItem('dr:tabs')) || {}; } catch { return {}; } };
+  const save = () => { try { localStorage.setItem('dr:tabs', JSON.stringify({ active: active.key, tabs: tabs.map(t => ({ url: t.url, title: t.title, status: t.status, badge: t.badge })) })); } catch {} };
 
   function frameOf(tab) {
     if (!tab.frame) { tab.frame = document.createElement('iframe'); tab.frame.src = tab.url; panes.appendChild(tab.frame); }
@@ -75,7 +75,7 @@
     zoom = z;
     bar.style.zoom = 1 / z;
     webview.getCurrentWebview().setZoom(z).catch(() => {});
-    try { localStorage.setItem('dr:zoom', String(z)); } catch (e) {}
+    try { localStorage.setItem('dr:zoom', String(z)); } catch {}
   }
   function zoomStep(dir) {
     const next = dir === 0 ? 1 : dir > 0 ? ZOOMS.find(z => z > zoom + 1e-6) : ZOOMS.filter(z => z < zoom - 1e-6).pop();
@@ -124,7 +124,7 @@
     }
   });
 
-  const savedZoom = (() => { try { return parseFloat(localStorage.getItem('dr:zoom')); } catch (e) { return NaN; } })();
+  const savedZoom = (() => { try { return parseFloat(localStorage.getItem('dr:zoom')); } catch { return NaN; } })();
   if (savedZoom > 0 && savedZoom !== 1) setZoom(savedZoom);
   const saved = lsGet();
   tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', status: t.status || '', badge: t.badge || 0, frame: null }));

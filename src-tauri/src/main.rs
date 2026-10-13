@@ -160,27 +160,29 @@ fn main() {
 
             let server: Url = format!("http://127.0.0.1:{port}/").parse().unwrap();
             let local = server.clone();
-            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("differ")
-                .theme(Some(Theme::Dark))
-                .inner_size(1440.0, 900.0)
-                // The page's default 420px sidebar plus a diff pane wide enough for a whole file header.
-                .min_inner_size(1024.0, 640.0)
-                .title_bar_style(TitleBarStyle::Overlay)
-                .hidden_title(true)
-                // Centred on the 40px tab strip the shell draws across the title bar.
-                .traffic_light_position(LogicalPosition::new(13.0, 20.0))
-                .initialization_script(PAGE_SETUP)
-                .initialization_script_for_all_frames(log_script(log.as_ref()))
-                .on_navigation(move |target| {
-                    let is_local = target.host_str() == local.host_str() && target.port() == local.port();
-                    if is_local || target.scheme() == "tauri" {
-                        return true;
-                    }
-                    let _ = tauri_plugin_opener::open_url(target.as_str(), None::<&str>);
-                    false
-                })
-                .build()?;
+            let window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("differ")
+                    .theme(Some(Theme::Dark))
+                    .inner_size(1440.0, 900.0)
+                    // The page's default 420px sidebar plus a diff pane wide enough for a whole file header.
+                    .min_inner_size(1024.0, 640.0)
+                    .title_bar_style(TitleBarStyle::Overlay)
+                    .hidden_title(true)
+                    // Centred on the 40px tab strip the shell draws across the title bar.
+                    .traffic_light_position(LogicalPosition::new(13.0, 20.0))
+                    .initialization_script(PAGE_SETUP)
+                    .initialization_script_for_all_frames(log_script(log.as_ref()))
+                    .on_navigation(move |target| {
+                        let is_local =
+                            target.host_str() == local.host_str() && target.port() == local.port();
+                        if is_local || target.scheme() == "tauri" {
+                            return true;
+                        }
+                        let _ = tauri_plugin_opener::open_url(target.as_str(), None::<&str>);
+                        false
+                    })
+                    .build()?;
 
             std::thread::spawn(move || {
                 if wait_for(port, Duration::from_secs(30)) {
