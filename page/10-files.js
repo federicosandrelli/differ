@@ -1,8 +1,9 @@
 // Which files the page shows, in which order, and where the search hits are.
 
-// All the file's change blocks fold: imports, rename fallout, whitespace or moved code.
+// All the file's change blocks fold: imports, rename fallout, whitespace or moved code. A file renamed or moved
+// without changes has no blocks at all. A changed binary file has none either, so only git's 100% similarity counts.
 function noiseOnly(f) {
-  return !f.generated && f.stats.substantive === 0 && f.stats.raw > 0;
+  return !f.generated && f.stats.substantive === 0 && (f.stats.raw > 0 || f.similarity === 100);
 }
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 function fileShown(f) {

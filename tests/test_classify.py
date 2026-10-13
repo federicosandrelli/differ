@@ -89,6 +89,20 @@ def test_binary_sizes_leaves_out_a_side_without_the_exported_file(tmp_path: Path
     assert classify.binary_sizes(tmp_path, fd) == {"old": None, "new": 5}
 
 
+def test_parse_patch_reads_the_similarity_of_a_rename(tmp_path: Path) -> None:
+    blob = bytes(range(256)) * 4
+    work = make_work(
+        tmp_path,
+        old={"pkg/aio/same.py": "x = 1\n", "a.bin": blob, "b.bin": blob, "keep.py": "a\n"},
+        new={"pkg/same.py": "x = 1\n", "c.bin": blob, "d.bin": blob[:-1] + b"\0", "keep.py": "b\n"},
+    )
+    files = {fd.path: fd for fd in classify.parse_patch((work / "diff.patch").read_text())}
+    assert files["pkg/same.py"].similarity == 100 and files["pkg/same.py"].hunks == []
+    assert files["c.bin"].similarity == 100
+    assert files["d.bin"].status == "R" and files["d.bin"].similarity < 100 and files["d.bin"].hunks == []
+    assert files["keep.py"].similarity is None
+
+
 def test_build_runs_groups_changed_lines_between_context() -> None:
     fd = FileDiff(old_path="f", new_path="f", status="M")
     fd.hunks.append(
