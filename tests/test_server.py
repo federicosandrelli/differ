@@ -24,7 +24,7 @@ def handler(
 def get(path: str, site: str | None = None) -> tuple[int, bytes]:
     """Drive do_GET for a path with the given Sec-Fetch-Site header; the status code and body it writes."""
     h = handler(None, None)
-    h.headers = cast(Any, {"Sec-Fetch-Site": site} if site else {})
+    h.headers = cast(Any, {"Host": "localhost:8765", **({"Sec-Fetch-Site": site} if site else {})})
     h.path = path
     h.command = "GET"
     h.request_version = "HTTP/1.1"
