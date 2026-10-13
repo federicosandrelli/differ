@@ -4,11 +4,27 @@
 (function () {
   const el = document.getElementById('log');
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const fail = (message) => { el.innerHTML += '\n<span class="err">' + esc(message) + '</span>\n\n<a href="' + el.dataset.retry + '">Try again</a>'; };
+  let seen = false;
   async function poll() {
-    const r = await fetch(el.dataset.status); const s = await r.json();
+    let s;
+    try {
+      const r = await fetch(el.dataset.status);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      s = await r.json();
+    } catch (e) {
+      fail('Could not read the build status (' + e.message + ').');
+      return;
+    }
+    // The server starts the job before it serves this page, so restarting on a first answer of "none" could loop.
+    if (s.state === 'none') {
+      if (seen) location.replace(el.dataset.retry); else fail('The server has no build running for this pull request.');
+      return;
+    }
+    seen = true;
     el.innerHTML = s.log.map(esc).join('\n') || 'Starting…';
     if (s.state === 'done') { location.reload(); return; }
-    if (s.state === 'error') { el.innerHTML += '\n<span class="err">' + esc(s.error) + '</span>\n\n<a href="' + el.dataset.retry + '">Try again</a>'; return; }
+    if (s.state === 'error') { fail(s.error); return; }
     setTimeout(poll, 700);
   }
   poll();
