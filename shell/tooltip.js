@@ -3,7 +3,9 @@
 // element, the titles of the element and of its ancestors move to data-tip, so the browser's slower tooltip never
 // shows; they come back when the pointer leaves. A disabled button gets no mouse events in some browsers, so the
 // element under the pointer comes from :hover. An open modal dialog sits above everything else, so a tooltip
-// inside one is drawn inside it.
+// inside one is drawn inside it. A click or a key press closes the tooltip until the pointer reaches an element
+// with a different tooltip or moves off titled elements. A redraw under a still pointer fires mouseover on whatever
+// is there first, so only a mousemove counts as moving off.
 (() => {
   const SHOW_MS = 300, WARM_MS = 500, GAP = 6, EDGE = 8;
   let tip = null, held = null, moved = [], shown = null, dismissed = null, timer = 0, warmUntil = 0, x = 0;
@@ -27,7 +29,7 @@
   }
   function show(el) {
     hold(el);
-    if (!el || el === dismissed || !el.dataset.tip) return;
+    if (!el || !el.dataset.tip || el.dataset.tip === dismissed) return;
     if (!tip) {
       tip = document.createElement('div');
       tip.className = 'tooltip';
@@ -51,13 +53,17 @@
   document.addEventListener('mouseover', (e) => {
     const el = titled(e.target);
     hold(el);
-    if (el !== dismissed) dismissed = null;
+    if (el && el.dataset.tip !== dismissed) dismissed = null;
     if (el !== shown) { hide(); schedule(); }
   }, true);
-  document.addEventListener('mousemove', (e) => { x = e.clientX; if (!shown) schedule(); }, true);
+  document.addEventListener('mousemove', (e) => {
+    x = e.clientX;
+    if (!titled(e.target)) dismissed = null;
+    if (!shown) schedule();
+  }, true);
   document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) { hide(); hold(null); dismissed = null; } }, true);
   for (const type of ['mousedown', 'keydown']) {
-    document.addEventListener(type, () => { dismissed = shown || held; hide(); }, true);
+    document.addEventListener(type, () => { const el = shown || held; dismissed = el ? el.dataset.tip : null; hide(); }, true);
   }
   document.addEventListener('scroll', () => { hide(false); schedule(SHOW_MS); }, true);
 })();

@@ -358,3 +358,18 @@ def test_a_tooltip_shows_on_an_element_reached_by_scrolling(page: Page, server_u
     chevron = page.locator(f"{APP} .fhead .chev")
     chevron.hover()
     expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=1000)
+
+
+def test_a_click_dismisses_the_tooltip_even_when_the_click_redraws_the_element(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    check = page.locator("#side .leaf[data-path='src/app.py'] .check")
+    tip = page.locator(".tooltip")
+    check.hover()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    check.click()
+    expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_class(re.compile(r"\breviewed\b"))
+    page.wait_for_timeout(600)
+    expect(tip).not_to_have_class(re.compile(r"\bon\b"))
+    page.locator("#side h1").hover()
+    check.hover()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=600)
