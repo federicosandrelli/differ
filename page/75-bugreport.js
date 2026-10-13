@@ -132,9 +132,10 @@ ${env}
 }
 
 // ---------- page lines back to source files
-// The page's script is the source files concatenated with a "// ---- name" line before each: the name of a file
-// in shell/ or page/, or vendor/highlight.min.js under page/. With the document's text, a line of the page maps to
-// a file and a line of it. The map stays empty when the text cannot be fetched.
+// The page's script is the source files concatenated with a "// ---- name" line before each: the file name for a
+// script in shell/ or page/, or the path under page/ for a vendored script (vendor/highlight.min.js). With the
+// document's text, a line of the page maps to a file and a line of it. The map stays empty when the text cannot
+// be fetched.
 let pageMap = null;
 async function loadPageMap() {
   if (pageMap !== null) return;
