@@ -329,3 +329,32 @@ def test_a_title_shows_as_a_quick_tooltip_and_comes_back_after_the_pointer_leave
     page.locator("#side h1").hover()
     expect(tip).not_to_have_class(re.compile(r"\bon\b"))
     expect(button).to_have_attribute("title", "Requesting changes needs a review summary")
+
+
+def test_a_tooltip_inside_a_titled_row_hides_the_row_title_too(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    row = page.locator("#side .leaf[data-path='src/app.py']")
+    pill = row.locator(".pill")
+    pill.hover()
+    expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(page.locator(".tooltip")).to_have_text("modified")
+    expect(row).not_to_have_attribute("title", re.compile(".*"))
+    expect(pill).not_to_have_attribute("title", re.compile(".*"))
+    page.locator("#side h1").hover()
+    expect(row).to_have_attribute("title", "src/app.py")
+    expect(pill).to_have_attribute("title", "modified")
+
+
+def test_a_tooltip_in_the_docs_window_shows_above_the_dialog(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.click("button[data-docs-open]")
+    page.hover("button[data-docs-close]")
+    expect(page.locator("#docs .tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(page.locator("#docs .tooltip")).to_have_text("Close")
+
+
+def test_a_tooltip_shows_on_an_element_reached_by_scrolling(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    chevron = page.locator(f"{APP} .fhead .chev")
+    chevron.hover()
+    expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=1000)
