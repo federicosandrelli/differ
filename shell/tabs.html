@@ -5,22 +5,22 @@ __THEME__
 :root { --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; --mono: "SF Mono", ui-monospace, Menlo, monospace; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--fg); font: 13px var(--sans); display: flex; flex-direction: column; overflow: hidden; }
-#tabs { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; background: var(--bg2); border-bottom: 1px solid var(--line); overflow: hidden; user-select: none; -webkit-user-select: none; }
+body { background: var(--bg-canvas); color: var(--text); font: 13px var(--sans); display: flex; flex-direction: column; overflow: hidden; }
+#tabs { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); overflow: hidden; user-select: none; -webkit-user-select: none; }
 html.app #tabs { height: 40px; padding-left: 84px; }
-.tab { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: 7px; color: var(--fg2); flex: 0 1 auto; min-width: 48px; max-width: 260px; cursor: default; }
-.tab:hover { background: var(--bg3); }
-.tab.on { background: var(--bg3); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.tab { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: 7px; color: var(--text-secondary); flex: 0 1 auto; min-width: 48px; max-width: 260px; cursor: default; }
+.tab:hover { background: var(--bg-hover); }
+.tab.on { background: var(--bg-inset); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
 .tab.home { flex: none; padding: 0 8px; min-width: 0; }
 .tab.home svg { display: block; }
 .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
-.tab .badge { flex: none; font: 11px/18px var(--mono); min-width: 18px; text-align: center; padding: 0 4px; border-radius: 4px; background: var(--bg); color: var(--fg2); border: 1px solid var(--line); }
+.tab .badge { flex: none; font: 11px/18px var(--mono); min-width: 18px; text-align: center; padding: 0 4px; border-radius: 4px; background: var(--bg-canvas); color: var(--text-secondary); border: 1px solid var(--border); }
 .tab.warn .label { color: var(--del-fg); }
-.tab .close { flex: none; width: 16px; height: 16px; border: 0; border-radius: 4px; padding: 0; background: none; color: var(--fg3); font: 15px/16px var(--sans); cursor: pointer; visibility: hidden; }
+.tab .close { flex: none; width: 16px; height: 16px; border: 0; border-radius: 4px; padding: 0; background: none; color: var(--text-muted); font: 15px/16px var(--sans); cursor: pointer; visibility: hidden; }
 .tab:hover .close, .tab.on .close { visibility: visible; }
-.tab .close:hover { background: var(--line); color: var(--fg); }
+.tab .close:hover { background: var(--bg-hover-strong); color: var(--text); }
 #panes { flex: 1; position: relative; min-height: 0; }
-#panes iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); visibility: hidden; }
+#panes iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg-canvas); visibility: hidden; }
 #panes iframe.on { visibility: visible; }
 </style>
 </head><body><div id="tabs" data-tauri-drag-region></div><div id="panes"></div>
