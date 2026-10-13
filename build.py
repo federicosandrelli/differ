@@ -142,10 +142,18 @@ def forget_pages(owner: str, repo: str, number: int) -> None:
     shutil.rmtree(page_path(owner, repo, number, "x").parent, ignore_errors=True)
 
 
+def mtime(path: Path) -> float:
+    """The modification time of a file, or 0 for a file another thread deleted since it was listed."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def prune(owner: str, repo: str, number: int) -> None:
     """Delete the work directory of the pull request and all of its pages but the newest PAGES_KEPT."""
     shutil.rmtree(CACHE / "work" / owner / repo / str(number), ignore_errors=True)
-    pages = sorted(page_path(owner, repo, number, "x").parent.glob("*.html"), key=lambda p: p.stat().st_mtime)
+    pages = sorted(page_path(owner, repo, number, "x").parent.glob("*.html"), key=mtime)
     for page in pages[:-PAGES_KEPT]:
         page.unlink(missing_ok=True)
 
@@ -155,7 +163,7 @@ def prune_all() -> None:
     shutil.rmtree(CACHE / "work", ignore_errors=True)
     cutoff = time.time() - PAGE_MAX_AGE
     for page in (CACHE / "pages").glob("*/*/*/*.html"):
-        if page.stat().st_mtime < cutoff:
+        if mtime(page) < cutoff:
             page.unlink(missing_ok=True)
 
 

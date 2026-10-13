@@ -165,6 +165,14 @@ def test_prune_deletes_the_work_directory_and_keeps_the_two_newest_pages(
     assert other_page.exists()
 
 
+def test_mtime_of_a_missing_file_is_zero(tmp_path: Path) -> None:
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    os.utime(page, (1234, 1234))
+    assert build.mtime(page) == 1234
+    assert build.mtime(tmp_path / "gone.html") == 0.0
+
+
 def test_prune_without_pages_or_work_is_a_no_op(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(build, "CACHE", tmp_path)
     build.prune("owner", "repo", 7)
