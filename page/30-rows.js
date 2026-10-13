@@ -2,7 +2,7 @@
 // blocks of context and change runs, with every fold decided. fileBlocks gives the diff table what to draw,
 // reveal opens whatever hides a row, and toggleFold answers a click on a fold row; the fold keys stay in here.
 
-// Plain rows skip the syntax highlighting and hold the text as their HTML, enough to decide the folds.
+// Plain rows skip the syntax highlighting and have no HTML: they decide the folds but are never drawn.
 function buildRows(f, plain) {
   const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
   for (const r of f.runs) {
@@ -10,7 +10,7 @@ function buildRows(f, plain) {
     if (r.class === 'rename' && r.origin) continue;
     (r.pair_rename || []).forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
   }
-  const hl = plain ? contentLines(f) : highlightLines(f);
+  const hl = plain ? [] : highlightLines(f);
   const raw = contentLines(f);
   const rows = [];
   if (f.content_side === 'old') {
@@ -25,7 +25,7 @@ function buildRows(f, plain) {
       let anchor = null;
       for (let j = i + 1; j < L.length; j++) if (L[j][2] != null) { anchor = L[j][2]; break; }
       if (anchor == null) anchor = h.new_start + L.filter(x => x[2] != null).length;
-      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: plain ? t : hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
+      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: plain ? undefined : hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
     }
   }
   for (let i = 1; i <= raw.length + 1; i++) {
@@ -50,7 +50,7 @@ const pinned = (r) => r.hit || r.threads || r.compose;
 function flagHits(rows) {
   const q = state.q.toLowerCase();
   if (!q) return rows;
-  for (const r of rows) if (r.text.toLowerCase().includes(q)) { r.hit = true; r.html = markHtml(r.html, state.q); }
+  for (const r of rows) if (r.text.toLowerCase().includes(q)) { r.hit = true; if (r.html !== undefined) r.html = markHtml(r.html, state.q); }
   return rows;
 }
 function blocksFor(rows) {
@@ -133,7 +133,7 @@ const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey
 
 // A context block shows RADIUS lines next to each visible neighbour and folds the middle, unless the
 // reader opened it: head and tail show, mid shows when open.
-function contextBlock(f, blocks, bi) {
+function contextBlock(f, blocks, bi, register) {
   const rs = blocks[bi].rows;
   const whole = { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
   const visible = (nb) => nb && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
@@ -145,7 +145,7 @@ function contextBlock(f, blocks, bi) {
   const mid = rs.slice(head.length, rs.length - tail.length);
   if (!mid.length) return whole;
   const key = `${f.path}:${mid[0].newNo}`;
-  return { ctx: true, rows: rs, head, mid, tail, fold: fold(key, () => state.unfolded.add(key)), open: state.unfolded.has(key) };
+  return { ctx: true, rows: rs, head, mid, tail, fold: register(key, () => state.unfolded.add(key)), open: state.unfolded.has(key) };
 }
 
 // The file as the blocks the diff table draws, every fold decided. A block has its rows, the id of the fold
@@ -154,24 +154,25 @@ function contextBlock(f, blocks, bi) {
 //   { group, cls, rows }              noise runs folded together, always closed
 //   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
 //   { run, rows }                     a change run; a noise run folds, shown when open
+// Blocks of plain rows leave their folds out of FOLDS, whose entries would keep the rows alive.
 function fileBlocks(f, plain) {
-  const rows = buildRows(f, plain);
+  const rows = buildRows(f, plain), register = plain ? (id) => id : fold;
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);
   return blocks.map((b, bi) => {
     if (b.imports) {
       const k = importsKey(f, b);
-      return { ...b, fold: fold(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b) };
+      return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b) };
     }
     if (b.group) {
       const keys = b.group.map(r => runKey(f, r));
-      return { ...b, fold: fold(`${f.path}#runs:${b.group.map(r => r.index).join(',')}`, () => keys.forEach(k => state.expanded.add(k))), open: false };
+      return { ...b, fold: register(`${f.path}#runs:${b.group.map(r => r.index).join(',')}`, () => keys.forEach(k => state.expanded.add(k))), open: false };
     }
-    if (b.ctx) return contextBlock(f, blocks, bi);
+    if (b.ctx) return contextBlock(f, blocks, bi, register);
     if (!isNoise(b.run)) return { ...b, fold: null, open: true };
     const k = runKey(f, b.run);
-    return { ...b, fold: fold(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b) };
+    return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b) };
   });
 }
 const hiddenRows = (b) => b.open ? [] : b.ctx ? b.mid : b.rows;

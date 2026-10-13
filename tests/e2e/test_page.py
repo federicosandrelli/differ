@@ -61,6 +61,17 @@ def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> 
     expect(section.locator("tr.add", has_text="import sys")).to_have_count(0)
 
 
+def test_the_height_estimate_counts_the_rows_each_file_draws(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    mismatches = page.evaluate("""() => ['', 'name'].flatMap(q => {
+        state.q = q;
+        const drawn = (f) => codeRows(f).html.filter(h => !/^<tr class="(thread|compose)"/.test(h)).length;
+        const counted = (f) => fileBlocks(f, true).reduce((n, b) => n + drawnRows(b), 0);
+        return FILES.filter(f => f.runs.length && counted(f) !== drawn(f)).map(f => `${q}:${f.path}`);
+    })""")
+    assert mismatches == []
+
+
 def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.keyboard.press("Meta+f")
