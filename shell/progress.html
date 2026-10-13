@@ -9,9 +9,11 @@
   async function poll() {
     let s;
     try {
-      const r = await fetch(el.dataset.status); s = await r.json();
+      const r = await fetch(el.dataset.status);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      s = await r.json();
     } catch (e) {
-      fail('Lost contact with the server (' + e.message + ').');
+      fail('Could not read the build status (' + e.message + ').');
       return;
     }
     // The server starts the job before it serves this page, so restarting on a first answer of "none" could loop.
