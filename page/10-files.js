@@ -27,7 +27,7 @@ function viewHits(f) {
   if (c.q !== q) { c.q = q; c.hits = c.rows.filter(([, t]) => t.includes(q)).map(([k]) => k); }
   return c.hits;
 }
-// The rows of the file the reader can see that hold the query: none while its section is closed.
+// The number of rows of the file the reader can see that hold the query: 0 while its section is closed.
 const hits = (f) => sectionOpen(f) ? viewHits(f).length : 0;
 
 function buildTree(files) {
@@ -66,8 +66,7 @@ function treeOrder(node, out) {
 // The shown files in tree order; recomputed only when the state that selects them changes.
 const visibleCache = { key: null, files: [] };
 function visibleFiles() {
-  const c = state.compose;
-  const folds = state.q ? JSON.stringify([state.show, [...state.expanded], [...state.unfolded], C.version, c && [c.path, c.side, c.startLine, c.line]]) : '';
+  const folds = state.q ? FILES.map(foldKey).join('\u0000') : '';
   const key = [state.filter, state.q, state.showNoiseOnly, state.showGenerated, folds].join('\u0000');
   if (visibleCache.key !== key) {
     visibleCache.key = key;

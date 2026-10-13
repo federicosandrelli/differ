@@ -198,8 +198,9 @@ function reveal(f, key) {
 // The state the file's folds depend on, for a cache key.
 function foldKey(f) {
   const runs = f.path + '#', folds = f.path + ':', c = state.compose && state.compose.path === f.path ? state.compose : null;
+  const threads = THREADS.byFile.get(f.path);
   return JSON.stringify([state.show, [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds)),
-    C.version, c && [c.side, c.startLine, c.line]]);
+    threads ? [...threads.rows.keys()] : [], c && [c.side, c.startLine, c.line]]);
 }
 // The state the file's blocks depend on, for a cache key: the folds, and the search marks in the rows.
 const viewKey = (f) => [state.q, foldKey(f)];

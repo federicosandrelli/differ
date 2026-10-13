@@ -58,8 +58,8 @@ function renderList() {
 function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
   if (!state.q) { el.textContent = ''; return; }
-  const all = allHits(), at = hitPosition(all), files = new Set(all.map(h => h.path)).size;
-  el.textContent = `${plural(files, 'file')} · ${at >= 0 ? `${at + 1} / ${all.length}` : plural(all.length, 'line')}`;
+  const all = allHits(), at = hitPosition(all);
+  el.textContent = `${plural(visibleFiles().length, 'file')} · ${at >= 0 ? `${at + 1} / ${all.length}` : plural(all.length, 'line')}`;
 }
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 

@@ -168,7 +168,8 @@ lines in the open sections of the shown files. It skips the lines inside a
 closed fold, the sections closed by a review mark or the chevron, and the
 files the filters hide. A match never opens a fold. Opening or closing a fold
 or a section updates the count. A file stays on the page while its view holds
-a match, so closing its section keeps it in place, without a count.
+a match, so closing its section keeps it in place, without a count. Enter
+then goes on from that file to the next hit.
 
 ## Reporting a bug
 

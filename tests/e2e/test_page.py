@@ -107,7 +107,7 @@ def test_search_counts_the_lines_on_screen_and_skips_closed_folds_and_sections(p
     expect(page.locator("#searchmeta")).to_have_text("2 files · 8 lines")
     expect(page.locator("#main tr:has(mark)")).to_have_count(8)
     section.locator(".fhead .top").click()
-    expect(page.locator("#searchmeta")).to_have_text("1 file · 2 lines")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 2 lines")
     expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_count(1)
     expect(page.locator("#side .leaf[data-path='src/app.py'] .hits")).to_have_count(0)
 

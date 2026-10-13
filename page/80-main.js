@@ -43,10 +43,8 @@ function headerHtml(f, open) {
 }
 // Everything a file's body depends on besides the file itself.
 function bodyKey(f) {
-  const c = state.compose && state.compose.path === f.path ? state.compose : null;
   return JSON.stringify([
-    viewKey(f), c && [c.side, c.startLine, c.line],
-    C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path),
+    viewKey(f), C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path),
   ]);
 }
 function bodyParts(f) {
