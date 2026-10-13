@@ -84,13 +84,13 @@ def test_cmd_f_fills_the_search_with_the_selected_code(page: Page, server_url: s
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
 
 
-def test_r_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
+def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
     page.set_viewport_size({"width": 1100, "height": 400})
     open_pr(page, server_url)
     leaf = "#side .leaf[data-path='src/app.py']"
     page.click(leaf)
     expect(page.locator(leaf)).to_have_class(re.compile(r"\bactive\b"))
-    page.keyboard.press("r")
+    page.click(f"{APP} button[data-review]")
     expect(page.locator(leaf)).to_have_class(re.compile(r"\breviewed\b"))
     expect(page.locator(APP)).to_have_class(re.compile(r"\bclosed\b"))
     page.reload()

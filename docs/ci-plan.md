@@ -176,8 +176,8 @@ Scenarios, one test each:
 3. A fold row opens on click and hides again.
 4. `/` focuses the search; typing a word and pressing Enter scrolls to the
    first hit.
-5. `r` marks the current file reviewed, and the mark is still there after a
-   reload.
+5. The "Mark reviewed" button marks the file reviewed, and the mark is
+   still there after a reload.
 6. Comments load from the fake `gh` and appear under their lines; a resolved
    thread is folded to one line; the overview table lists every thread.
 7. Posting a single comment on a line sends a POST to `/api/.../comment`
