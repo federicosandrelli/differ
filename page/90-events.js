@@ -14,6 +14,21 @@ function renderKeepingHeader(f) {
   const keep = () => { main.scrollTop += now.getBoundingClientRect().top - top; };
   keep(); syncViewport(); keep(); syncViewport(); keep();
 }
+// Change the file filter, keeping the reader on the file at the top of the pane, or on the nearest shown file before
+// it when the filter hides it. Filter changes in a row keep returning to the file from before the first one; any
+// other click, key, wheel or touch ends the run.
+let filterReturn = null;
+function setFilter(filter) {
+  if (filter === state.filter) return;
+  const back = filterReturn || state.view;
+  state.filter = filter;
+  render();
+  if (state.view !== back) scrollToFile(shownAtOrBefore(back));
+  filterReturn = back;
+}
+for (const type of ['pointerdown', 'keydown', 'wheel', 'touchmove']) {
+  document.addEventListener(type, (e) => { if (!(e.target.closest && e.target.closest('[data-filter]'))) filterReturn = null; }, true);
+}
 function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); renderKeepingHeader(f); }
 function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); renderKeepingHeader(f); }
 
@@ -41,7 +56,7 @@ document.addEventListener('click', (e) => {
     go(d.path, key);
     return;
   }
-  if (d.filter) { state.filter = d.filter; render(); return; }
+  if (d.filter) { setFilter(d.filter); return; }
   if (d.generated !== undefined) { e.preventDefault(); state.showGenerated = d.generated === '1'; lsSet('dr:generated', state.showGenerated ? '1' : '0'); render(); return; }
   if (d.noiseonly !== undefined) { e.preventDefault(); state.showNoiseOnly = d.noiseonly === '1'; lsSet('dr:noise-only', state.showNoiseOnly ? '1' : '0'); render(); return; }
   if (d.tree) { state.closed = new Set(d.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }

@@ -74,6 +74,12 @@ function visibleFiles() {
   }
   return visibleCache.files;
 }
+// The file when it shows, or else the nearest shown file before it in tree order; 'overview' when there is none.
+function shownAtOrBefore(path) {
+  const all = treeOrder(buildTree(FILES), []), shown = new Set(visibleFiles());
+  for (let i = all.indexOf(BY_PATH[path]); i >= 0; i--) if (shown.has(all[i])) return all[i].path;
+  return 'overview';
+}
 
 // ---------- search hits, for Enter to step through: every hit as { path, key } of its row
 function allHits() {
