@@ -35,6 +35,8 @@ function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); ren
 document.addEventListener('click', (e) => {
   const bug = e.target.closest(BUG_ATTRS);
   if (bug) { e.preventDefault(); bugClick(bug); return; }
+  if (e.target.closest('[data-docs-open]')) { openDocs(); return; }
+  if (e.target.closest('#docs')) return;
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
   // The number cell of a code row is its comment button.
   const cell = API && e.target.closest('table.diff td.n:first-child');
@@ -107,6 +109,7 @@ function stepHit(dir) {
 }
 
 document.addEventListener('keydown', (e) => {
+  if (e.target.closest && e.target.closest('#docs')) return;
   if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
