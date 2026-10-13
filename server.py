@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Serve review pages for any GitHub pull request, building each on first visit.
 
-Usage: server.py [port]   (default 8765)
+Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765)
+
+  --log <path>        append the server's stderr to this file; a file past 5 MB starts over at start-up
+  --exit-with-parent  exit once the parent process is gone
 
   /                                  the tabbed shell: the start page as a home tab, and a tab per open page
   /home                              the start page: a search bar and the ten pull requests opened last
@@ -22,16 +25,20 @@ Every request must name this server on a loopback host in its Host header; any o
 
 from __future__ import annotations
 
+import argparse
 import html
 import json
 import os
 import re
 import socket
+import subprocess
 import sys
 import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import TextIO
 from urllib.parse import parse_qs, urlparse
 
 import build
@@ -47,6 +54,9 @@ PR_STATUS = re.compile(rb'<meta name="pr-status" content="(\w*)">')
 HEAD_TTL = 20
 RECENT = build.CACHE / "recent.json"
 RECENT_MAX = 10
+GH_TTL = 60
+GH_TIMEOUT = 10
+LOG_MAX = 5 * 1024 * 1024
 
 
 class Job:
@@ -58,6 +68,7 @@ class Job:
 
 jobs: dict[tuple[str, str, int], Job] = {}
 heads: dict[tuple[str, str, int], tuple[float, str]] = {}
+gh_checked: tuple[float, str | None] = (0.0, None)
 lock = threading.Lock()
 refreshing = threading.Lock()
 
@@ -147,9 +158,10 @@ def note_opened(key: tuple[str, str, int], page: bytes) -> None:
 
 
 def save_recent(pages: list[dict]) -> None:
-    """Replace recent.json in one step, so a reader sees the old list or the new one and never part of one."""
+    """Replace recent.json in one step, so a reader sees the old list or the new one and never part of one. The
+    list goes to recent.json.tmp first and is renamed over recent.json, so a crash mid-write leaves the old list."""
     RECENT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = RECENT.with_suffix(".tmp")
+    tmp = RECENT.with_name(RECENT.name + ".tmp")
     tmp.write_text(json.dumps(pages))
     os.replace(tmp, RECENT)
 
@@ -170,6 +182,44 @@ def refresh_statuses() -> None:
                 save_recent(updated)
     finally:
         refreshing.release()
+
+
+def check_gh() -> str | None:
+    """Why gh cannot reach GitHub now, or None when `gh auth status` succeeds."""
+    try:
+        r = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=GH_TIMEOUT)
+    except FileNotFoundError:
+        return "The GitHub CLI (gh) is not installed."
+    except subprocess.TimeoutExpired:
+        return f"`gh auth status` gave no answer in {GH_TIMEOUT} seconds."
+    if r.returncode != 0:
+        return "The GitHub CLI (gh) is not signed in."
+    return None
+
+
+def gh_problem() -> str | None:
+    """Why gh cannot reach GitHub, or None. The answer from the last check serves for a minute, so signing in
+    shows on the start page within a minute, without a restart."""
+    global gh_checked
+    with lock:
+        checked, problem = gh_checked
+    if time.time() - checked < GH_TTL:
+        return problem
+    problem = check_gh()
+    with lock:
+        gh_checked = (time.time(), problem)
+    return problem
+
+
+def gh_banner() -> str:
+    """The notice above the start page's search bar when gh cannot reach GitHub, or an empty string."""
+    problem = gh_problem()
+    if problem is None:
+        return ""
+    return (
+        f'<div class="banner">{html.escape(problem)} Run <code>gh auth login</code> in a terminal, '
+        "then reload this page.</div>"
+    )
 
 
 def ago(ts: float) -> str:
@@ -215,7 +265,9 @@ def recent_items() -> str:
 def start_page() -> bytes:
     """The start page, with the statuses saved last. Its list, with each status fetched from GitHub, is fetched
     again when the page loads and each time its tab comes to the front."""
-    return shell("Pull request review", render.fill(shell_file("start.html"), RECENT=recent_items()))
+    return shell(
+        "Pull request review", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent_items())
+    )
 
 
 def progress_page(key: tuple[str, str, int]) -> bytes:
@@ -429,13 +481,40 @@ def exit_with_parent() -> None:
     os._exit(0)
 
 
+def open_log(path: Path) -> TextIO:
+    """The log file at path, opened for appending, or started over when it already holds more than LOG_MAX bytes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = "w" if path.exists() and path.stat().st_size > LOG_MAX else "a"
+    return path.open(mode, buffering=1)
+
+
+def log_to(path: Path) -> None:
+    """Send this process's stderr, and the stderr of the gh and git commands it runs, to the file at path."""
+    log = open_log(path)
+    sys.stderr.flush()
+    os.dup2(log.fileno(), sys.stderr.fileno())
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Serve review pages for any GitHub pull request.")
+    parser.add_argument("port", nargs="?", type=int, default=8765)
+    parser.add_argument("--log", type=Path, help="append the server's stderr to this file")
+    parser.add_argument("--exit-with-parent", action="store_true", help="exit once the parent process is gone")
+    return parser.parse_args(argv)
+
+
 def main() -> None:
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    args = parse_args(sys.argv[1:])
+    if args.log:
+        log_to(args.log)
+    port = args.port
     if taken := port_taken(port):
         sys.exit(f"Port {port} is already in use on {taken}. Stop that process or pass another port: server.py <port>")
-    if "--exit-with-parent" in sys.argv:
+    if args.exit_with_parent:
         threading.Thread(target=exit_with_parent, daemon=True).start()
     build.prune_all()
+    if problem := gh_problem():
+        sys.stderr.write(f"{problem} Run `gh auth login`; the start page checks again once a minute.\n")
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"Serving pull request reviews on http://localhost:{port}/")
     server.serve_forever()

@@ -261,3 +261,99 @@ def test_api_answers_an_unexpected_error_as_json(monkeypatch: pytest.MonkeyPatch
     h.do_POST()
     code, body = response(h)
     assert (code, json.loads(body)) == (500, {"error": "Unexpected error: RuntimeError: boom"})
+
+
+def test_note_opened_keeps_the_old_list_when_a_write_dies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    server.note_opened(("o", "r", 1), b"<title>#1 First</title>")
+    before = (tmp_path / "recent.json").read_text()
+
+    def die(self: Path, data: str, **kwargs: Any) -> int:
+        self.write_bytes(data[: len(data) // 2].encode())
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", die)
+    with pytest.raises(OSError):
+        server.note_opened(("o", "r", 2), b"<title>#2 Second</title>")
+    assert (tmp_path / "recent.json").read_text() == before
+    assert [p["number"] for p in server.recent_pages()] == [1]
+
+
+def gh_run(returncode: int) -> Any:
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        calls.append(args)
+        return subprocess.CompletedProcess(args, returncode, "", "")
+
+    fake_run.calls = calls  # type: ignore[attr-defined]
+    return fake_run
+
+
+def test_start_page_shows_a_banner_when_gh_is_signed_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    monkeypatch.setattr(server, "gh_checked", (0.0, None))
+    monkeypatch.setattr(server.subprocess, "run", gh_run(1))
+    page = server.start_page().decode()
+    assert 'class="banner"' in page
+    assert "The GitHub CLI (gh) is not signed in." in page
+    assert "<code>gh auth login</code>" in page
+    assert page.index('class="banner"') < page.index("<form")
+
+
+def test_start_page_shows_a_banner_when_gh_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    monkeypatch.setattr(server, "gh_checked", (0.0, None))
+
+    def missing(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        raise FileNotFoundError(args[0])
+
+    monkeypatch.setattr(server.subprocess, "run", missing)
+    page = server.start_page().decode()
+    assert "The GitHub CLI (gh) is not installed." in page
+    assert "<code>gh auth login</code>" in page
+
+
+def test_start_page_shows_no_banner_when_gh_is_signed_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    monkeypatch.setattr(server, "gh_checked", (0.0, None))
+    monkeypatch.setattr(server.subprocess, "run", gh_run(0))
+    page = server.start_page().decode()
+    assert 'class="banner"' not in page
+    assert "gh auth login" not in page
+
+
+def test_gh_problem_checks_gh_at_most_once_a_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "gh_checked", (0.0, None))
+    run = gh_run(1)
+    monkeypatch.setattr(server.subprocess, "run", run)
+    now = 1_000_000.0
+    monkeypatch.setattr(server.time, "time", lambda: now)
+    assert server.gh_problem() == "The GitHub CLI (gh) is not signed in."
+    assert server.gh_problem() == "The GitHub CLI (gh) is not signed in."
+    assert len(run.calls) == 1
+    assert run.calls[0] == ["gh", "auth", "status"]
+    now += server.GH_TTL
+    monkeypatch.setattr(server.subprocess, "run", gh_run(0))
+    assert server.gh_problem() is None
+    assert len(run.calls) == 1
+
+
+def test_open_log_appends_and_starts_over_past_the_size_limit(tmp_path: Path) -> None:
+    log = tmp_path / "logs" / "server.log"
+    with server.open_log(log) as out:
+        out.write("first\n")
+    with server.open_log(log) as out:
+        out.write("second\n")
+    assert log.read_text() == "first\nsecond\n"
+    log.write_text("x" * (server.LOG_MAX + 1))
+    with server.open_log(log) as out:
+        out.write("fresh\n")
+    assert log.read_text() == "fresh\n"
+
+
+def test_parse_args() -> None:
+    args = server.parse_args([])
+    assert (args.port, args.log, args.exit_with_parent) == (8765, None, False)
+    args = server.parse_args(["8766", "--exit-with-parent", "--log", "/tmp/differ/server.log"])
+    assert (args.port, args.log, args.exit_with_parent) == (8766, Path("/tmp/differ/server.log"), True)

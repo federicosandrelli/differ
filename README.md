@@ -29,7 +29,13 @@ To build one page without the server:
 python3 build.py https://github.com/owner/repo/pull/123
 ```
 
-Requirements: Python 3.13, git, and the GitHub CLI (`gh`) signed in.
+Requirements: Python 3.13, git, and the GitHub CLI (`gh`) signed in. The
+server runs `gh auth status` when it starts; when `gh` is missing or signed
+out, the start page shows a banner with the command to run, and checks again
+at most once a minute, so signing in clears the banner without a restart.
+
+`server.py --log <path>` appends the server's stderr to that file; a file past
+5 MB starts over when the server starts.
 
 ## Comments
 
@@ -61,7 +67,8 @@ The same pages in a native window, with the tab strip across the title bar.
 The Tauri shell in `src-tauri/` starts `server.py` as a child process on port
 8766 (or a free port when that one is taken), opens the window on it, and stops
 the server when the app quits (the server also exits on its own if the app
-dies). The page keeps its settings in
+dies). The server's stderr goes to `~/Library/Logs/differ/server.log`, and
+the bug report names that file. The page keeps its settings in
 the webview's `localStorage`, so the fixed port is what makes them survive a
 relaunch. Links to GitHub open in the system browser. Cmd+Option+Left and
 Cmd+Option+Right step between the tabs. Cmd+Plus and Cmd+Minus zoom the pages
