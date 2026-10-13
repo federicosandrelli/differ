@@ -30,6 +30,7 @@ import socket
 import sys
 import threading
 import time
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -313,6 +314,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, error_page(str(exc)))
         except comments.CommentError as exc:
             return self.send_json({"error": str(exc)}, 502)
+        except Exception as exc:
+            return self.send_failure(exc, as_json=API.match(url.path) is not None)
 
     def send_json(self, data: dict, code: int = 200) -> None:
         self.send(code, json.dumps(data).encode(), "application/json")
@@ -327,6 +330,19 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Sec-Fetch-Site", "").strip().lower() == "cross-site":
             return "the request comes from another site (Sec-Fetch-Site: cross-site)"
         return None
+
+    def send_failure(self, exc: Exception, as_json: bool) -> None:
+        """Answer 500 for an error no route expected, with its traceback on stderr. A client that has already
+        gone away gets no answer."""
+        traceback.print_exc(file=sys.stderr)
+        message = f"Unexpected error: {type(exc).__name__}: {exc}"
+        try:
+            if as_json:
+                self.send_json({"error": message}, 500)
+            else:
+                self.send(500, error_page(message))
+        except OSError:
+            pass
 
     def refused(self) -> str | None:
         """Why this POST is refused, or None: a page from another origin must not act with the user's gh identity.
@@ -388,6 +404,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": f"Bad request: {exc}"}, 400)
         except comments.CommentError as exc:
             return self.send_json({"error": str(exc)}, 502)
+        except Exception as exc:
+            return self.send_failure(exc, as_json=True)
 
     def log_message(self, format: str, *args) -> None:
         sys.stderr.write(f"{self.address_string()} {format % args}\n")
