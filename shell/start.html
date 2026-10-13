@@ -2,7 +2,12 @@
 <form action="/open"><input name="pr" placeholder="https://github.com/owner/repo/pull/123 or owner/repo#123" autofocus><button>Open</button></form>
 <div class="list" id="recent">__RECENT__</div>
 <script>
-const loadRecent = () => fetch('/recent').then(r => r.text()).then(h => { document.getElementById('recent').innerHTML = h; }).catch(() => {});
+let loading = null;
+const loadRecent = () => {
+  if (loading) loading.abort();
+  loading = new AbortController();
+  fetch('/recent', { signal: loading.signal }).then(r => r.text()).then(h => { document.getElementById('recent').innerHTML = h; }).catch(() => {});
+};
 loadRecent();
 document.addEventListener('tab-shown', loadRecent);
 </script>

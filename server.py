@@ -23,7 +23,6 @@ import json
 import os
 import re
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -55,6 +54,7 @@ class Job:
 jobs: dict[tuple[str, str, int], Job] = {}
 heads: dict[tuple[str, str, int], tuple[float, str]] = {}
 lock = threading.Lock()
+refreshing = threading.Lock()
 
 
 def page_key(m: re.Match) -> tuple[str, str, int]:
@@ -138,55 +138,33 @@ def note_opened(key: tuple[str, str, int], page: bytes) -> None:
             "status": status,
             "opened": time.time(),
         }
-        RECENT.parent.mkdir(parents=True, exist_ok=True)
-        RECENT.write_text(json.dumps([entry, *rest][:RECENT_MAX]))
+        save_recent([entry, *rest][:RECENT_MAX])
 
 
-def live_statuses(pages: list[dict]) -> dict[tuple[str, str, int], str]:
-    """The status of each pull request on GitHub now, by owner, repo and number, from one query. A pull request
-    GitHub can't return is missing, and every one is missing when gh fails."""
-    if not pages:
-        return {}
-    params, fields, variables = [], [], {}
-    for i, p in enumerate(pages):
-        params.append(f"$o{i}: String!, $r{i}: String!, $n{i}: Int!")
-        fields.append(
-            f"p{i}: repository(owner: $o{i}, name: $r{i}) {{ pullRequest(number: $n{i}) {{ state isDraft }} }}"
-        )
-        variables |= {f"o{i}": p["owner"], f"r{i}": p["repo"], f"n{i}": p["number"]}
-    query = f"query({', '.join(params)}) {{ {' '.join(fields)} }}"
-    try:
-        r = subprocess.run(
-            ["gh", "api", "graphql", "--input", "-"],
-            input=json.dumps({"query": query, "variables": variables}),
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        data = json.loads(r.stdout).get("data")
-    except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError):
-        return {}
-    statuses = {}
-    for i, p in enumerate(pages):
-        repo = data.get(f"p{i}") if isinstance(data, dict) else None
-        pr = repo.get("pullRequest") if isinstance(repo, dict) else None
-        if isinstance(pr, dict):
-            status = render.pr_status({"state": pr.get("state"), "draft": pr.get("isDraft")})
-            statuses[(p["owner"], p["repo"], p["number"])] = status
-    return statuses
+def save_recent(pages: list[dict]) -> None:
+    """Replace recent.json in one step, so a reader sees the old list or the new one and never part of one."""
+    RECENT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = RECENT.with_suffix(".tmp")
+    tmp.write_text(json.dumps(pages))
+    os.replace(tmp, RECENT)
 
 
 def refresh_statuses() -> None:
     """Save the status GitHub reports now for each pull request in the recently opened list. A pull request
-    GitHub can't return keeps the status saved before."""
-    live = live_statuses(recent_pages())
-    if not live:
+    GitHub can't return keeps the status saved before. While one refresh runs, another returns at once."""
+    if not refreshing.acquire(blocking=False):
         return
-    with lock:
-        pages = recent_pages()
-        for p in pages:
-            p["status"] = live.get((p["owner"], p["repo"], p["number"]), p.get("status", ""))
-        RECENT.write_text(json.dumps(pages))
+    try:
+        live = build.pr_statuses([(p["owner"], p["repo"], p["number"]) for p in recent_pages()])
+        with lock:
+            pages = recent_pages()
+            updated = [
+                p | {"status": live.get((p["owner"], p["repo"], p["number"]), p.get("status", ""))} for p in pages
+            ]
+            if updated != pages:
+                save_recent(updated)
+    finally:
+        refreshing.release()
 
 
 def ago(ts: float) -> str:

@@ -57,6 +57,41 @@ def pr_metadata(owner: str, repo: str, number: int) -> dict:
     return json.loads(run(["gh", "pr", "view", str(number), "--repo", f"{owner}/{repo}", "--json", fields]))
 
 
+def pr_statuses(keys: list[tuple[str, str, int]]) -> dict[tuple[str, str, int], str]:
+    """The status of each pull request on GitHub now, as a key of render.PR_ICONS, by owner, repo and number,
+    from one query. A pull request GitHub can't return is missing, and every one is missing when gh fails."""
+    if not keys:
+        return {}
+    params, fields, variables = [], [], {}
+    for i, (owner, repo, number) in enumerate(keys):
+        params.append(f"$o{i}: String!, $r{i}: String!, $n{i}: Int!")
+        fields.append(
+            f"p{i}: repository(owner: $o{i}, name: $r{i}) {{ pullRequest(number: $n{i}) {{ state isDraft }} }}"
+        )
+        variables |= {f"o{i}": owner, f"r{i}": repo, f"n{i}": number}
+    query = f"query({', '.join(params)}) {{ {' '.join(fields)} }}"
+    # gh exits with 1 when GitHub can't resolve one repository, but still prints the data of the others.
+    try:
+        r = subprocess.run(
+            ["gh", "api", "graphql", "--input", "-"],
+            input=json.dumps({"query": query, "variables": variables}),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        out = json.loads(r.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return {}
+    data = out.get("data") if isinstance(out, dict) else None
+    statuses = {}
+    for i, key in enumerate(keys):
+        repo = data.get(f"p{i}") if isinstance(data, dict) else None
+        pr = repo.get("pullRequest") if isinstance(repo, dict) else None
+        if isinstance(pr, dict):
+            statuses[key] = render.pr_status({"state": pr.get("state"), "draft": pr.get("isDraft")})
+    return statuses
+
+
 def head_sha(owner: str, repo: str, number: int) -> str:
     return run(
         ["gh", "pr", "view", str(number), "--repo", f"{owner}/{repo}", "--json", "headRefOid", "--jq", ".headRefOid"]
