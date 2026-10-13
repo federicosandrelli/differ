@@ -257,10 +257,31 @@ def pr_icon_css() -> str:
     return "\n".join(rules)
 
 
+# A filled circle with a cross cut out of it, the shape of WebKit's own clear button.
+SEARCH_CLEAR_ICON = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><mask id="m"><rect width="24" height="24" '
+    'fill="white"/><path d="M15 9l-6 6M9 9l6 6" stroke="black" stroke-width="2" stroke-linecap="round"/></mask>'
+    '<circle cx="12" cy="12" r="10" mask="url(#m)"/></svg>'
+)
+
+
+def search_clear_css() -> str:
+    """Draw the clear button of every search field as a mask over a text token. WebKit's own button is grey
+    on any theme, so it almost disappears on a dark background."""
+    url = "data:image/svg+xml," + urllib.parse.quote(SEARCH_CLEAR_ICON)
+    return (
+        'input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; '
+        "width: 14px; height: 14px; margin: 0 -3px 0 6px; cursor: pointer; background: var(--text-muted); "
+        f'-webkit-mask: url("{url}") center / contain no-repeat; mask: url("{url}") center / contain no-repeat; }}\n'
+        'input[type="search"]::-webkit-search-cancel-button:hover { background: var(--text-secondary); }'
+    )
+
+
 def theme_head() -> str:
-    """The theme variables, the status icons and the script that applies the saved theme, for the head of a
-    document so it never flashes the default theme."""
-    return f"<style>{theme_css()}\n{pr_icon_css()}</style>\n<script>{(SHELL_DIR / 'theme.js').read_text()}</script>"
+    """The theme variables, the status icons, the search clear button and the script that applies the saved
+    theme, for the head of a document so it never flashes the default theme."""
+    css = "\n".join([theme_css(), pr_icon_css(), search_clear_css()])
+    return f"<style>{css}</style>\n<script>{(SHELL_DIR / 'theme.js').read_text()}</script>"
 
 
 TEMPLATE = """<!doctype html>
