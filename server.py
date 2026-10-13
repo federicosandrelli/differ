@@ -10,6 +10,8 @@ Usage: server.py [port]   (default 8765)
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
+                                     (the page, /open and /status refuse a request a browser marks
+                                     Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard, conversation
                                      (only from a page this server served: the Origin must be this server
@@ -273,6 +275,9 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/recent":
                 refresh_statuses()
                 return self.send(200, recent_items().encode())
+            if url.path == "/open" or STATUS.match(url.path) or PAGE.match(url.path):
+                if why := self.cross_site():
+                    return self.send(403, error_page(f"Forbidden: {why}"))
             if url.path == "/open":
                 owner, repo, number = build.parse_ref((query.get("pr") or [""])[0])
                 return self.redirect(f"/{owner}/{repo}/pull/{number}")
@@ -311,6 +316,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_json(self, data: dict, code: int = 200) -> None:
         self.send(code, json.dumps(data).encode(), "application/json")
+
+    def cross_site(self) -> str | None:
+        """Why this GET is refused, or None: a page on another site must not start a clone or a build with the
+        user's gh identity, which a GET to a page path or to /open does.
+
+        Browsers send Sec-Fetch-Site with every request: same-origin, same-site, none (a typed address or a
+        bookmark) or cross-site. A request without the header (an old browser, curl) passes.
+        """
+        if self.headers.get("Sec-Fetch-Site", "").strip().lower() == "cross-site":
+            return "the request comes from another site (Sec-Fetch-Site: cross-site)"
+        return None
 
     def refused(self) -> str | None:
         """Why this POST is refused, or None: a page from another origin must not act with the user's gh identity.
