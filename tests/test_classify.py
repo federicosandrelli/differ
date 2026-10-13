@@ -103,6 +103,17 @@ def test_parse_patch_reads_the_similarity_of_a_rename(tmp_path: Path) -> None:
     assert files["keep.py"].similarity is None
 
 
+def test_parse_patch_notes_a_mode_change() -> None:
+    patch = (
+        "diff --git a/run.sh b/bin/run.sh\nold mode 100644\nnew mode 100755\n"
+        "similarity index 100%\nrename from run.sh\nrename to bin/run.sh\n"
+        "diff --git a/same.sh b/bin/same.sh\nsimilarity index 100%\nrename from same.sh\nrename to bin/same.sh\n"
+    )
+    files = {fd.path: fd for fd in classify.parse_patch(patch)}
+    assert files["bin/run.sh"].similarity == 100 and files["bin/run.sh"].mode_changed
+    assert files["bin/same.sh"].similarity == 100 and not files["bin/same.sh"].mode_changed
+
+
 def test_build_runs_groups_changed_lines_between_context() -> None:
     fd = FileDiff(old_path="f", new_path="f", status="M")
     fd.hunks.append(
@@ -370,6 +381,7 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
             "gen.py": "VALUE = 1\n",
             "package-lock.json": '{"v": 1}\n',
             "gone.txt": "bye\n",
+            "notes.txt": "Widgets are small.\n",
         },
         new={
             ".gitattributes": "gen.py linguist-generated=true\n",
@@ -378,6 +390,7 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
             "gen.py": "VALUE = 2\n",
             "package-lock.json": '{"v": 2}\n',
             "README.md": "# Hello\n",
+            "docs/notes.txt": "Widgets are small.\n",
         },
     )
     result = classify.classify(work)
@@ -401,6 +414,8 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     assert files["gone.txt"]["status"] == "D" and files["gone.txt"]["content_side"] == "old"
     assert files["gone.txt"]["content"] == "bye\n"
     assert files["README.md"]["status"] == "A" and files["README.md"]["kind"] == "docs"
+    assert files["docs/notes.txt"]["similarity"] == 100 and files["docs/notes.txt"]["stats"]["raw"] == 0
+    assert files["app.py"]["similarity"] is None and files["app.py"]["mode_changed"] is False
 
     (rename,) = result["renames"]
     assert rename["from"] == "old_name" and rename["to"] == "new_name"
