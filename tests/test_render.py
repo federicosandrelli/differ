@@ -26,16 +26,24 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     assert data["annotations"] == {"pr": PR}
     assert set(data["app"]) == {"commit", "dirty", "built"}
     markers = [line for line in html.splitlines() if line.startswith("// ---- ")]
-    assert markers[0] == "// ---- frame.js"
-    assert markers[1:] == [f"// ---- {p.name}" for p in render.scripts()]
-    assert markers[1:] == sorted(markers[1:])
+    assert markers[:2] == ["// ---- vendor/highlight.min.js", "// ---- frame.js"]
+    assert markers[2:] == [f"// ---- {p.name}" for p in render.scripts()]
+    assert markers[2:] == sorted(markers[2:])
     assert ':root[data-theme="dark"]' in html
     assert (render.PAGE_DIR / "page.css").read_text() in html
 
 
+def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
+    html = render.render_page({"files": [], "renames": [], "totals": {}}, {"pr": PR})
+    assert "<script src=" not in html
+    assert "<link " not in html
+    assert (render.VENDOR_DIR / "highlight.min.js").read_text() in html
+    assert (render.VENDOR_DIR / "LICENSE").read_text().startswith("BSD 3-Clause License")
+
+
 def test_sources_lists_every_file_a_page_inlines() -> None:
     names = {p.name for p in render.sources()}
-    assert {"render.py", "page.css", "theme.js", "frame.js", "00-data.js", "90-events.js"} <= names
+    assert {"render.py", "page.css", "theme.js", "highlight.min.js", "frame.js", "00-data.js", "90-events.js"} <= names
 
 
 def test_splash_page_is_written_from_the_dark_palette() -> None:

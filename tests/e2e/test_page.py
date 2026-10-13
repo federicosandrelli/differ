@@ -29,6 +29,14 @@ def test_start_page_builds_and_opens_a_pull_request(page: Page, server_url: str)
     expect(page.locator("#overview h1")).to_have_text(TITLE)
 
 
+def test_the_page_highlights_code_without_the_network(page: Page, server_url: str) -> None:
+    requests: list[str] = []
+    page.on("request", lambda request: requests.append(request.url))
+    open_pr(page, server_url)
+    expect(page.locator(f"{APP} .hljs-keyword").first).to_have_text("def")
+    assert [url for url in requests if not url.startswith(server_url)] == []
+
+
 def test_tree_hides_noise_only_and_generated_files_until_asked(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     notices = page.locator("#side .list .notice")

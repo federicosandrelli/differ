@@ -162,9 +162,8 @@ The harness, in `tests/e2e/`:
 - A session fixture that starts `server.py` as a subprocess on a free port
   with `DIFF_REVIEW_CACHE` pointing at a temp directory and the fake `gh`
   on `PATH`, waits for it to answer, and stops it at the end.
-- Every test blocks the highlight.js CDN request, so the tests do not depend
-  on the network and the page is tested in the state it has when the CDN is
-  unreachable (the page already handles a missing `hljs`).
+- The page inlines highlight.js from `page/vendor/`, so the tests do not
+  depend on the network.
 
 Scenarios, one test each:
 

@@ -129,7 +129,9 @@ and drive the pages in Chromium through Playwright; they need
   rename fallout, whitespace or moved code), by default.
   A notice above the tree shows how many it hides and toggles them back.
 - `render.py` inlines `page/page.css`, the theme and frame scripts from
-  `shell/`, and the scripts in `page/` concatenated in name order, and turns the classified diff and the PR metadata into one HTML
+  `shell/`, highlight.js from `page/vendor/` (version 11.9.0, with its BSD
+  licence next to it), and the scripts in `page/` concatenated in name order,
+  and turns the classified diff and the PR metadata into one HTML
   page: the PR description, the noise totals and the rename table, a file tree
   with change colours and search, a reviewed mark per file kept in
   `localStorage`, and every file with its removed lines interleaved.
