@@ -68,7 +68,9 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
 .check:hover { border-color: var(--accent); color: var(--accent); }
 .leaf.reviewed .check, .check.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
 
-#main { position: relative; flex: 1; min-width: 0; height: 100vh; overflow-y: auto; overflow-x: hidden; }
+/* The page keeps its place itself when content above the viewport changes size (replaceContent); the browser's
+   scroll anchoring would move it a second time. */
+#main { position: relative; flex: 1; min-width: 0; height: 100vh; overflow-y: auto; overflow-x: hidden; overflow-anchor: none; }
 .page { max-width: 1100px; margin: 0 auto; padding: 28px 36px 40px; }
 .page h1 { font-size: 22px; margin: 0 0 6px; }
 .page .meta { color: var(--fg2); margin-bottom: 18px; }
