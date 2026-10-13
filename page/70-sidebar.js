@@ -50,7 +50,7 @@ function hiddenNotice(n, what, toggle, showing) {
   return `<div class="notice">${showing ? `Showing ${files}` : `${files} hidden`} · <a href="#" ${toggle}="${showing ? '0' : '1'}">${showing ? 'hide' : 'show'}</a></div>`;
 }
 function renderList() {
-  const noiseOnlyCount = state.q ? 0 : FILES.filter(f => kindVisible(f) && noiseOnly(f)).length;
+  const noiseOnlyCount = FILES.filter(f => kindVisible(f) && noiseOnly(f)).length;
   const generatedCount = FILES.filter(f => kindVisible(f) && f.generated).length;
   return hiddenNotice(noiseOnlyCount, 'file with only noise', 'data-noiseonly', state.showNoiseOnly) +
     hiddenNotice(generatedCount, 'generated file', 'data-generated', state.showGenerated) + renderTree();
@@ -58,9 +58,8 @@ function renderList() {
 function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
   if (!state.q) { el.textContent = ''; return; }
-  const files = visibleFiles();
-  const n = files.reduce((a, f) => a + hits(f), 0);
-  el.textContent = `${plural(files.length, 'file')} · ${state.hitIndex >= 0 ? `${state.hitIndex + 1} / ${n}` : plural(n, 'line')}`;
+  const all = allHits(), at = hitPosition(all), files = new Set(all.map(h => h.path)).size;
+  el.textContent = `${plural(files, 'file')} · ${at >= 0 ? `${at + 1} / ${all.length}` : plural(all.length, 'line')}`;
 }
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
@@ -88,7 +87,7 @@ function renderSide() {
       <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
       <span class="hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>o</kbd> top</span></div>
     <div class="searchbar">
-      <input type="search" class="search" placeholder="Search changed lines" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
+      <input type="search" class="search" placeholder="Search" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
       <span class="meta" id="searchmeta"></span></div>
     <div class="list" tabindex="0">${renderList()}</div>${bugFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .list');

@@ -11,8 +11,6 @@ function rowKey(f, side, line) {
   for (const h of f.hunks) for (const [tag, o] of h.lines) if (tag === '-' && o === line) return `O${line}`;
   return `L${oldToNew(f, line)}`;
 }
-// The key of a hunk line [tag, old, new, text].
-const hunkKey = (f, o, n) => f.content_side === 'old' || n == null ? `O${o}` : `L${n}`;
 
 // The new-side line number of an unchanged old-side line: the hunks give the pairing inside them and the offset outside.
 function oldToNew(f, o) {

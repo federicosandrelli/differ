@@ -18,7 +18,7 @@ FILES.forEach((f, i) => {
 });
 
 const state = {
-  view: 'overview', filter: 'implementation', closed: new Set(), q: '', hitIndex: -1,
+  view: 'overview', filter: 'implementation', closed: new Set(), q: '', hit: null,
   showNoiseOnly: false, showGenerated: false, cursor: null, openOverride: new Map(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(),

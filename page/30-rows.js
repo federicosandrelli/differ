@@ -14,8 +14,8 @@ function buildRows(f, plain) {
   const raw = contentLines(f);
   const rows = [];
   if (f.content_side === 'old') {
-    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl[i], text: t, run: runOfOld.get(i + 1) }));
-    return flagHits(attachThreads(f, rows));
+    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl && hl[i], text: t, run: runOfOld.get(i + 1) }));
+    return plain ? attachThreads(f, rows) : markHits(attachThreads(f, rows));
   }
   const removedBefore = new Map();
   for (const h of f.hunks) {
@@ -30,9 +30,9 @@ function buildRows(f, plain) {
   }
   for (let i = 1; i <= raw.length + 1; i++) {
     for (const d of removedBefore.get(i) || []) rows.push(d);
-    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i) });
+    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl && hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i) });
   }
-  return flagHits(attachThreads(f, rows));
+  return plain ? attachThreads(f, rows) : markHits(attachThreads(f, rows));
 }
 function attachThreads(f, rows) {
   const entry = THREADS.byFile.get(f.path), c = state.compose && state.compose.path === f.path ? state.compose : null;
@@ -45,12 +45,12 @@ function attachThreads(f, rows) {
   }
   return rows;
 }
-// A row that must stay in view whatever folds around it: a search hit, a thread, or the comment being written.
-const pinned = (r) => r.hit || r.threads || r.compose;
-function flagHits(rows) {
-  const q = state.q.toLowerCase();
+// A row that must stay in view whatever folds around it: a thread, or the comment being written.
+const pinned = (r) => r.threads || r.compose;
+function markHits(rows) {
+  const q = caseFold(state.q);
   if (!q) return rows;
-  for (const r of rows) if (r.text.toLowerCase().includes(q)) { r.hit = true; if (r.html !== undefined) r.html = markHtml(r.html, state.q); }
+  for (const r of rows) if (caseFold(r.text).includes(q) && r.html !== undefined) r.html = markHtml(r.html, state.q);
   return rows;
 }
 function blocksFor(rows) {
@@ -74,7 +74,7 @@ const toggleIn = (set, key) => () => { set.has(key) ? set.delete(key) : set.add(
 const runKey = (f, r) => `${f.path}#${r.index}`;
 // A noise run folds; a rename run that holds the rename's origin does not.
 const isNoise = (r) => !!r && NOISE.includes(r.class) && !(r.class === 'rename' && r.origin);
-// A block of folded noise stays open while a search hit, a thread, or the reader's choice needs it.
+// A block of folded noise stays open while a thread, the comment being written, or the reader's choice needs it.
 function isCollapsed(f, b) {
   const r = b.run;
   if (!isNoise(r)) return false;
@@ -176,6 +176,11 @@ function fileBlocks(f, plain) {
   });
 }
 const hiddenRows = (b) => b.open ? [] : b.ctx ? b.mid : b.rows;
+// The rows of the file the diff table draws when the file's section is open, in order, as plain rows.
+function shownRows(f) {
+  if (!f.runs.length) return [];
+  return fileBlocks(f, true).flatMap(b => b.open ? b.rows : b.ctx ? [...b.head, ...b.tail] : []);
+}
 
 // Open whatever hides the row with this key, so the next render shows it; false when the file has no such row.
 // Opening one fold can uncover another (a grouped run's context folds on its own), so it looks again.
@@ -190,11 +195,14 @@ function reveal(f, key) {
   return true;
 }
 
-// The state the file's blocks depend on, for a cache key.
-function viewKey(f) {
-  const runs = f.path + '#', folds = f.path + ':';
-  return [state.q, state.show, [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds))];
+// The state the file's folds depend on, for a cache key.
+function foldKey(f) {
+  const runs = f.path + '#', folds = f.path + ':', c = state.compose && state.compose.path === f.path ? state.compose : null;
+  return JSON.stringify([state.show, [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds)),
+    C.version, c && [c.side, c.startLine, c.line]]);
 }
+// The state the file's blocks depend on, for a cache key: the folds, and the search marks in the rows.
+const viewKey = (f) => [state.q, foldKey(f)];
 
 // ---------- word-level differences between a removed line and its added counterpart
 const WORD_DIFF_MAX = 1000;

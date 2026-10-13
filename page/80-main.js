@@ -276,7 +276,7 @@ function go(path, key) {
     if (!kindVisible(f)) state.filter = 'all';
     if (noiseOnly(f)) state.showNoiseOnly = true;
     if (f.generated) state.showGenerated = true;
-    if (state.q && !hits(f)) { state.q = ''; state.hitIndex = -1; }
+    if (state.q && !viewHits(f).length) { state.q = ''; state.hit = null; }
     dirty = true;
   }
   if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }

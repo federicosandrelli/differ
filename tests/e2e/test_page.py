@@ -84,14 +84,32 @@ def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, se
     open_pr(page, server_url)
     page.keyboard.press("Meta+f")
     expect(page.locator("#side .search")).to_be_focused()
-    page.keyboard.type("sys")
+    page.keyboard.type("hello")
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
     expect(page.locator("#side .leaf[data-path='src/app.py'] .hits")).to_have_text("1")
     page.keyboard.press("Enter")
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 / 1")
     target = page.locator(f"{APP} tr.target")
     expect(target).to_have_count(1)
-    expect(target).to_contain_text("import sys")
+    expect(target).to_contain_text('print("hello")')
+
+
+def test_search_counts_the_lines_on_screen_and_skips_closed_folds_and_sections(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    section = page.locator(APP)
+    page.fill("#side .search", "i")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 6 lines")
+    expect(page.locator("#main tr:has(mark)")).to_have_count(6)
+    expect(page.locator("#main tr.ctx:has(mark)")).to_have_count(2)
+    expect(section.locator("tr.collapsed[data-fold]")).to_contain_text("imports")
+    expect(section.locator("tr", has_text="import sys")).to_have_count(0)
+    section.locator("tr.collapsed[data-fold]").click()
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 8 lines")
+    expect(page.locator("#main tr:has(mark)")).to_have_count(8)
+    section.locator(".fhead .top").click()
+    expect(page.locator("#searchmeta")).to_have_text("1 file · 2 lines")
+    expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_count(1)
+    expect(page.locator("#side .leaf[data-path='src/app.py'] .hits")).to_have_count(0)
 
 
 def test_cmd_f_fills_the_search_with_the_selected_code(page: Page, server_url: str) -> None:

@@ -73,7 +73,7 @@ document.addEventListener('input', (e) => {
   if (d.convText !== undefined) { state.convText = box.value; return; }
   if (d.bugText !== undefined) { state.bug.text = box.value; return; }
   if (!box.classList.contains('search')) return;
-  state.q = box.value.trim(); state.hitIndex = -1;
+  state.q = box.value.trim(); state.hit = null;
   render();
 });
 document.addEventListener('input', () => { if (SHELL) SHELL.draft(hasDraft()); });
@@ -89,8 +89,9 @@ function openSearch() {
 function stepHit(dir) {
   const all = allHits();
   if (!all.length) return;
-  state.hitIndex = ((state.hitIndex ?? -1) + dir + all.length) % all.length;
-  const hit = all[state.hitIndex];
+  const at = hitPosition(all);
+  const hit = all[at < 0 ? (dir > 0 ? 0 : all.length - 1) : (at + dir + all.length) % all.length];
+  state.hit = hit;
   go(hit.path, hit.key);
   focusBox('.search');
   updateSearchMeta();

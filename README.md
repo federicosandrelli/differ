@@ -163,6 +163,13 @@ and drive the pages in Chromium through Playwright; they need
 Keys in the page: arrow keys in the tree, Cmd+F search (it starts from the
 selected text) and Enter for the next hit, `o` back to the top.
 
+The search looks at the lines a reader can see: added, removed and unchanged
+lines in the open sections of the shown files. It skips the lines inside a
+closed fold, the sections closed by a review mark or the chevron, and the
+files the filters hide. A match never opens a fold. Opening or closing a fold
+or a section updates the count. A file stays on the page while its view holds
+a match, so closing its section keeps it in place, without a count.
+
 ## Reporting a bug
 
 "Report a bug" under the file tree takes a description of the issue and
