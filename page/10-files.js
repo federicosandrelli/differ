@@ -5,31 +5,30 @@ function noiseOnly(f) {
   return !f.generated && f.stats.substantive === 0 && f.stats.raw > 0;
 }
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
+// While searching, the page shows the files with a hit in their view. A closed section counts its view too, so
+// closing a section keeps its file on the page.
 function fileShown(f) {
-  return kindVisible(f) && (!state.q || hits(f) > 0) && (state.showNoiseOnly || state.q || !noiseOnly(f)) &&
-    (state.showGenerated || !f.generated);
+  return kindVisible(f) && (state.showNoiseOnly || !noiseOnly(f)) && (state.showGenerated || !f.generated) &&
+    (!state.q || viewHits(f).length > 0);
 }
 
-// The changed hunk lines holding the query, as [hunk, line] pairs, in file order.
-function* hitLines(f) {
-  const q = state.q.toLowerCase();
-  if (!q) return;
-  for (const h of f.hunks) for (const l of h.lines) if (l[0] !== ' ' && l[3].toLowerCase().includes(q)) yield [h, l];
-}
-// Changed lines of the file holding the query; counted once per query.
-const hitCache = { q: '', counts: new Map() };
-function hits(f) {
-  const q = state.q.toLowerCase();
-  if (!q) return 0;
-  if (hitCache.q !== q) { hitCache.q = q; hitCache.counts.clear(); }
-  let n = hitCache.counts.get(f.path);
-  if (n === undefined) {
-    n = 0;
-    for (const _ of hitLines(f)) n++;
-    hitCache.counts.set(f.path, n);
+// The keys of the rows the file's view shows that hold the query, in file order, whether its section is open
+// or not. The rows are kept per fold state and searched once per query.
+const hitCache = new Map();
+function viewHits(f) {
+  const q = caseFold(state.q);
+  if (!q) return [];
+  const key = foldKey(f);
+  let c = hitCache.get(f.path);
+  if (!c || c.key !== key) {
+    c = { key, rows: shownRows(f).map(r => [rowKeyOf(r), caseFold(r.text)]), q: null, hits: [] };
+    hitCache.set(f.path, c);
   }
-  return n;
+  if (c.q !== q) { c.q = q; c.hits = c.rows.filter(([, t]) => t.includes(q)).map(([k]) => k); }
+  return c.hits;
 }
+// The number of rows of the file the reader can see that hold the query: 0 while its section is closed.
+const hits = (f) => sectionOpen(f) ? viewHits(f).length : 0;
 
 function buildTree(files) {
   const root = { name: '', dirs: new Map(), files: [] };
@@ -67,7 +66,8 @@ function treeOrder(node, out) {
 // The shown files in tree order; recomputed only when the state that selects them changes.
 const visibleCache = { key: null, files: [] };
 function visibleFiles() {
-  const key = [state.filter, state.q, state.showNoiseOnly, state.showGenerated].join('\u0000');
+  const folds = state.q ? FILES.map(foldKey).join('\u0000') : '';
+  const key = [state.filter, state.q, state.showNoiseOnly, state.showGenerated, folds].join('\u0000');
   if (visibleCache.key !== key) {
     visibleCache.key = key;
     visibleCache.files = treeOrder(buildTree(FILES.filter(fileShown)), []);
@@ -81,17 +81,15 @@ function shownAtOrBefore(path) {
   return 'overview';
 }
 
-// ---------- search hits, for Enter to step through: every hit as { path, key } of its row
+// ---------- search hits, for Enter to step through: every hit the reader can see as { path, key } of its row
 function allHits() {
   const out = [];
-  for (const f of visibleFiles()) for (const [, [, o, n]] of hitLines(f)) out.push({ path: f.path, key: hunkKey(f, o, n) });
+  for (const f of visibleFiles()) if (sectionOpen(f)) for (const key of viewHits(f)) out.push({ path: f.path, key });
   return out;
 }
-function firstHitKey(f) {
-  if (!f) return null;
-  for (const [, [, o, n]] of hitLines(f)) return hunkKey(f, o, n);
-  return null;
-}
+// The position of the hit Enter last went to, or -1 when it is no longer among the hits.
+const hitPosition = (all) => state.hit ? all.findIndex(h => h.path === state.hit.path && h.key === state.hit.key) : -1;
+const firstHitKey = (f) => f && viewHits(f)[0] || null;
 // Wrap every occurrence of the query in <mark>. The query is found in the plain text of the HTML fragment,
 // so a match can span several highlighter tokens but never starts or ends inside an entity such as &gt;.
 function markHtml(html, q) {

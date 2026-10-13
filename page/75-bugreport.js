@@ -36,7 +36,7 @@ function fileLine(f) {
 function bugState() {
   const c = state.compose;
   return {
-    view: state.view, cursor: state.cursor, filter: state.filter, q: state.q, hitIndex: state.hitIndex,
+    view: state.view, cursor: state.cursor, filter: state.filter, q: state.q, hit: state.hit,
     showNoiseOnly: state.showNoiseOnly, showGenerated: state.showGenerated, show: state.show,
     closedFolders: cap([...state.closed]), openOverride: Object.fromEntries(state.openOverride),
     expanded: cap([...state.expanded]), unfolded: cap([...state.unfolded]),
@@ -44,7 +44,7 @@ function bugState() {
     replyOpen: [...state.replyOpen.keys()], openThreads: cap([...state.openThreads]), showOutdated: [...state.showOutdated],
     reviewPanel: state.reviewPanel, reviewText: `${state.reviewText.length} chars`, convText: `${state.convText.length} chars`,
     busy: state.busy, focus: state.focus, reviewedFiles: FILES.filter(isReviewed).length,
-    visibleFiles: visibleFiles().length, hiddenNoiseOnly: FILES.filter(f => kindVisible(f) && noiseOnly(f) && !state.showNoiseOnly && !state.q).length,
+    visibleFiles: visibleFiles().length, hiddenNoiseOnly: FILES.filter(f => kindVisible(f) && noiseOnly(f) && !state.showNoiseOnly).length,
     hiddenGenerated: FILES.filter(f => kindVisible(f) && f.generated && !state.showGenerated).length,
   };
 }

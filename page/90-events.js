@@ -73,7 +73,7 @@ document.addEventListener('input', (e) => {
   if (d.convText !== undefined) { state.convText = box.value; return; }
   if (d.bugText !== undefined) { state.bug.text = box.value; return; }
   if (!box.classList.contains('search')) return;
-  state.q = box.value.trim(); state.hitIndex = -1;
+  state.q = box.value.trim(); state.hit = null;
   render();
 });
 document.addEventListener('input', () => { if (SHELL) SHELL.draft(hasDraft()); });
@@ -86,11 +86,21 @@ function openSearch() {
   focusBox('#side .search');
 }
 
+// The hit after (or before) the one Enter last went to. When that one is gone, as when its section closed, the
+// first hit of its file or of the files after it (the last hit of its file or of the files before it).
+function nextHit(all, dir) {
+  const at = hitPosition(all);
+  if (at >= 0) return all[(at + dir + all.length) % all.length];
+  const order = new Map(visibleFiles().map((f, i) => [f.path, i]));
+  const from = state.hit && order.has(state.hit.path) ? order.get(state.hit.path) : -1;
+  if (dir > 0) return all.find(h => order.get(h.path) >= from) || all[0];
+  return [...all].reverse().find(h => from < 0 || order.get(h.path) <= from) || all[all.length - 1];
+}
 function stepHit(dir) {
   const all = allHits();
   if (!all.length) return;
-  state.hitIndex = ((state.hitIndex ?? -1) + dir + all.length) % all.length;
-  const hit = all[state.hitIndex];
+  const hit = nextHit(all, dir);
+  state.hit = hit;
   go(hit.path, hit.key);
   focusBox('.search');
   updateSearchMeta();

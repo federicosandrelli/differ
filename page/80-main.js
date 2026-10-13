@@ -43,10 +43,8 @@ function headerHtml(f, open) {
 }
 // Everything a file's body depends on besides the file itself.
 function bodyKey(f) {
-  const c = state.compose && state.compose.path === f.path ? state.compose : null;
   return JSON.stringify([
-    viewKey(f), c && [c.side, c.startLine, c.line],
-    C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path),
+    viewKey(f), C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path),
   ]);
 }
 function bodyParts(f) {
@@ -276,7 +274,7 @@ function go(path, key) {
     if (!kindVisible(f)) state.filter = 'all';
     if (noiseOnly(f)) state.showNoiseOnly = true;
     if (f.generated) state.showGenerated = true;
-    if (state.q && !hits(f)) { state.q = ''; state.hitIndex = -1; }
+    if (state.q && !viewHits(f).length) { state.q = ''; state.hit = null; }
     dirty = true;
   }
   if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }
