@@ -93,9 +93,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
-  const current = BY_PATH[state.view];
   if (e.key === 'o') scrollToFile('overview');
-  else if (e.key === 'r' && current) toggleReviewed(current);
 });
 
 // #path or #path:line, the line being one of the file as shown
