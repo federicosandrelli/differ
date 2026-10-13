@@ -39,7 +39,9 @@ NEW = {
 }
 TITLE = "Rename old_name to new_name"
 
-MODEL_FIELDS = "    id: int\n    customer: str\n    amount: float\n    currency: str\n    created: str\n    shipped: bool\n"
+MODEL_FIELDS = (
+    "    id: int\n    customer: str\n    amount: float\n    currency: str\n    created: str\n    shipped: bool\n"
+)
 MODELS_OLD = {
     "src/models.py": f"from dataclasses import dataclass\n\n\nTAX_RATE = 0.2\nSHIPPING = 5.0\nDISCOUNT = 0.1\n\n\n@dataclass\nclass Order:\n{MODEL_FIELDS}    old_total: float\n",
     "src/report.py": "def report(order):\n    return order.old_total\n",
@@ -138,7 +140,12 @@ def gh_state(tmp_path_factory: pytest.TempPathFactory) -> Path:
     with_logo = commit_tree(repo, {**NEW, "src/logo.png": b"\x89PNG\0" * 1000}, "logo")
     models_base = commit_tree(repo, {**NEW, **MODELS_OLD}, "models base")
     models_head = commit_tree(repo, {**NEW, **MODELS_NEW}, "models head")
-    for number, pr_base, pr_head in ((1, base, head), (2, base, head), (3, base, with_logo), (4, models_base, models_head)):
+    for number, pr_base, pr_head in (
+        (1, base, head),
+        (2, base, head),
+        (3, base, with_logo),
+        (4, models_base, models_head),
+    ):
         git(repo, "update-ref", f"refs/pull/{number}/head", pr_head)
         (state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, pr_base, pr_head)))
     (state / "comments.json").write_text(json.dumps(comments_state(head)))
