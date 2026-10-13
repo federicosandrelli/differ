@@ -190,6 +190,60 @@ def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str,
     assert posted[0]["body"] == "Please add a test"
 
 
+def test_a_comment_draft_survives_opening_another_box_and_escape(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    hello = page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n").first
+    hello.click()
+    box = page.locator("textarea[data-compose-text]")
+    box.fill("Use a logger here")
+    box.press("Escape")
+    expect(box).to_have_value("Use a logger here")
+    expect(box).not_to_be_focused()
+
+    page.locator("section[data-file='README.md'] tr.add td.n").first.click()
+    expect(page.locator("textarea[data-compose-text]")).to_have_count(1)
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("")
+    expect(page.locator("section[data-file='README.md'] .form.compose")).to_be_visible()
+
+    hello.click()
+    expect(page.locator(APP).locator("textarea[data-compose-text]")).to_have_value("Use a logger here")
+    page.click("button[data-compose-cancel]")
+    expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
+    hello.click()
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("")
+
+
+def test_a_comment_draft_stays_on_its_line_and_joins_a_box_extended_onto_it(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    section = page.locator(APP)
+    hello = section.locator("tr.add", has_text='print("hello")').locator("td.n").first
+    main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n").first
+    box = page.locator("textarea[data-compose-text]")
+    hello.click()
+    box.fill("First")
+    main.click()
+    expect(box).to_have_value("")
+    box.fill("Second")
+    hello.click(modifiers=["Shift"])
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on lines 10–11")
+    expect(box).to_have_value("First\n\nSecond")
+    page.locator("section[data-file='README.md'] tr.add td.n").first.click()
+    expect(box).to_have_value("")
+    hello.click()
+    expect(box).to_have_value("First\n\nSecond")
+    page.click("button[data-compose-cancel]")
+
+
+def test_escape_in_a_reply_box_keeps_the_reply(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.click("button[data-reply='T1']")
+    box = page.locator("textarea[data-reply-text='T1']")
+    box.fill("Will do")
+    box.press("Escape")
+    expect(box).to_have_value("Will do")
+    expect(box).not_to_be_focused()
+
+
 def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: str, gh_state: Path) -> None:
     page.goto(server_url + "/")
     home = page.frame_locator("#panes iframe.on")

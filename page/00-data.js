@@ -22,7 +22,7 @@ const state = {
   showNoiseOnly: false, showGenerated: false, cursor: null, openOverride: new Map(),
   show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(),
-  compose: null, replyOpen: new Map(), openThreads: new Set(), showOutdated: new Set(),
+  compose: null, drafts: new Map(), replyOpen: new Map(), openThreads: new Set(), showOutdated: new Set(),
   reviewPanel: false, reviewText: '', convText: '', busy: false, focus: null,
   bug: { open: false, text: '', prompt: '', copied: null },
 };

@@ -40,7 +40,7 @@ function bugState() {
     showNoiseOnly: state.showNoiseOnly, showGenerated: state.showGenerated, show: state.show,
     closedFolders: cap([...state.closed]), openOverride: Object.fromEntries(state.openOverride),
     expanded: cap([...state.expanded]), unfolded: cap([...state.unfolded]),
-    compose: c && { ...c, text: `${c.text.length} chars` },
+    compose: c && { ...c, text: `${c.text.length} chars` }, drafts: [...state.drafts.values()].map(d => ({ ...d, text: `${d.text.length} chars` })),
     replyOpen: [...state.replyOpen.keys()], openThreads: cap([...state.openThreads]), showOutdated: [...state.showOutdated],
     reviewPanel: state.reviewPanel, reviewText: `${state.reviewText.length} chars`, convText: `${state.convText.length} chars`,
     busy: state.busy, focus: state.focus, reviewedFiles: FILES.filter(isReviewed).length,
