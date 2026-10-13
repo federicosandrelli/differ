@@ -92,6 +92,7 @@ def palette(
         comment_pending_bg=mix(mod, 7),
         search_hit_bg=search_hit_bg,
         search_hit_fg=search_hit_fg,
+        backdrop="rgb(0 0 0 / 45%)",
         **{f"syntax_{k}": v for k, v in syntax.items()},
     )
 

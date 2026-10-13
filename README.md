@@ -177,7 +177,7 @@ the second build of a repository fast, and `git fetch` keeps them small.
   file: its rows, blocks and folds, and `reveal`, which opens whatever hides a
   row; `40-code.js` draws that view as the diff table; `50-comments.js` the
   review threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
-  `75-bugreport.js` the bug report prompt; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
+  `75-bugreport.js` the bug report prompt; `76-docs.js` the docs window; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its
   header; its diff table is cut into chunks of 100 rows that hold their rows
   only while they are near the viewport and keep their height when emptied, so
@@ -206,6 +206,12 @@ files the filters hide. A match never opens a fold. Opening or closing a fold
 or a section updates the count. A file stays on the page while its view holds
 a match, so closing its section keeps it in place, without a count. Enter
 then goes on from that file to the next hit.
+
+## Docs
+
+"Docs" at the left of the sidebar's footer opens a window in the middle of the
+page that describes every feature of the page, in plain words. Escape, the
+close button or a click outside the window closes it.
 
 ## Reporting a bug
 
