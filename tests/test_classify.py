@@ -99,7 +99,8 @@ def test_parse_patch_reads_the_similarity_of_a_rename(tmp_path: Path) -> None:
     files = {fd.path: fd for fd in classify.parse_patch((work / "diff.patch").read_text())}
     assert files["pkg/same.py"].similarity == 100 and files["pkg/same.py"].hunks == []
     assert files["c.bin"].similarity == 100
-    assert files["d.bin"].status == "R" and files["d.bin"].similarity < 100 and files["d.bin"].hunks == []
+    changed = files["d.bin"]
+    assert changed.status == "R" and changed.similarity is not None and changed.similarity < 100 and changed.hunks == []
     assert files["keep.py"].similarity is None
 
 
