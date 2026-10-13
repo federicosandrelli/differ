@@ -23,7 +23,9 @@ import render
 
 ROOT = Path(__file__).resolve().parent
 CACHE = Path(os.environ.get("DIFF_REVIEW_CACHE", Path.home() / ".cache" / "diff-review"))
-PR_REF = re.compile(r"(?:https?://github\.com/)?([\w.-]+)/([\w.-]+?)(?:/pull/|/pulls/|#)(\d+)")
+OWNER = r"[A-Za-z0-9][A-Za-z0-9-]*"
+REPO = r"(?!-)(?!\.+(?![\w.-]))[\w.-]+"
+PR_REF = re.compile(rf"(?:https?://github\.com/)?(?<![\w.-])({OWNER})/({REPO})(?:/pull/|/pulls/|#)(\d+)")
 
 Log = Callable[[str], None]
 

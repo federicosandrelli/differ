@@ -27,6 +27,38 @@ def test_parse_ref_rejects_other_text(text: str) -> None:
         build.parse_ref(text)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "/../../pull/1",
+        "/./x/pull/1",
+        "/-x/y/pull/1",
+        "a/..#1",
+        "a/.#1",
+        "a/-b#1",
+        "a.b/c#1",
+        "https://github.com/-x/y/pull/1",
+    ],
+)
+def test_parse_ref_rejects_names_that_are_not_github_names(text: str) -> None:
+    with pytest.raises(build.BuildError, match="Not a pull request reference"):
+        build.parse_ref(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "ref"),
+    [
+        ("octo-org/my.repo#7", ("octo-org", "my.repo", 7)),
+        ("a/.b#1", ("a", ".b", 1)),
+        ("a/..b#1", ("a", "..b", 1)),
+        ("a/b.#1", ("a", "b.", 1)),
+        ("a/b-#1", ("a", "b-", 1)),
+    ],
+)
+def test_parse_ref_accepts_github_names(text: str, ref: tuple[str, str, int]) -> None:
+    assert build.parse_ref(text) == ref
+
+
 def test_changed_paths_reads_name_status() -> None:
     names = "M\tkept.py\nA\tnew.py\nD\told.py\nR095\tbefore.py\tafter.py\nC100\tsrc.py\tcopy.py\n\n"
     assert build.changed_paths(names) == [

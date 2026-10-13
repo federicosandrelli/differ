@@ -10,10 +10,12 @@ import pytest
 import server
 
 
-def handler(origin: str | None, ctype: str | None, port: int = 8765) -> server.Handler:
+def handler(
+    origin: str | None = None, ctype: str | None = None, port: int = 8765, host: str | None = None
+) -> server.Handler:
     h = server.Handler.__new__(server.Handler)
     h.server = cast(Any, type("FakeServer", (), {"server_address": ("127.0.0.1", port)})())
-    headers = {k: v for k, v in (("Origin", origin), ("Content-Type", ctype)) if v is not None}
+    headers = {k: v for k, v in (("Origin", origin), ("Content-Type", ctype), ("Host", host)) if v is not None}
     h.headers = cast(Any, headers)
     return h
 
@@ -35,6 +37,43 @@ def test_refused_accepts_a_loopback_origin_with_json() -> None:
 )
 def test_refused_rejects_other_origins_and_content_types(origin: str | None, ctype: str | None, why: str) -> None:
     assert handler(origin, ctype).refused() == why
+
+
+@pytest.mark.parametrize("host", ["localhost:8765", "127.0.0.1:8765", "[::1]:8765"])
+def test_wrong_host_accepts_this_server_on_a_loopback_host(host: str) -> None:
+    assert handler(host=host).wrong_host() is None
+
+
+@pytest.mark.parametrize(
+    ("host", "why"),
+    [
+        (None, "Host (missing) is not this server"),
+        ("localhost", "Host localhost is not this server"),
+        ("localhost:9999", "Host localhost:9999 is not this server"),
+        ("evil.example:8765", "Host evil.example:8765 is not this server"),
+        ("localhost.evil.example:8765", "Host localhost.evil.example:8765 is not this server"),
+    ],
+)
+def test_wrong_host_rejects_other_hosts_and_ports(host: str | None, why: str) -> None:
+    assert handler(host=host).wrong_host() == why
+
+
+def test_wrong_host_uses_the_port_the_server_listens_on() -> None:
+    assert handler(host="localhost:8766", port=8766).wrong_host() is None
+    assert handler(host="localhost:8765", port=8766).wrong_host() == "Host localhost:8765 is not this server"
+
+
+@pytest.mark.parametrize("path", ["/../../pull/1", "/./x/pull/1", "/-x/y/pull/1", "/a/../pull/1", "/a/-b/pull/1"])
+def test_routes_refuse_names_that_are_not_github_names(path: str) -> None:
+    assert server.PAGE.match(path) is None
+    assert server.STATUS.match("/status" + path.replace("/pull", "")) is None
+    assert server.API.match("/api" + path.replace("/pull", "") + "/comments") is None
+
+
+def test_routes_accept_github_names() -> None:
+    assert server.PAGE.match("/octo-org/my.repo/pull/7") is not None
+    assert server.STATUS.match("/status/octo-org/my.repo/7") is not None
+    assert server.API.match("/api/octo-org/my.repo/7/comments") is not None
 
 
 def test_page_key_lowercases_owner_and_repo() -> None:

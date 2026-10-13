@@ -14,6 +14,8 @@ Usage: server.py [port]   (default 8765)
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard, conversation
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
+
+Every request must name this server on a loopback host in its Host header; any other Host gets a 403.
 """
 
 from __future__ import annotations
@@ -33,9 +35,9 @@ import build
 import comments
 import render
 
-PAGE = re.compile(r"^/([\w.-]+)/([\w.-]+)/pull/(\d+)/?$")
-STATUS = re.compile(r"^/status/([\w.-]+)/([\w.-]+)/(\d+)$")
-API = re.compile(r"^/api/([\w.-]+)/([\w.-]+)/(\d+)/(\w+)$")
+PAGE = re.compile(rf"^/({build.OWNER})/({build.REPO})/pull/(\d+)/?$")
+STATUS = re.compile(rf"^/status/({build.OWNER})/({build.REPO})/(\d+)$")
+API = re.compile(rf"^/api/({build.OWNER})/({build.REPO})/(\d+)/(\w+)$")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
 PR_STATUS = re.compile(rb'<meta name="pr-status" content="(\w*)">')
@@ -243,7 +245,24 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Location", location)
         self.end_headers()
 
+    def port(self) -> int | None:
+        address = self.server.server_address
+        return address[1] if isinstance(address, tuple) else None
+
+    def wrong_host(self) -> str | None:
+        """Why this request is refused, or None: the Host must be this server on a loopback host.
+
+        A browser sends the name it resolved, so a site whose name DNS points at this server (DNS rebinding)
+        cannot read a page or act with the user's gh identity through it.
+        """
+        host = self.headers.get("Host")
+        if host not in {f"{name}:{self.port()}" for name in LOOPBACK_HOSTS}:
+            return f"Host {host or '(missing)'} is not this server"
+        return None
+
     def do_GET(self) -> None:
+        if why := self.wrong_host():
+            return self.send(403, error_page(why))
         url = urlparse(self.path)
         query = parse_qs(url.query)
         try:
@@ -300,10 +319,8 @@ class Handler(BaseHTTPRequestHandler):
         The Content-Type must be application/json, which a cross-origin page can send only after a preflight
         this server never answers.
         """
-        address = self.server.server_address
-        port = address[1] if isinstance(address, tuple) else None
         origin = self.headers.get("Origin")
-        if origin not in {f"http://{host}:{port}" for host in LOOPBACK_HOSTS}:
+        if origin not in {f"http://{host}:{self.port()}" for host in LOOPBACK_HOSTS}:
             return f"Origin {origin or '(missing)'} is not this server"
         ctype = self.headers.get("Content-Type", "")
         if ctype.split(";")[0].strip().lower() != "application/json":
@@ -311,6 +328,8 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def do_POST(self) -> None:
+        if why := self.wrong_host():
+            return self.send(403, error_page(why))
         m = API.match(urlparse(self.path).path)
         if not m:
             return self.send(404, error_page(f"No page at {self.path}"))
