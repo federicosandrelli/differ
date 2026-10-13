@@ -14,6 +14,22 @@ function renderKeepingHeader(f) {
   const keep = () => { main.scrollTop += now.getBoundingClientRect().top - top; };
   keep(); syncViewport(); keep(); syncViewport(); keep();
 }
+// Change the file filter, keeping the reader on the file at the top of the pane, or on the nearest shown file before
+// it when the filter hides it. A run of changes keeps returning to the file from before the first one, as long as
+// the reader stays on the file the last change landed on.
+let filterReturn = null; // { back, landed }
+function setFilter(filter) {
+  const back = filterReturn && filterReturn.landed === state.view ? filterReturn.back : state.view;
+  state.filter = filter;
+  render();
+  if (state.view !== back) {
+    scrollToFile(shownAtOrBefore(back));
+    // scrollToFile marks the file it went to, but the next scroll event marks the file under the top of the pane,
+    // which differs when the pane cannot scroll that far down; mark that one now so `landed` matches it.
+    syncViewport();
+  }
+  filterReturn = { back, landed: state.view };
+}
 function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); renderKeepingHeader(f); }
 function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); renderKeepingHeader(f); }
 
@@ -41,7 +57,7 @@ document.addEventListener('click', (e) => {
     go(d.path, key);
     return;
   }
-  if (d.filter) { state.filter = d.filter; render(); return; }
+  if (d.filter) { setFilter(d.filter); return; }
   if (d.generated !== undefined) { e.preventDefault(); state.showGenerated = d.generated === '1'; lsSet('dr:generated', state.showGenerated ? '1' : '0'); render(); return; }
   if (d.noiseonly !== undefined) { e.preventDefault(); state.showNoiseOnly = d.noiseonly === '1'; lsSet('dr:noise-only', state.showNoiseOnly ? '1' : '0'); render(); return; }
   if (d.tree) { state.closed = new Set(d.tree === 'collapse' ? allFolders(buildTree(visibleFiles()), []) : []); renderSide(); return; }
