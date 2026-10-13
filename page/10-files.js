@@ -91,7 +91,7 @@ function firstHitKey(f) {
 function markHtml(html, q) {
   if (!q) return html;
   const needle = caseFold(q);
-  const text = caseFold(html.split(/(<[^>]+>)/).filter(part => !part.startsWith('<')).map(unesc).join(''));
+  const text = caseFold(html.split(/(<[^>]+>)/).filter((_, i) => i % 2 === 0).map(unesc).join(''));
   const ranges = [];
   for (let j = text.indexOf(needle); j >= 0; j = text.indexOf(needle, j + needle.length)) ranges.push([j, j + needle.length]);
   return wrapRanges(html, ranges, '<mark>', '</mark>');
