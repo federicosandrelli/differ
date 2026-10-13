@@ -56,7 +56,7 @@ function threadCount(f) {
 function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filter(c => c.pending).length, 0); }
 const excerpt = (s) => { const t = s.replace(/```[\s\S]*?```/g, '').replace(/\s+/g, ' ').trim(); return t.length > 90 ? t.slice(0, 90) + '…' : t; };
 const lineRange = (a, b) => a && a !== b ? `${a}–${b}` : `${b}`;
-const btn = (attrs, label, primary) => `<button ${attrs} class="${primary ? 'primary' : ''}" ${state.busy ? 'disabled' : ''}>${label}</button>`;
+const btn = (attrs, label, primary, off) => `<button ${attrs} class="${primary ? 'primary' : ''}" ${state.busy || off ? 'disabled' : ''}>${label}</button>`;
 
 // ---------- HTML
 // GitHub's own rendering of a body, when it has one, except for suggestions: the page draws those against the file.
@@ -127,7 +127,7 @@ function commentNotices() {
 function reviewPanelHtml() {
   const n = pendingCount();
   return `<div class="form review"><textarea data-review-text placeholder="${n ? 'Review summary (optional)' : 'Review summary'}">${esc(state.reviewText)}</textarea>
-    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn('data-submit="REQUEST_CHANGES"', 'Request changes')}${btn('data-submit="COMMENT"', 'Comment', true)}
+    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn('data-submit="REQUEST_CHANGES" title="Requesting changes needs a review summary"', 'Request changes', false, !state.reviewText.trim())}${btn('data-submit="COMMENT"', 'Comment', true)}
     <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
     <div class="hint">${n ? `${plural(n, 'pending comment')} go out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
 }
