@@ -89,8 +89,9 @@ function bugPrompt(text) {
     `- differ commit ${app.commit || 'unknown'}${app.dirty ? ' with uncommitted changes' : ''} · page built ${app.built || 'unknown'} · highlight.js ${yesNo(window.hljs)} · served ${yesNo(SERVED)}`,
     `- Window ${innerWidth}×${innerHeight} · devicePixelRatio ${devicePixelRatio} · sidebar ${side ? side.offsetWidth : '?'}px wide · theme ${theme}, saved ${Theme.get()}`,
     `- ${navigator.userAgent}`,
+    window.differServerLog ? `- Server log: ${window.differServerLog} (the desktop app appends the server's stderr there; its last lines may hold the server side of this failure)` : '',
     `- Reported ${new Date().toISOString()}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
   return `Bug report from differ, the pull request viewer in this repository. Reproduce it, find the cause and fix it.
 
 ## What happened

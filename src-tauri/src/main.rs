@@ -51,6 +51,28 @@ fn server_script(app: &tauri::App) -> tauri::Result<PathBuf> {
     Ok(app.path().resource_dir()?.join("python/server.py"))
 }
 
+// The server appends its stderr here, so a bug report from the app can point at the server side of a failure.
+fn server_log() -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("HOME")?).join("Library/Logs/differ");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("server.log"))
+}
+
+// Names the server log in every page, so the bug report can quote the path.
+fn log_script(log: Option<&PathBuf>) -> String {
+    match log {
+        Some(path) => {
+            let quoted = path
+                .display()
+                .to_string()
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"");
+            format!("window.differServerLog = \"{quoted}\";")
+        }
+        None => String::new(),
+    }
+}
+
 fn wait_for(port: u16, limit: Duration) -> bool {
     let addr = format!("127.0.0.1:{port}").parse().unwrap();
     let start = Instant::now();
@@ -124,11 +146,16 @@ fn main() {
         })
         .setup(|app| {
             let port = pick_port()?;
-            let child = Command::new("python3")
+            let log = server_log();
+            let mut server_command = Command::new("python3");
+            server_command
                 .arg(server_script(app)?)
                 .arg(port.to_string())
-                .arg("--exit-with-parent")
-                .spawn()?;
+                .arg("--exit-with-parent");
+            if let Some(path) = &log {
+                server_command.arg("--log").arg(path);
+            }
+            let child = server_command.spawn()?;
             app.manage(Sidecar(Mutex::new(Some(child))));
 
             let server: Url = format!("http://127.0.0.1:{port}/").parse().unwrap();
@@ -144,6 +171,7 @@ fn main() {
                 // Centred on the 40px tab strip the shell draws across the title bar.
                 .traffic_light_position(LogicalPosition::new(13.0, 20.0))
                 .initialization_script(PAGE_SETUP)
+                .initialization_script_for_all_frames(log_script(log.as_ref()))
                 .on_navigation(move |target| {
                     let is_local = target.host_str() == local.host_str() && target.port() == local.port();
                     if is_local || target.scheme() == "tauri" {
