@@ -1,3 +1,4 @@
+import io
 import json
 import re
 import subprocess
@@ -18,6 +19,51 @@ def handler(
     headers = {k: v for k, v in (("Origin", origin), ("Content-Type", ctype), ("Host", host)) if v is not None}
     h.headers = cast(Any, headers)
     return h
+
+
+def get(path: str, site: str | None = None) -> tuple[int, bytes]:
+    """Drive do_GET for a path with the given Sec-Fetch-Site header; the status code and body it writes."""
+    h = handler(None, None)
+    h.headers = cast(Any, {"Host": "localhost:8765", **({"Sec-Fetch-Site": site} if site else {})})
+    h.path = path
+    h.command = "GET"
+    h.request_version = "HTTP/1.1"
+    h.requestline = f"GET {path} HTTP/1.1"
+    h.client_address = ("127.0.0.1", 1)
+    out = io.BytesIO()
+    h.wfile = cast(Any, out)
+    h.do_GET()
+    head, body = out.getvalue().split(b"\r\n\r\n", 1)
+    return int(head.split(b" ", 2)[1]), body
+
+
+@pytest.mark.parametrize("path", ["/o/r/pull/1", "/open?pr=o/r%231", "/status/o/r/1"])
+def test_a_cross_site_get_to_a_page_open_or_status_is_refused(path: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "start_job", lambda key: pytest.fail("a cross-site GET started a build"))
+    monkeypatch.setattr(server.build, "latest_page", lambda *key: pytest.fail("a cross-site GET read a page"))
+    status, body = get(path, "cross-site")
+    assert status == 403
+    assert b"Forbidden: the request comes from another site (Sec-Fetch-Site: cross-site)" in body
+
+
+@pytest.mark.parametrize("site", [None, "same-origin", "none"])
+def test_a_get_without_a_cross_site_header_passes(site: str | None, monkeypatch: pytest.MonkeyPatch) -> None:
+    started = []
+    monkeypatch.setattr(server, "start_job", lambda key: started.append(key))
+    monkeypatch.setattr(server.build, "latest_page", lambda *key: None)
+    status, body = get("/o/r/pull/1", site)
+    assert status == 200 and started == [("o", "r", 1)]
+    assert b"Building o/r#1" in body
+    assert get("/open?pr=o/r%231", site)[0] == 303
+    status, body = get("/status/o/r/1", site)
+    assert status == 200 and json.loads(body)["state"] == "none"
+
+
+def test_the_home_page_serves_a_cross_site_get(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    status, body = get("/home", "cross-site")
+    assert status == 200
+    assert b"No pull requests opened yet" in body
 
 
 def test_refused_accepts_a_loopback_origin_with_json() -> None:
