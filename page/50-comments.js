@@ -169,22 +169,22 @@ function goThread(t) {
   if (t.outdated || t.line == null) { state.showOutdated.add(f.path); go(t.path); return; }
   go(t.path, rowKey(f, t.side, t.line));
 }
-// A comment box with text stays as a draft on its last line when another box replaces it.
+// A replaced comment box with text stays as a draft, kept under the last line of its range.
 const draftKey = (path, side, line) => `${side}:${line}:${path}`;
-function keepDraft(c) {
-  if (!c || !c.text.trim()) return;
-  const key = draftKey(c.path, c.side, c.line), old = state.drafts.get(key);
-  if (old && old !== c) c.text = old.text.trimEnd() + '\n\n' + c.text;
-  state.drafts.set(key, c);
+function takeDraft(path, side, line) {
+  const key = draftKey(path, side, line), d = state.drafts.get(key);
+  state.drafts.delete(key);
+  return d;
 }
 function openCompose(path, side, line, extend) {
   const c = state.compose;
-  if (extend && c && c.path === path && c.side === side) { c.startLine = Math.min(c.startLine, c.line, line); c.line = Math.max(c.startLine, c.line, line); }
-  else {
-    keepDraft(c);
-    const key = draftKey(path, side, line);
-    state.compose = state.drafts.get(key) || { path, side, line, startLine: line, text: '' };
-    state.drafts.delete(key);
+  if (extend && c && c.path === path && c.side === side) {
+    c.startLine = Math.min(c.startLine, c.line, line); c.line = Math.max(c.startLine, c.line, line);
+    const d = takeDraft(path, side, c.line);
+    if (d) c.text = c.text.trim() ? d.text.trimEnd() + '\n\n' + c.text : d.text;
+  } else {
+    if (c && c.text.trim()) state.drafts.set(draftKey(c.path, c.side, c.line), c);
+    state.compose = takeDraft(path, side, line) || { path, side, line, startLine: line, text: '' };
   }
   state.focus = '[data-compose-text]';
   render();
@@ -201,7 +201,7 @@ function draftText(box) {
 function textareaKey(e) {
   const form = e.target.closest('.form');
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary'); if (b && !b.disabled) b.click(); e.preventDefault(); }
-  else if (e.key === 'Escape') { const b = form && form.querySelector('[data-reply-cancel],[data-bug-cancel]'); if (b) b.click(); else e.target.blur(); }
+  else if (e.key === 'Escape') { const b = form && form.querySelector('[data-bug-cancel]'); if (b) b.click(); else e.target.blur(); }
 }
 const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload]';
 // Handle a click on a comment control; true when the element was one.

@@ -45,10 +45,10 @@ the selected lines, which the page renders as a diff. A comment can go into a
 pending review ("Start a review" / "Add review comment") or out at once ("Add
 single comment"); threads take replies the same way, and can be resolved.
 "Review" in the sidebar submits the pending review as approve, request changes
-or comment, or discards it. Cmd+Enter sends a form. Escape closes a reply
-form, and leaves a comment box open with its text. A comment box with text
-stays as a draft when another line's box opens, and comes back when its line
-number is clicked again.
+or comment, or discards it. Cmd+Enter sends a form. Escape in a comment or
+reply box only leaves the box, and keeps it open with its text. A comment box
+with text stays as a draft when another line's box opens, and comes back when
+the last line number of its range is clicked again.
 
 Comments load from GitHub after the page, through `/api/...` on the server, so
 they need the server (not a page opened from disk). They refresh after every
