@@ -279,6 +279,7 @@ def test_dragging_from_a_line_number_opens_a_comment_on_the_lines_in_between(pag
     main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n").first
     hello.scroll_into_view_if_needed()
     start, end = hello.bounding_box(), main.bounding_box()
+    assert start and end
     page.mouse.move(start["x"] + 5, start["y"] + 5)
     page.mouse.down()
     page.mouse.move(end["x"] + 5, end["y"] + 5, steps=5)
