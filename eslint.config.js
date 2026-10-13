@@ -45,7 +45,7 @@ const base = {
 };
 
 module.exports = [
-  { ignores: ["node_modules/", "page/vendor/", "src-tauri/", "web/"] },
+  { ignores: [".venv/", "node_modules/", "page/vendor/", "src-tauri/", "test-results/", "web/"] },
   { files: ["page/**/*.js", "shell/**/*.js"], ...base },
   ...["shell/frame.js", ...pageFiles].map((file) => ({
     files: [file],
