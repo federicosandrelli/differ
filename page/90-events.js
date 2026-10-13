@@ -15,20 +15,19 @@ function renderKeepingHeader(f) {
   keep(); syncViewport(); keep(); syncViewport(); keep();
 }
 // Change the file filter, keeping the reader on the file at the top of the pane, or on the nearest shown file before
-// it when the filter hides it. A run of changes keeps returning to the file from before the first one, as long as
-// the reader stays on the file the last change landed on.
-let filterReturn = null; // { back, landed }
+// it when the filter hides it. Filter changes in a row keep returning to the file from before the first one; any
+// other click, key, wheel or touch ends the run.
+let filterReturn = null;
 function setFilter(filter) {
-  const back = filterReturn && filterReturn.landed === state.view ? filterReturn.back : state.view;
+  if (filter === state.filter) return;
+  const back = filterReturn || state.view;
   state.filter = filter;
   render();
-  if (state.view !== back) {
-    scrollToFile(shownAtOrBefore(back));
-    // scrollToFile marks the file it went to, but the next scroll event marks the file under the top of the pane,
-    // which differs when the pane cannot scroll that far down; mark that one now so `landed` matches it.
-    syncViewport();
-  }
-  filterReturn = { back, landed: state.view };
+  if (state.view !== back) scrollToFile(shownAtOrBefore(back));
+  filterReturn = back;
+}
+for (const type of ['pointerdown', 'keydown', 'wheel', 'touchmove']) {
+  document.addEventListener(type, (e) => { if (!(e.target.closest && e.target.closest('[data-filter]'))) filterReturn = null; }, true);
 }
 function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); renderKeepingHeader(f); }
 function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); renderKeepingHeader(f); }
