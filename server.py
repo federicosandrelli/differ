@@ -319,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def cross_site(self) -> str | None:
         """Why this GET is refused, or None: a page on another site must not start a clone or a build with the
-        user's gh identity, which a GET to a page path or to /open does.
+        user's gh identity, which a GET to a page path or to /open does, nor read a build's progress at /status.
 
         Browsers send Sec-Fetch-Site with every request: same-origin, same-site, none (a typed address or a
         bookmark) or cross-site. A request without the header (an old browser, curl) passes.
