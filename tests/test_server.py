@@ -1,5 +1,6 @@
 import json
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, cast
@@ -71,3 +72,58 @@ def test_recent_items_escapes_titles(tmp_path: Path, monkeypatch: pytest.MonkeyP
     items = server.recent_items()
     assert 'href="/o/r/pull/1"' in items
     assert re.search(r'<span class="t">a &lt;b&gt;</span>', items)
+
+
+def test_refresh_statuses_saves_the_statuses_github_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    for n in range(4):
+        server.note_opened(("o", "r", n), b'<meta name="pr-status" content="open">')
+    answer = {
+        "data": {
+            "p0": {"pullRequest": None},
+            "p1": None,
+            "p2": {"pullRequest": {"state": "OPEN", "isDraft": True}},
+            "p3": {"pullRequest": {"state": "MERGED", "isDraft": False}},
+        },
+        "errors": [{"message": "Could not resolve to a Repository"}],
+    }
+    sent = {}
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        sent.update(json.loads(kwargs["input"])["variables"])
+        return subprocess.CompletedProcess(args, 1, json.dumps(answer), "")
+
+    monkeypatch.setattr(server.build.subprocess, "run", fake_run)
+    server.refresh_statuses()
+    assert sent["n0"] == 3 and sent["o0"] == "o" and sent["r0"] == "r"
+    assert {p["number"]: p["status"] for p in server.recent_pages()} == {3: "open", 2: "open", 1: "draft", 0: "merged"}
+
+
+def test_refresh_statuses_keeps_the_saved_statuses_when_gh_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    server.note_opened(("o", "r", 1), b'<meta name="pr-status" content="merged">')
+    before = (tmp_path / "recent.json").read_text()
+    monkeypatch.setattr(
+        server.build.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 1, "", "gh: not logged in"),
+    )
+    server.refresh_statuses()
+    assert (tmp_path / "recent.json").read_text() == before
+
+
+def test_refresh_statuses_skips_github_while_another_refresh_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    server.note_opened(("o", "r", 1), b'<meta name="pr-status" content="open">')
+
+    def fail(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        raise AssertionError("gh ran during another refresh")
+
+    monkeypatch.setattr(server.build.subprocess, "run", fail)
+    with server.refreshing:
+        server.refresh_statuses()
+    assert server.recent_pages()[0]["status"] == "open"

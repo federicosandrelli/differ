@@ -5,7 +5,8 @@ Usage: server.py [port]   (default 8765)
 
   /                                  the tabbed shell: the start page as a home tab, and a tab per open page
   /home                              the start page: a search bar and the ten pull requests opened last
-  /recent                            the list of pull requests opened last, as an HTML fragment
+  /recent                            the list of pull requests opened last, as an HTML fragment, with each
+                                     status fetched from GitHub
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
@@ -53,6 +54,7 @@ class Job:
 jobs: dict[tuple[str, str, int], Job] = {}
 heads: dict[tuple[str, str, int], tuple[float, str]] = {}
 lock = threading.Lock()
+refreshing = threading.Lock()
 
 
 def page_key(m: re.Match) -> tuple[str, str, int]:
@@ -136,8 +138,33 @@ def note_opened(key: tuple[str, str, int], page: bytes) -> None:
             "status": status,
             "opened": time.time(),
         }
-        RECENT.parent.mkdir(parents=True, exist_ok=True)
-        RECENT.write_text(json.dumps([entry, *rest][:RECENT_MAX]))
+        save_recent([entry, *rest][:RECENT_MAX])
+
+
+def save_recent(pages: list[dict]) -> None:
+    """Replace recent.json in one step, so a reader sees the old list or the new one and never part of one."""
+    RECENT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = RECENT.with_suffix(".tmp")
+    tmp.write_text(json.dumps(pages))
+    os.replace(tmp, RECENT)
+
+
+def refresh_statuses() -> None:
+    """Save the status GitHub reports now for each pull request in the recently opened list. A pull request
+    GitHub can't return keeps the status saved before. While one refresh runs, another returns at once."""
+    if not refreshing.acquire(blocking=False):
+        return
+    try:
+        live = build.pr_statuses([(p["owner"], p["repo"], p["number"]) for p in recent_pages()])
+        with lock:
+            pages = recent_pages()
+            updated = [
+                p | {"status": live.get((p["owner"], p["repo"], p["number"]), p.get("status", ""))} for p in pages
+            ]
+            if updated != pages:
+                save_recent(updated)
+    finally:
+        refreshing.release()
 
 
 def ago(ts: float) -> str:
@@ -181,7 +208,8 @@ def recent_items() -> str:
 
 
 def start_page() -> bytes:
-    """The start page; in the tabbed shell its list is fetched again each time its tab comes to the front."""
+    """The start page, with the statuses saved last. Its list, with each status fetched from GitHub, is fetched
+    again when the page loads and each time its tab comes to the front."""
     return shell("Pull request review", render.fill(shell_file("start.html"), RECENT=recent_items()))
 
 
@@ -224,6 +252,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/home":
                 return self.send(200, start_page())
             if url.path == "/recent":
+                refresh_statuses()
                 return self.send(200, recent_items().encode())
             if url.path == "/open":
                 owner, repo, number = build.parse_ref((query.get("pr") or [""])[0])
