@@ -75,6 +75,15 @@ def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, se
     expect(target).to_contain_text("import sys")
 
 
+def test_cmd_f_fills_the_search_with_the_selected_code(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.locator(f"{APP} tr.add td.c", has_text="hello").select_text()
+    page.keyboard.press("Meta+f")
+    expect(page.locator("#side .search")).to_be_focused()
+    expect(page.locator("#side .search")).to_have_value('print("hello")')
+    expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+
+
 def test_r_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
     page.set_viewport_size({"width": 1100, "height": 400})
     open_pr(page, server_url)

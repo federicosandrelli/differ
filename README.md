@@ -157,8 +157,9 @@ and drive the pages in Chromium through Playwright; they need
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API (`gh api graphql`).
 
-Keys in the page: arrow keys in the tree, Cmd+F search and Enter for the next
-hit, `r` mark reviewed, `o` back to the top.
+Keys in the page: arrow keys in the tree, Cmd+F search (it starts from the
+selected text) and Enter for the next hit, `r` mark reviewed, `o` back to the
+top.
 
 ## Reporting a bug
 
