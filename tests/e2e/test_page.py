@@ -171,6 +171,29 @@ def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str,
     assert posted[0]["body"] == "Please add a test"
 
 
+def test_a_comment_draft_survives_opening_another_box_and_escape(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    hello = page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n").first
+    hello.click()
+    box = page.locator("textarea[data-compose-text]")
+    box.fill("Use a logger here")
+    box.press("Escape")
+    expect(box).to_have_value("Use a logger here")
+    expect(box).not_to_be_focused()
+
+    page.locator("section[data-file='README.md'] tr.add td.n").first.click()
+    expect(page.locator("textarea[data-compose-text]")).to_have_count(1)
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("")
+    expect(page.locator("section[data-file='README.md'] .form.compose")).to_be_visible()
+
+    hello.click()
+    expect(page.locator(APP).locator("textarea[data-compose-text]")).to_have_value("Use a logger here")
+    page.click("button[data-compose-cancel]")
+    expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
+    hello.click()
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("")
+
+
 def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: str, gh_state: Path) -> None:
     page.goto(server_url + "/")
     home = page.frame_locator("#panes iframe.on")
