@@ -54,6 +54,16 @@ def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_
     expect(section.locator(".code > .empty")).to_have_text("Binary file added · 4.9 KB")
 
 
+def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/4")
+    section = page.locator("section[data-file='src/models.py']")
+    section.scroll_into_view_if_needed()
+    expect(section.locator("tr.add")).to_have_text(re.compile("new_total: float"))
+    for line in ("@dataclass", "class Order:", "id: int", "shipped: bool"):
+        expect(section.locator("tr.ctx", has_text=line)).to_be_visible()
+    expect(section.locator("tr.fold")).to_have_text("⋯ 7 unchanged lines")
+
+
 def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
