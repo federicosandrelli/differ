@@ -24,13 +24,20 @@ function renamedFrom(f) {
   const tail = o.slice(Math.max(0, i - 1)).join('/');
   return `<span class="dir" title="${esc(f.old_path)}">renamed from ${i > 1 ? '…/' : ''}${esc(tail)}</span>`;
 }
+const binarySize = (f) => [f.binary.old, f.binary.new].filter(n => n != null).map(fileSize).join(' → ');
+function binaryHtml(f) {
+  const what = f.status === 'A' ? 'added' : f.status === 'D' ? 'deleted' : 'changed', size = binarySize(f);
+  return `<div class="empty">Binary file ${what}${size ? ` · ${size}` : ''}</div>`;
+}
+const countsHtml = (f) => f.binary ? `<span class="counts">${binarySize(f)}</span>`
+  : `<span class="counts"><span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span></span>`;
 function headerHtml(f, open) {
   const ck = changeKind(f);
   return `<div class="fhead"><div class="top" data-toggle="${esc(f.path)}">
       <span class="chev ${open ? 'open' : ''}" title="${open ? 'Collapse' : 'Expand'}"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path" title="${esc(f.path)}"><b>${esc(f.base)}</b><span class="dir">${esc(f.dir)}</span>${renamedFrom(f)}</span>
-      <span class="kind">${esc(f.kind)}</span><span class="counts"><span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span></span>
+      <span class="kind">${esc(f.kind)}</span>${countsHtml(f)}
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
     </div></div>`;
 }
@@ -105,7 +112,7 @@ function fillBody(f, el) {
     }
     const left = code.scrollLeft;
     code.style.setProperty('--cols', parts.cols);
-    replaceContent(code, parts.outdated + (parts.rows ? chunks.join('') : '<div class="empty">No changes</div>'));
+    replaceContent(code, parts.outdated + (parts.rows ? chunks.join('') : f.binary ? binaryHtml(f) : '<div class="empty">No changes</div>'));
     code.scrollLeft = left;
     code.dataset.key = parts.key;
   }

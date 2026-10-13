@@ -48,6 +48,7 @@ class FileDiff:
     old_path: str | None
     new_path: str | None
     status: str
+    binary: bool = False
     hunks: list[Hunk] = field(default_factory=list)
     runs: list[Run] = field(default_factory=list)
 
@@ -80,6 +81,8 @@ def parse_patch(text: str) -> list[FileDiff]:
                 current.new_path = None
             elif raw.startswith("similarity index"):
                 current.status = "R"
+            elif raw.startswith("Binary files "):
+                current.binary = True
             if not raw.startswith("@@"):
                 continue
         if raw.startswith("@@"):
@@ -438,6 +441,17 @@ def read_source(path: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def binary_sizes(root: Path, fd: FileDiff) -> dict | None:
+    """A binary file's size in bytes on each side, None on a side without the exported file; None for a text file."""
+    if not fd.binary:
+        return None
+    sizes: dict[str, int | None] = {}
+    for side, path in (("old", fd.old_path), ("new", fd.new_path)):
+        target = root / side / path if path else None
+        sizes[side] = target.stat().st_size if target and target.is_file() else None
+    return sizes
+
+
 def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list[dict]:
     """Classify every run and return one entry per file with its content, symbols and import lines."""
     ordered = sorted(rename_info, key=lambda p: -len(p[0]))
@@ -459,6 +473,7 @@ def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list
                 "symbols": symbols,
                 "content": content,
                 "content_side": content_side,
+                "binary": binary_sizes(root, fd),
                 "import_lines": imports,
                 "old_import_lines": old_imports,
             }
@@ -533,6 +548,7 @@ def file_json(entry: dict, marked: set[str]) -> dict:
         "lang": language(fd.path),
         "content": entry["content"],
         "content_side": entry["content_side"],
+        "binary": entry["binary"],
         "hunks": hunks_json,
         "runs": runs_json,
         "symbols": entry["symbols"],

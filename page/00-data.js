@@ -41,6 +41,11 @@ const unesc = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quo
 const caseFold = (s) => s.replace(/İ/g, 'i').toLowerCase();
 const fmt = (n) => n.toLocaleString('en-GB');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+function fileSize(bytes) {
+  if (bytes < 1024) return plural(bytes, 'byte');
+  const kb = (bytes / 1024).toFixed(1);
+  return kb < 1024 ? `${kb} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
 function ago(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   for (const [u, n] of [['d', 86400], ['h', 3600], ['m', 60]]) if (s >= n) return `${Math.floor(s / n)}${u} ago`;

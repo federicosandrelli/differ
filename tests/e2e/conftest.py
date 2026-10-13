@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page
 
-from helpers import git, make_repo
+from helpers import commit_tree, git, make_repo
 
 E2E = Path(__file__).resolve().parent
 ROOT = E2E.parent.parent
@@ -117,15 +117,16 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(scope="session")
 def gh_state(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The fake gh's files: the fixture repo with a pull request ref, the metadata and the comments."""
+    """The fake gh's files: the fixture repo with the pull request refs, the metadata and the comments."""
     root = tmp_path_factory.mktemp("e2e")
     repo, base, head = make_repo(root / "repo", OLD, NEW)
     state = root / "state"
     state.mkdir()
     (state / "repo.txt").write_text(str(repo))
-    for number in (1, 2):
-        git(repo, "update-ref", f"refs/pull/{number}/head", head)
-        (state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, base, head)))
+    with_logo = commit_tree(repo, {**NEW, "src/logo.png": b"\x89PNG\0" * 1000}, "logo")
+    for number, pr_head in ((1, head), (2, head), (3, with_logo)):
+        git(repo, "update-ref", f"refs/pull/{number}/head", pr_head)
+        (state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, base, pr_head)))
     (state / "comments.json").write_text(json.dumps(comments_state(head)))
     (state / "mutations.log").write_text("")
     return state

@@ -29,7 +29,7 @@ function fileLine(f) {
   for (const r of f.runs) runs[r.class] = (runs[r.class] || 0) + 1;
   const runText = Object.entries(runs).map(([c, n]) => `${n} ${c}`).join(', ') || 'none';
   return [`\`${f.path}\``, KIND_LABEL[k] + (f.old_path && f.old_path !== f.path ? ` from \`${f.old_path}\`` : ''), f.kind,
-    f.lang ? `language ${f.lang}` : 'no highlighting', `+${f.stats.additions} −${f.stats.deletions}`, `runs: ${runText}`,
+    f.lang ? `language ${f.lang}` : 'no highlighting', f.binary ? `binary ${binarySize(f)}` : `+${f.stats.additions} −${f.stats.deletions}`, `runs: ${runText}`,
     plural(f.hunks.length, 'hunk'), `content side ${f.content_side}`, f.generated ? 'generated' : '', noiseOnly(f) ? 'noise only' : '',
     `section ${sectionOpen(f) ? 'open' : 'collapsed'}`, isReviewed(f) ? 'reviewed' : 'not reviewed'].filter(Boolean).join(' · ');
 }
