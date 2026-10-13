@@ -103,6 +103,16 @@ uv run pytest
 and drive the pages in Chromium through Playwright; they need
 `uv run playwright install chromium` once.
 
+ESLint checks the scripts under `page/` and `shell/`. `eslint.config.js`
+reads the names each file declares at the top level, since `render.py`
+inlines the files into one script and a name declared in one is a global in
+the others:
+
+```sh
+npm install
+npm run lint
+```
+
 ## How a page is built
 
 `build.py`:

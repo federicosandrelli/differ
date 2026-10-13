@@ -2,9 +2,13 @@
   "name": "differ",
   "private": true,
   "scripts": {
+    "lint": "eslint .",
     "tauri": "tauri"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.1"
+    "@eslint/js": "^9.39.5",
+    "@tauri-apps/cli": "^2.12.1",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0"
   }
 }
