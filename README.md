@@ -93,8 +93,7 @@ pulls in `python@3.13` and `gh`; `git` stays external.
 ## Releasing
 
 The app is signed ad hoc (`signingIdentity` `"-"` in `tauri.conf.json`),
-without an Apple Developer ID, and it runs on Apple Silicon only. Friends
-install it from the cask in
+and it runs on Apple Silicon. Friends install it from the cask in
 [federicosandrelli/homebrew-tap](https://github.com/federicosandrelli/homebrew-tap):
 
 ```sh
@@ -102,7 +101,7 @@ brew install federicosandrelli/tap/differ
 ```
 
 The cask removes the `com.apple.quarantine` attribute after the install, so
-macOS opens the app without a Gatekeeper warning.
+macOS opens the app on the first launch.
 
 To release a new version:
 
