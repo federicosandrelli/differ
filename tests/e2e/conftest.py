@@ -51,6 +51,34 @@ MODELS_NEW = {
     "src/report.py": "def report(order):\n    return order.new_total\n",
 }
 
+CONFIG_FIELDS = "".join(f"    field_{n}: int\n" for n in range(1, 13))
+CONFIG_ARGS = "".join(f"    arg_{n}={n},\n" for n in range(1, 13))
+CONFIG_STEPS = "".join(f"    step_{n}()\n" for n in range(1, 13))
+SERVICE_CALLS = {name: "".join(f"        {name}{n}()\n" for n in range(1, 13)) for name in ("a", "b")}
+JOBS_FIELDS = "".join(f"    j{n} = {n}\n" for n in range(1, 13))
+NEAR_LINES = "".join(f"y{n} = {n}\n" for n in range(2, 20))
+CONFIG_OLD = {
+    "src/config.py": f"class Config:\n{CONFIG_FIELDS}\n\napp = make_app(\n{CONFIG_ARGS})\n\n\ndef run():\n{CONFIG_STEPS}    return 0\n",
+    "src/service.py": (
+        f"class Service:\n    def m1(self):\n{SERVICE_CALLS['a']}        return 0\n\n"
+        f'    def m2(self):\n{SERVICE_CALLS["b"]}        return 0\n\n    name = "service"\n'
+    ),
+    "src/jobs.py": f"class Jobs:\n{JOBS_FIELDS}\n    def run(self, x):\n        return x\n",
+    "src/near.py": f"x = 1\n{NEAR_LINES}def f(a):\n    b = 1\n    return a\n",
+}
+CONFIG_NEW = {
+    "src/config.py": (
+        f"class Config:\n{CONFIG_FIELDS}    extra: bool\n\n\napp = make_app(\n{CONFIG_ARGS}    extra=True,\n)\n\n\n"
+        f"def run():\n{CONFIG_STEPS}    return 1\n"
+    ),
+    "src/service.py": (
+        f"class Service:\n    def m1(self):\n{SERVICE_CALLS['a']}        return 1\n\n"
+        f'    def m2(self):\n{SERVICE_CALLS["b"]}        return 1\n\n    name = "service"\n    extra = True\n'
+    ),
+    "src/jobs.py": f"class Jobs:\n{JOBS_FIELDS}\n    def run(self, x, y):\n        return x\n",
+    "src/near.py": f"x = 10\n{NEAR_LINES}def f(a):\n    b = 1\n    return a + b\n",
+}
+
 
 def pr_meta(number: int, base: str, head: str) -> dict:
     return {
@@ -141,12 +169,15 @@ def gh_state(tmp_path_factory: pytest.TempPathFactory) -> Path:
     models_base = commit_tree(repo, {**NEW, **MODELS_OLD}, "models base")
     models_head = commit_tree(repo, {**NEW, **MODELS_NEW}, "models head")
     with_long = commit_tree(repo, {**NEW, **LONG}, "long")
+    config_base = commit_tree(repo, {**NEW, **CONFIG_OLD}, "config base")
+    config_head = commit_tree(repo, {**NEW, **CONFIG_NEW}, "config head")
     for number, pr_base, pr_head in (
         (1, base, head),
         (2, base, head),
         (3, base, with_logo),
         (4, models_base, models_head),
         (5, head, with_long),
+        (6, config_base, config_head),
     ):
         git(repo, "update-ref", f"refs/pull/{number}/head", pr_head)
         (state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, pr_base, pr_head)))

@@ -13,6 +13,13 @@ function renderRows(f, rows, out, index) {
   }
 }
 
+// A row with a chip in the code column, indented like the first folded line.
+function inlineFoldRow(b) {
+  const title = `${b.open ? 'Fold' : 'Show'} ${plural(b.mid.length, 'unchanged line')}`;
+  const indent = b.mid[0].text.match(/^\s*/)[0];
+  return `<tr class="inline-fold-row"><td class="n"></td><td class="n"></td><td class="m"></td><td class="c">${esc(indent)}<span class="inline-fold${b.open ? ' open' : ''}" data-fold="${esc(b.fold)}" title="${title}">⋯</span></td></tr>`;
+}
+
 function runSummary(r) {
   const n = r.removed.length + r.added.length;
   if (r.class === 'import') return `<span class="cls">imports</span> ${plural(n, 'import line')} changed`;
@@ -52,7 +59,7 @@ function lineColumns(text) {
 // The rows of a file's diff table, one HTML string each so the table can be shown in pieces, the index of
 // each row's key in them, and the columns of the longest drawn line.
 function codeRows(f) {
-  const symStarts = new Map((f.symbols || []).map(s => [s.start, s]));
+  const symStarts = new Map((f.symbols || []).filter(s => s.kind !== 'call').map(s => [s.start, s]));
   const html = [], index = new Map();
   let cols = 0;
   const draw = (rows) => {
@@ -67,8 +74,9 @@ function codeRows(f) {
       html.push(foldRow(b.fold, groupLabel(b)));
     } else if (b.ctx) {
       draw(b.head);
+      if (b.inline && b.mid.length) html.push(inlineFoldRow(b));
       if (b.open) draw(b.mid);
-      else if (b.mid.length) html.push(`<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">${contextLabel(b, symStarts)}</span></td></tr>`);
+      else if (b.mid.length && !b.inline) html.push(`<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">${contextLabel(b, symStarts)}</span></td></tr>`);
       draw(b.tail);
     } else {
       const r = b.run;
@@ -81,9 +89,9 @@ function codeRows(f) {
   return { html, index, cols };
 }
 // How many rows codeRows draws for a block, leaving out threads: the shown rows and the fold row (an open context
-// block has none).
+// block has none, unless it is inline).
 function drawnRows(b) {
   const shown = b.rows.length - hiddenRows(b).length;
-  return shown + (b.fold && !(b.ctx && b.open) ? 1 : 0);
+  return shown + (b.fold && (b.inline || !(b.ctx && b.open)) ? 1 : 0);
 }
 const tableHtml = (rows) => `<table class="diff"><colgroup><col style="width:38px"><col style="width:38px"><col style="width:16px"><col></colgroup>${rows.join('')}</table>`;

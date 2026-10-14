@@ -72,6 +72,60 @@ def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, s
     expect(section.locator("tr.fold")).to_have_text("⋯ 7 unchanged lines")
 
 
+def test_a_change_shows_the_class_function_or_call_line_and_folds_the_lines_between(
+    page: Page, server_url: str
+) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    section = page.locator("section[data-file='src/config.py']")
+    section.scroll_into_view_if_needed()
+    code = lambda line: section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}"))  # noqa: E731
+    expect(section.locator("tr.add")).to_have_count(3)
+    for line in ("class Config:", "field_9: int", "app = make_app(", "arg_1=1,", "arg_9=9,", "def run():", "step_9()"):
+        expect(code(line)).to_be_visible()
+    for line in ("field_1: int", "arg_2=2,", "step_1()"):
+        expect(code(line)).to_have_count(0)
+    expect(section.locator("tr.fold")).to_have_count(0)
+    chips = section.locator(".inline-fold")
+    expect(chips).to_have_count(3)
+    expect(chips.first).to_have_attribute("title", "Show 8 unchanged lines")
+
+    chips.first.click()
+    expect(code("field_1: int")).to_be_visible()
+    expect(chips.first).to_have_class(re.compile(r"\bopen\b"))
+    chips.first.click()
+    expect(code("field_1: int")).to_have_count(0)
+
+
+def test_a_change_shows_the_line_of_its_own_method_when_a_later_change_sits_in_the_class(
+    page: Page, server_url: str
+) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    section = page.locator("section[data-file='src/service.py']")
+    section.scroll_into_view_if_needed()
+    code = lambda line: section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}"))  # noqa: E731
+    for line in ("class Service:", "def m1(self):", "def m2(self):"):
+        expect(code(line)).to_be_visible()
+    expect(code("a1()")).to_have_count(0)
+    expect(section.locator(".inline-fold")).to_have_count(2)
+
+
+def test_a_change_just_below_its_def_line_keeps_the_lines_next_to_it(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    section = page.locator("section[data-file='src/near.py']")
+    section.scroll_into_view_if_needed()
+    for line in ("y18 = 18", "y19 = 19", "def f(a):", "b = 1"):
+        expect(section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}$"))).to_be_visible()
+    expect(section.locator("tr.fold")).to_have_text("⋯ 12 unchanged lines")
+
+
+def test_a_changed_def_line_shows_the_class_line_above_it(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    section = page.locator("section[data-file='src/jobs.py']")
+    section.scroll_into_view_if_needed()
+    expect(section.locator("tr.ctx td.c", has_text=re.compile(r"^class Jobs:"))).to_be_visible()
+    expect(section.locator(".inline-fold")).to_have_count(1)
+
+
 def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
@@ -89,15 +143,25 @@ def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> 
     expect(section.locator("tr.add", has_text="import sys")).to_have_count(0)
 
 
+HEIGHT_MISMATCHES = """() => ['', 'name'].flatMap(q => {
+    state.q = q;
+    const drawn = (f) => codeRows(f).html.filter(h => !/^<tr class="(thread|compose)"/.test(h)).length;
+    const counted = (f) => fileBlocks(f, true).reduce((n, b) => n + drawnRows(b), 0);
+    return FILES.filter(f => f.runs.length && counted(f) !== drawn(f)).map(f => `${q}:${f.path}`);
+})"""
+
+
 def test_the_height_estimate_counts_the_rows_each_file_draws(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    mismatches = page.evaluate("""() => ['', 'name'].flatMap(q => {
-        state.q = q;
-        const drawn = (f) => codeRows(f).html.filter(h => !/^<tr class="(thread|compose)"/.test(h)).length;
-        const counted = (f) => fileBlocks(f, true).reduce((n, b) => n + drawnRows(b), 0);
-        return FILES.filter(f => f.runs.length && counted(f) !== drawn(f)).map(f => `${q}:${f.path}`);
-    })""")
-    assert mismatches == []
+    assert page.evaluate(HEIGHT_MISMATCHES) == []
+
+
+def test_the_height_estimate_counts_the_inline_fold_rows_closed_and_open(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    assert page.evaluate(HEIGHT_MISMATCHES) == []
+    page.evaluate("() => FILES.forEach(f => fileBlocks(f).filter(b => b.inline).forEach(b => toggleFold(b.fold)))")
+    assert page.evaluate("() => FILES.flatMap(f => fileBlocks(f)).filter(b => b.inline).every(b => b.open)")
+    assert page.evaluate(HEIGHT_MISMATCHES) == []
 
 
 def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, server_url: str) -> None:

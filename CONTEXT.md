@@ -10,6 +10,7 @@ Terms the code uses. A name here is the name in the code.
 - **Row key.** The address of a row on its own side: `O<old line>` for a removed line, `L<new line>` for the rest. Defined in `page/25-address.js`; threads, search hits, deep links and element ids all name rows by key.
 - **File view.** The rows of one file grouped into blocks with every fold decided (`fileBlocks` in `page/30-rows.js`). The diff table draws the view; `reveal(file, key)` opens whatever hides a row; `toggleFold(id)` answers a click on a fold row.
 - **Fold.** Something the view hides until opened: the middle of a context block, a noise run, several noise runs grouped as one, or an import section. A fold has an opaque **fold id** that only the file view reads.
+- **Inline fold.** The fold of a context block that holds the body lines between the start of the class, function or call around a change and the lines next to the change. It draws as a chip on its own row, and the chip stays when the fold is open, so a second click folds the lines again.
 - **Pinned row.** A row a fold may never hide: a row with a thread, or the row with the comment being written.
 - **Search hit.** A row holding the query that the reader can see: a row the file view shows (`viewHits` in `page/10-files.js`), in an open section of a shown file. Hits never open a fold.
 - **Thread.** A GitHub review thread, placed on the row its line maps to, or listed as outdated when its line is gone.
