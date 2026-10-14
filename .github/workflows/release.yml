@@ -9,14 +9,34 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
-  release:
+  check:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      latest: ${{ steps.tip.outputs.latest }}
+    steps:
+      - name: Check that the commit is still the tip of main
+        id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$tip" = "$SHA" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping the release: $SHA is no longer the tip of main ($tip)."
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.latest == 'true'
     runs-on: macos-latest
+    concurrency:
+      group: release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +56,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - run: npx tauri build --bundles dmg
+      - uses: actions/checkout@v4
+        with:
+          repository: federicosandrelli/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
       - name: Publish the release
         id: release
         env:
@@ -51,11 +76,6 @@ jobs:
           gh release create "v$VERSION" "$dmg" \
             --target "$SHA" --title "differ $VERSION" --generate-notes
           echo "sha256=$(shasum -a 256 "$dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
-        with:
-          repository: federicosandrelli/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-tap
       - name: Point the cask at the new release
         working-directory: homebrew-tap
         env:

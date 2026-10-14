@@ -121,9 +121,10 @@ To start a new major or minor version, set `version` in `tauri.conf.json` to
 it, for example `0.2.0`, and merge the change into `main`. The workflow
 ignores the patch in that file.
 
-A push releases nothing when its `CI` run fails, or when a newer push to
-`main` cancels its `CI` run. While a release runs, GitHub keeps only the
-newest waiting release and cancels older ones.
+A push releases nothing when its `CI` run fails, when a newer push to `main`
+cancels its `CI` run, or when its commit is no longer the tip of `main` after
+`CI` passes. While a release runs, GitHub keeps only the newest waiting
+release and cancels older ones.
 
 ## Checks
 
