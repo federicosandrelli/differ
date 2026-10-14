@@ -561,3 +561,31 @@ def test_opening_a_pull_request_from_the_shell_empties_the_start_page_search(pag
     expect(page.locator("#tabs .tab:not(.home)")).to_have_count(1)
     page.click("#tabs .tab.home")
     expect(page.frame_locator("#panes iframe.on").locator("input[name=pr]")).to_have_value("")
+
+
+def test_an_approval_of_the_head_commit_names_itself_and_blocks_another(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    comments_file = gh_state / "comments.json"
+    saved = comments_file.read_text()
+    state = json.loads(saved)
+    approval = {**state["reviews"][0], "id": "R2", "author": {"login": "tester"}, "body": ""}
+    state["reviews"].append({**approval, "commit": {"oid": state["head"]}})
+    comments_file.write_text(json.dumps(state))
+    try:
+        open_pr(page, server_url)
+        review = page.locator("#side button[data-review-panel]")
+        expect(review).to_have_text("Approved")
+        review.click()
+        expect(page.locator("button[data-submit='APPROVE']")).to_be_disabled()
+        page.locator("textarea[data-review-text]").fill("Found a problem")
+        expect(page.locator("button[data-submit='REQUEST_CHANGES']")).to_be_enabled()
+
+        state["reviews"][-1] = {**approval, "commit": {"oid": "older"}}
+        comments_file.write_text(json.dumps(state))
+        open_pr(page, server_url)
+        expect(review).to_have_text("Review")
+        review.click()
+        expect(page.locator("button[data-submit='APPROVE']")).to_be_enabled()
+    finally:
+        comments_file.write_text(saved)

@@ -69,9 +69,12 @@ function statusChip() {
   if (!PR_STATUS) return '';
   return `<span class="status st-${PR_STATUS}"><span class="pr-icon st-${PR_STATUS}" aria-hidden="true"></span>${PR_STATUS[0].toUpperCase() + PR_STATUS.slice(1)}</span>`;
 }
+// The button names the viewer's verdict on the head commit, and stays primary while the viewer has a review to give.
+const VERDICT = { APPROVED: ['Approved', 'approved'], CHANGES_REQUESTED: ['Changes requested', 'changes'] };
 function reviewButton() {
-  const n = pendingCount();
-  return `<button data-review-panel class="review ${state.reviewPanel ? 'on' : 'primary'}">Review${n ? `<span class="count">${n}</span>` : ''}</button>`;
+  const n = pendingCount(), [label, cls] = VERDICT[headVerdict()] || ['Review', ''];
+  const look = state.reviewPanel ? 'on' : cls && !n ? cls : 'primary';
+  return `<button data-review-panel class="review ${look}">${label}${n ? `<span class="count">${n}</span>` : ''}</button>`;
 }
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;

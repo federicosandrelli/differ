@@ -51,20 +51,21 @@ THREAD_FIELDS = """
   comments(first: 100) { nodes { id author { login } body bodyHTML createdAt url state replyTo { id } pullRequestReview { id state } } }
 """
 
-READ = (
-    """
+# The approvals, change requests and dismissed reviews, newest last, that _verdict reads.
+VERDICTS = "verdicts: reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) { nodes { author { login } state commit { oid } } }"
+
+READ = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   viewer { login }
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
     id headRefOid bodyHTML
     reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }
     reviews(first: 100) { nodes { id author { login } state body bodyHTML createdAt submittedAt url } }
+    %s
     comments(first: 100) { nodes { id author { login } body bodyHTML createdAt url } }
   } }
 }
-"""
-    % THREAD_FIELDS
-)
+""" % (THREAD_FIELDS, VERDICTS)
 
 MORE_THREADS = (
     """
@@ -117,8 +118,19 @@ def _thread(t: dict, pending_review: str | None) -> dict | None:
     }
 
 
+def _verdict(reviews: list[dict], viewer: str) -> dict | None:
+    """The viewer's verdict on the pull request: the state of their latest approval or change request and the commit
+    it reviewed. None when they gave neither, or when GitHub dismissed the latest one. Takes the approvals, change
+    requests and dismissed reviews, oldest first."""
+    latest = next((r for r in reversed(reviews) if _author(r) == viewer), None)
+    if not latest or latest["state"] == "DISMISSED":
+        return None
+    return {"state": latest["state"], "commit": (latest.get("commit") or {}).get("oid", "")}
+
+
 def fetch(owner: str, repo: str, number: int) -> dict:
-    """Every review thread, review and conversation comment of the pull request, plus the viewer's pending review."""
+    """Every review thread, review and conversation comment of the pull request, plus the viewer's pending review
+    and verdict."""
     data = graphql(READ, owner=owner, repo=repo, number=number, after=None)
     pr = data["repository"]["pullRequest"]
     threads = list(pr["reviewThreads"]["nodes"])
@@ -162,22 +174,26 @@ def fetch(owner: str, repo: str, number: int) -> dict:
         "head": pr["headRefOid"],
         "body_html": pr.get("bodyHTML") or "",
         "pending": {"id": pending_id} if pending else None,
+        "verdict": _verdict(pr["verdicts"]["nodes"], viewer),
         "threads": [th for t in threads if (th := _thread(t, pending_id))],
         "reviews": reviews,
         "comments": comments,
     }
 
 
-def _pending_review(owner: str, repo: str, number: int) -> tuple[str, str, str | None]:
-    """The pull request's node id and head commit, and the id of the viewer's pending review if there is one."""
+def _pending_review(owner: str, repo: str, number: int) -> tuple[str, str, str | None, dict | None]:
+    """The pull request's node id and head commit, the id of the viewer's pending review if there is one, and the
+    viewer's verdict."""
     data = graphql(
         """
 query($owner: String!, $repo: String!, $number: Int!) {
   viewer { login }
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
     id headRefOid reviews(first: 10, states: [PENDING]) { nodes { id author { login } } }
+    %s
   } }
-}""",
+}"""
+        % VERDICTS,
         owner=owner,
         repo=repo,
         number=number,
@@ -185,7 +201,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     pr = data["repository"]["pullRequest"]
     viewer = data["viewer"]["login"]
     pending = next((r["id"] for r in pr["reviews"]["nodes"] if _author(r) == viewer), None)
-    return pr["id"], pr["headRefOid"], pending
+    return pr["id"], pr["headRefOid"], pending, _verdict(pr["verdicts"]["nodes"], viewer)
 
 
 def add_thread(
@@ -203,7 +219,7 @@ def add_thread(
 ) -> dict:
     """Comment on a line or a range of lines. mode "review" adds to the pending review (starting one when needed);
     mode "single" posts the comment at once."""
-    pr_id, head, pending = _pending_review(owner, repo, number)
+    pr_id, head, pending, _ = _pending_review(owner, repo, number)
     thread = {"path": path, "body": body, "line": line, "side": side}
     if start_line is not None and start_line != line:
         thread.update(startLine=start_line, startSide=start_side or side)
@@ -275,13 +291,24 @@ def delete_comment(comment_id: str) -> dict:
     return {"deleted": comment_id}
 
 
+# The verdict each review event gives, and why the event is refused when the viewer gave that verdict on the head
+# commit already.
+REPEATS = {
+    "APPROVE": ("APPROVED", "You approved this commit already."),
+    "REQUEST_CHANGES": ("CHANGES_REQUESTED", "You requested changes on this commit already."),
+}
+
+
 def submit(owner: str, repo: str, number: int, *, event: str, body: str = "") -> dict:
     """Submit the pending review, or a review without inline comments, as APPROVE, REQUEST_CHANGES or COMMENT."""
     if event not in ("APPROVE", "REQUEST_CHANGES", "COMMENT"):
         raise CommentError(f"Unknown review event {event!r}")
     if event == "REQUEST_CHANGES" and not body.strip():
         raise CommentError("Requesting changes needs a summary.")
-    pr_id, head, pending = _pending_review(owner, repo, number)
+    pr_id, head, pending, verdict = _pending_review(owner, repo, number)
+    repeat = REPEATS.get(event)
+    if repeat and verdict == {"state": repeat[0], "commit": head}:
+        raise CommentError(repeat[1])
     if pending:
         graphql(
             """
