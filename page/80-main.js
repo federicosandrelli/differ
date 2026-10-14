@@ -192,6 +192,12 @@ function refreshBodies() {
     if (near(span(el)) || el.contains(document.activeElement)) fillBody(f, el); else emptyBody(el);
   }
 }
+// The file scrollToFile last showed. The pane can't bring a file near the end to its top, so that file stays the
+// active one while it is on screen, until the reader scrolls the pane.
+let shown = null;
+// When the reader last turned the wheel, touched or pressed a scroll key in the pane, and whether they hold its
+// scrollbar. A scroll soon after that input is the reader's; the page's own scrolls keep `shown`.
+let readerAt = -Infinity, holding = false;
 // Fill what is near the viewport, empty what is far, and mark the file under the top of the pane.
 function syncViewport() {
   for (const { f, el } of sections) {
@@ -199,6 +205,9 @@ function syncViewport() {
     if (near(s)) fillBody(f, el);
     else if (far(s)) emptyBody(el);
   }
+  const sec = shown && sectionEl(BY_PATH[shown]), at = sec && span(sec);
+  if (at && at[0] < main.scrollTop + main.clientHeight && at[1] > main.scrollTop) { setActive(shown); return; }
+  shown = null;
   // The last section starting within the sticky header's reach of the pane's top.
   const line = main.scrollTop + 60;
   let lo = 0, hi = sections.length - 1, found = -1;
@@ -210,11 +219,22 @@ function syncViewport() {
 }
 let scrollPending = false;
 main.addEventListener('scroll', () => {
+  if (holding || performance.now() - readerAt < 300) shown = null;
   if (scrollPending) return;
   scrollPending = true;
   requestAnimationFrame(() => { scrollPending = false; syncViewport(); });
 });
 window.addEventListener('resize', syncViewport);
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Tab']);
+function readerScrolls(e) {
+  if (e.type !== 'keydown') return main.contains(e.target);
+  return SCROLL_KEYS.has(e.key) && (e.target === document.body || main.contains(e.target)) && !e.target.closest('textarea, input');
+}
+for (const type of ['keydown', 'wheel', 'touchmove']) {
+  document.addEventListener(type, (e) => { if (readerScrolls(e)) readerAt = performance.now(); }, true);
+}
+main.addEventListener('pointerdown', (e) => { if (e.target === main) holding = true; });
+for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, () => { holding = false; });
 
 // What is under the top of the pane, below the sticky file header: a code row when there is one, and its
 // section, with where each sits, so a render can put the same line back in the same place.
@@ -236,6 +256,7 @@ function restoreAnchor(a) {
 }
 // Bring the page in line with the state, keeping the line under the top of the pane where it is.
 function render() {
+  readerAt = -Infinity;
   renderSide();
   const anchor = viewportAnchor();
   patchOverview();
@@ -257,12 +278,15 @@ function restoreFocus() {
 }
 
 function scrollToFile(path) {
+  shown = null;
   if (path === 'overview') { main.scrollTop = 0; syncViewport(); return; }
   const f = BY_PATH[path], el = f && sectionEl(f);
   if (!el) return;
   main.scrollTop = span(el)[0] - 16;
   syncViewport();
   main.scrollTop = span(el)[0] - 16;
+  shown = path;
+  readerAt = -Infinity;
   setActive(path);
 }
 // Make the matches in the row of the search hit Enter went to pop, so the eye finds where it landed. Once the pop
@@ -276,20 +300,23 @@ function popHit() {
   row.onanimationend = () => row.classList.remove('pop');
 }
 
+// Show a file's section, changing the filters that hide it; true when it changed the state.
+function unhide(f) {
+  if (visibleFiles().includes(f)) return false;
+  if (!kindVisible(f)) state.filter = 'all';
+  if (noiseOnly(f)) state.showNoiseOnly = true;
+  if (f.generated) state.showGenerated = true;
+  if (state.q && !viewHits(f).length) { state.q = ''; state.hit = null; }
+  return true;
+}
 // Show a file, and a row of it when given the row's key, opening whatever folds hide it. The row lights up for a
 // moment, unless it is a search hit: then the file's header stays on screen when the row is near the top of the
 // file, so the hit's file is the one the tree marks as active.
 function go(path, key, hit = false) {
+  shown = null;
   const f = BY_PATH[path];
   if (!f) { scrollToFile('overview'); return; }
-  let dirty = false;
-  if (!visibleFiles().includes(f)) {
-    if (!kindVisible(f)) state.filter = 'all';
-    if (noiseOnly(f)) state.showNoiseOnly = true;
-    if (f.generated) state.showGenerated = true;
-    if (state.q && !viewHits(f).length) { state.q = ''; state.hit = null; }
-    dirty = true;
-  }
+  let dirty = unhide(f);
   if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }
   if (key == null) { if (dirty) render(); scrollToFile(path); return; }
   if (!hit) reveal(f, key); // a search hit is a row the view shows
