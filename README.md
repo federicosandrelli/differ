@@ -88,7 +88,46 @@ interpreter in this order and takes the first that exists:
 `/opt/homebrew/bin/python3.13`, `/usr/local/bin/python3.13`, then `python3.13`
 and `python3` on the login shell's PATH. When none is found, or the one found
 is older than 3.13, the app shows an error dialog and quits. The Homebrew cask
-will pull in `python@3.13` and `gh`; `git` and `gh` stay external either way.
+pulls in `python@3.13` and `gh`; `git` stays external.
+
+## Releasing
+
+The app is signed ad hoc (`signingIdentity` `"-"` in `tauri.conf.json`),
+and it runs on Apple Silicon. Friends install it from the cask in
+[federicosandrelli/homebrew-tap](https://github.com/federicosandrelli/homebrew-tap):
+
+```sh
+brew install federicosandrelli/tap/differ
+```
+
+The cask removes the `com.apple.quarantine` attribute after the install, so
+macOS opens the app on the first launch.
+
+To release a new version:
+
+1. Set `version` in `src-tauri/tauri.conf.json` to the new version, and merge
+   the change into `main`.
+2. Tag the latest `main` and push the tag:
+
+   ```sh
+   git fetch origin main
+   git tag v0.2.0 origin/main
+   git push origin v0.2.0
+   ```
+
+   The `Release` workflow (`.github/workflows/release.yml`) fails when the tag
+   differs from `v` plus the version in `tauri.conf.json`. Otherwise it
+   builds the `.dmg` on macOS and attaches it to a draft release for the tag.
+   To run the workflow again, delete the draft first
+   (`gh release delete v0.2.0 --yes`); a re-run fails while a release exists.
+3. Check the draft release on GitHub, edit its notes, and publish it.
+4. In `homebrew-tap`, set `version` and `sha256` in `Casks/differ.rb` to the
+   new version and the checksum of the published `.dmg`, and push the
+   change:
+
+   ```sh
+   gh release download v0.2.0 --repo federicosandrelli/differ --pattern '*.dmg' --output - | shasum -a 256
+   ```
 
 ## Checks
 

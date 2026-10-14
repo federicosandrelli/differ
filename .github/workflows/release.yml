@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that the tag matches the app version
+        id: version
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match the version $version in src-tauri/tauri.conf.json."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npx tauri build --bundles dmg
+      - name: Attach the dmg to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "::error::A release for $GITHUB_REF_NAME already exists. To rebuild a draft, delete it first: gh release delete $GITHUB_REF_NAME --yes"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            "src-tauri/target/release/bundle/dmg/differ_${VERSION}_aarch64.dmg" \
+            --draft --title "differ $VERSION" --generate-notes
