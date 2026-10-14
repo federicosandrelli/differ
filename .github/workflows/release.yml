@@ -14,46 +14,38 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     outputs:
-      latest: ${{ steps.tip.outputs.latest }}
+      release: ${{ steps.needed.outputs.release }}
     steps:
-      - name: Check that the commit is still the tip of main
-        id: tip
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          sparse-checkout: .github
+      - id: needed
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
-          if [ "$tip" = "$SHA" ]; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Skipping the release: $SHA is no longer the tip of main ($tip)."
-            echo "latest=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: .github/scripts/release-needed.sh
 
   release:
     needs: check
-    if: needs.check.outputs.latest == 'true'
+    if: needs.check.outputs.release == 'true'
     runs-on: macos-latest
     concurrency:
       group: release
       cancel-in-progress: false
     steps:
-      # A re-run of this job reuses the output of the check job, so check again.
-      - name: Check that the commit is still the tip of main
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
-          if [ "$tip" != "$SHA" ]; then
-            echo "::error::$SHA is no longer the tip of main ($tip), so the release would publish older code."
-            exit 1
-          fi
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+      # Main can move while this job waits, and a re-run of this job reuses the output of the check job.
+      - id: needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: .github/scripts/release-needed.sh
       - name: Set the version to major.minor from tauri.conf.json and the run number as patch
         id: version
+        if: steps.needed.outputs.release == 'true'
         run: |
           base=$(jq -r .version src-tauri/tauri.conf.json)
           version="$(echo "$base" | cut -d. -f1-2).$GITHUB_RUN_NUMBER"
@@ -61,19 +53,25 @@ jobs:
           mv tauri.conf.json.tmp src-tauri/tauri.conf.json
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
+        if: steps.needed.outputs.release == 'true'
         with:
           node-version: 20
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.needed.outputs.release == 'true'
       - run: npm ci
+        if: steps.needed.outputs.release == 'true'
       - run: npx tauri build --bundles dmg
+        if: steps.needed.outputs.release == 'true'
       - uses: actions/checkout@v4
+        if: steps.needed.outputs.release == 'true'
         with:
           repository: federicosandrelli/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
       - name: Publish the release
         id: release
+        if: steps.needed.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -88,6 +86,7 @@ jobs:
             --target "$SHA" --title "differ $VERSION" --generate-notes
           echo "sha256=$(shasum -a 256 "$dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Point the cask at the new release
+        if: steps.needed.outputs.release == 'true'
         working-directory: homebrew-tap
         env:
           VERSION: ${{ steps.version.outputs.version }}
