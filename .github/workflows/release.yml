@@ -40,7 +40,15 @@ jobs:
           shasum -a 256 "$dmg"
           # A re-run of this job finds the release from the first run. Each build gives the dmg a new checksum,
           # so a published release keeps its dmg: the cask names that dmg's checksum.
-          draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2> /dev/null || echo missing)
+          # GitHub lets several drafts share a tag, so only "release not found" may lead to a new draft.
+          if ! draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2> view-error.txt); then
+            if grep -q "release not found" view-error.txt; then
+              draft=missing
+            else
+              cat view-error.txt >&2
+              exit 1
+            fi
+          fi
           case "$draft" in
             missing)
               gh release create "$GITHUB_REF_NAME" "$dmg" --draft --title "differ $VERSION" --generate-notes ;;

@@ -108,20 +108,28 @@ To release a new version:
 
 1. Set `version` in `src-tauri/tauri.conf.json` to the new version, and merge
    the change into `main`.
-2. Tag the merge commit and push the tag:
+2. Tag the latest `main` and push the tag:
 
    ```sh
-   git tag v0.2.0
+   git fetch origin main
+   git tag v0.2.0 origin/main
    git push origin v0.2.0
    ```
 
    The `Release` workflow (`.github/workflows/release.yml`) fails when the tag
    differs from `v` plus the version in `tauri.conf.json`. Otherwise it
    builds the `.dmg` on macOS and attaches it to a draft release for the tag.
-   The job log prints the `.dmg`'s SHA-256 checksum.
+   The job log prints the `.dmg`'s SHA-256 checksum. A re-run replaces the
+   `.dmg` of the draft and leaves a published release as it is.
 3. Check the draft release on GitHub, edit its notes, and publish it.
 4. In `homebrew-tap`, set `version` and `sha256` in `Casks/differ.rb` to the
-   new version and the checksum from step 2, and push the change.
+   new version and the checksum of the published `.dmg`, and push the
+   change. Every build gives the `.dmg` a new checksum, so take it from the
+   release itself:
+
+   ```sh
+   gh release download v0.2.0 --pattern '*.dmg' --output - | shasum -a 256
+   ```
 
 ## Checks
 
