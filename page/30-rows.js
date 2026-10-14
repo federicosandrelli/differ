@@ -305,7 +305,7 @@ function wrapRanges(html, ranges, open = '<span class="ic">', close = '</span>',
       out += m[0]; pos++;
     }
   }
-  return wrapped ? out + close : out;
+  return wrapped ? out + around(close) : out;
 }
 // Mark the word changes in a run's rows, which hold its removed lines followed by its added ones.
 function markPairs(rows) {

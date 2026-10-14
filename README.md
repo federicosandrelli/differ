@@ -246,9 +246,11 @@ files the filters hide. A match never opens a fold. Opening or closing a fold
 or a section updates the count. A file stays on the page while its view holds
 a match, so closing its section keeps it in place, without a count. Enter
 then goes on from that file to the next hit. The matches of the hit Enter
-lands on pop for a moment. While searching, a file opened from the tree (a
-click, or the arrow keys) opens at its first hit, and Enter, in the tree or
-the search box, goes on from there.
+lands on pop for a moment (they fade instead when the system asks for less
+motion). While searching, a file opened from the tree (a click, or the arrow
+keys) opens at its first hit, and Enter, in the tree or the search box, goes
+on from there. The arrow keys pass a closed section without opening it; Enter
+on it opens it at its first hit.
 
 ## Docs
 

@@ -130,21 +130,26 @@ function setCursor(el) {
   el.classList.add('cursor');
   const list = document.querySelector('#side .list'), a = el.getBoundingClientRect(), l = list.getBoundingClientRect();
   if (a.top < l.top || a.bottom > l.bottom) el.scrollIntoView({ block: 'nearest' });
-  if (el.dataset.path && !goFirstHit(el.dataset.path)) scrollToFile(el.dataset.path);
+  // While searching, a file opens at its first hit; a closed section stays closed as the cursor passes it.
+  const f = el.dataset.path && BY_PATH[el.dataset.path];
+  if (f && !(sectionOpen(f) && goFirstHit(f.path))) scrollToFile(f.path);
 }
 function toggleFolder(folder) {
   state.closed.has(folder) ? state.closed.delete(folder) : state.closed.add(folder);
   renderSide();
 }
-// Handle an arrow, Enter or space key in the focused tree; true when it was one. While searching, Enter on a file
-// with a hit steps through the hits from the current one, as it does in the search box.
+// Handle an arrow, Enter or space key in the focused tree; true when it was one. While searching, Enter steps
+// through the hits from the current one, as it does in the search box, unless the cursor is on a folder or on a
+// file without a hit on screen. The cursor is on no row when it followed the hit into a closed folder.
 function treeKey(e) {
   const rows = treeRows(); if (!rows.length) return false;
   let i = rows.findIndex(r => cursorKey(r) === state.cursor);
   if (i < 0) i = rows.findIndex(r => r.dataset.path === state.view);
   const cur = rows[i];
-  if (e.key === 'ArrowDown') { setCursor(rows[Math.min(i + 1, rows.length - 1)]); return true; }
-  if (e.key === 'ArrowUp') { setCursor(rows[Math.max(i - 1, 0)]); return true; }
+  if (e.key === 'ArrowDown') { if (i < rows.length - 1) setCursor(rows[i + 1]); return true; }
+  if (e.key === 'ArrowUp') { if (i !== 0) setCursor(rows[i < 0 ? 0 : i - 1]); return true; }
+  const f = cur && BY_PATH[cur.dataset.path];
+  if (e.key === 'Enter' && state.hit && (!cur || (f && hits(f)))) { stepHit(e.shiftKey ? -1 : 1); return true; }
   if (!cur) return false;
   const folder = cur.dataset.folder;
   if (e.key === 'ArrowRight') {
@@ -160,7 +165,6 @@ function treeKey(e) {
   }
   if (e.key === 'Enter' || e.key === ' ') {
     if (folder !== undefined) toggleFolder(folder);
-    else if (e.key === 'Enter' && state.hit && !noHit(BY_PATH[cur.dataset.path])) stepHit(e.shiftKey ? -1 : 1);
     else if (!goFirstHit(cur.dataset.path)) go(cur.dataset.path);
     return true;
   }

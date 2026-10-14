@@ -273,7 +273,7 @@ function popHit() {
   if (!row) return;
   row.getBoundingClientRect(); // restarts the pop when Enter lands on the same row again
   row.classList.add('pop');
-  row.addEventListener('animationend', () => row.classList.remove('pop'), { once: true });
+  row.onanimationend = () => row.classList.remove('pop');
 }
 
 // Show a file, and a row of it when given the row's key, opening whatever folds hide it. The row lights up for a
@@ -292,7 +292,7 @@ function go(path, key, hit = false) {
   }
   if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }
   if (key == null) { if (dirty) render(); scrollToFile(path); return; }
-  reveal(f, key);
+  if (!hit) reveal(f, key); // a search hit is a row the view shows
   render();
   const el = sectionEl(f);
   if (!el) return;
