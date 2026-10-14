@@ -167,6 +167,23 @@ def python_structure(source: str) -> tuple[set[int], list[dict]]:
                 visit(child, depth + 1, name)
             elif isinstance(child, ast.If | ast.Try | ast.With | ast.For | ast.While):
                 visit(child, depth, parent_name)
+            elif (
+                not parent_name
+                and isinstance(child, ast.Expr | ast.Assign | ast.AnnAssign | ast.AugAssign)
+                and isinstance(child.value, ast.Call)
+                and child.end_lineno != child.lineno
+            ):
+                callee = ast.unparse(child.value.func)
+                symbols.append(
+                    {
+                        "name": callee,
+                        "short": callee.rsplit(".", 1)[-1],
+                        "kind": "call",
+                        "start": child.lineno,
+                        "end": child.end_lineno,
+                        "depth": depth,
+                    }
+                )
 
     visit(tree, 0, "")
     return imports, symbols

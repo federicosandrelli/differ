@@ -170,6 +170,32 @@ def f():
     ]
 
 
+def test_python_structure_finds_the_multi_line_calls_at_module_level() -> None:
+    source = """settings = Settings(
+    debug=True,
+)
+app.run(
+    port=80,
+)
+short = Settings(debug=False)
+NAMES = [
+    "a",
+]
+
+
+def f():
+    g(
+        1,
+    )
+"""
+    _, symbols = classify.python_structure(source)
+    assert [(s["name"], s["short"], s["kind"], s["start"], s["end"]) for s in symbols] == [
+        ("Settings", "Settings", "call", 1, 3),
+        ("app.run", "run", "call", 4, 6),
+        ("f", "f", "def", 13, 16),
+    ]
+
+
 def test_python_structure_is_empty_for_a_file_that_does_not_parse() -> None:
     assert classify.python_structure("def (") == (set(), [])
 

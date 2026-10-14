@@ -138,12 +138,12 @@ function importSegments(f, rows) {
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
 const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
-// The new line numbers above each rename run that holds the rename's origin, from the start of the innermost
-// class or function around the run up to the run.
-function originContext(f) {
+// The new line numbers above each change run that adds lines and is not noise, from the start of the innermost
+// class, function or module-level call around the run up to the run.
+function enclosingContext(f) {
   const lines = new Set();
   for (const r of f.runs) {
-    if (r.class !== 'rename' || !r.origin || !r.added.length) continue;
+    if (isNoise(r) || !r.added.length) continue;
     const first = r.added[0];
     const around = (f.symbols || []).filter(s => s.start <= first && first <= s.end);
     if (!around.length) continue;
@@ -180,7 +180,7 @@ function contextBlock(f, blocks, bi, register, keep) {
 //   { run, rows }                     a change run; a noise run folds, shown when open
 // Blocks of plain rows leave their folds out of FOLDS, whose entries would keep the rows alive.
 function fileBlocks(f, plain) {
-  const rows = buildRows(f, plain), register = plain ? (id) => id : fold, keep = originContext(f);
+  const rows = buildRows(f, plain), register = plain ? (id) => id : fold, keep = enclosingContext(f);
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);

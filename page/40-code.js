@@ -52,7 +52,7 @@ function lineColumns(text) {
 // The rows of a file's diff table, one HTML string each so the table can be shown in pieces, the index of
 // each row's key in them, and the columns of the longest drawn line.
 function codeRows(f) {
-  const symStarts = new Map((f.symbols || []).map(s => [s.start, s]));
+  const symStarts = new Map((f.symbols || []).filter(s => s.kind !== 'call').map(s => [s.start, s]));
   const html = [], index = new Map();
   let cols = 0;
   const draw = (rows) => {

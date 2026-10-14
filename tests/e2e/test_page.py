@@ -72,6 +72,16 @@ def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, s
     expect(section.locator("tr.fold")).to_have_text("⋯ 7 unchanged lines")
 
 
+def test_a_change_shows_the_lines_up_to_the_class_function_or_call_around_it(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    section = page.locator("section[data-file='src/config.py']")
+    section.scroll_into_view_if_needed()
+    expect(section.locator("tr.add")).to_have_count(3)
+    for line in ("class Config:", "field_1: int", "app = make_app(", "arg_1=1,", "def run():", "step_1()"):
+        expect(section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}$"))).to_be_visible()
+    expect(section.locator("tr.fold")).to_have_count(0)
+
+
 def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
