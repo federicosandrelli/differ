@@ -265,8 +265,21 @@ function scrollToFile(path) {
   main.scrollTop = span(el)[0] - 16;
   setActive(path);
 }
-// Show a file, and a row of it when given the row's key, opening whatever folds hide it.
-function go(path, key) {
+// Make the matches in the row of the search hit Enter went to pop, so the eye finds where it landed. Once the pop
+// ends, the marks are as before.
+function popHit() {
+  for (const el of main.querySelectorAll('tr.pop')) el.classList.remove('pop');
+  const f = state.hit && BY_PATH[state.hit.path], row = f && document.getElementById(rowId(f, state.hit.key));
+  if (!row) return;
+  row.getBoundingClientRect(); // restarts the pop when Enter lands on the same row again
+  row.classList.add('pop');
+  row.onanimationend = () => row.classList.remove('pop');
+}
+
+// Show a file, and a row of it when given the row's key, opening whatever folds hide it. The row lights up for a
+// moment, unless it is a search hit: then the file's header stays on screen when the row is near the top of the
+// file, so the hit's file is the one the tree marks as active.
+function go(path, key, hit = false) {
   const f = BY_PATH[path];
   if (!f) { scrollToFile('overview'); return; }
   let dirty = false;
@@ -279,7 +292,7 @@ function go(path, key) {
   }
   if (!sectionOpen(f)) { state.openOverride.set(f.path, true); dirty = true; }
   if (key == null) { if (dirty) render(); scrollToFile(path); return; }
-  reveal(f, key);
+  if (!hit) reveal(f, key); // a search hit is a row the view shows
   render();
   const el = sectionEl(f);
   if (!el) return;
@@ -289,6 +302,7 @@ function go(path, key) {
   const top = row.getBoundingClientRect().top;
   syncViewport();
   main.scrollTop += row.getBoundingClientRect().top - top;
+  if (hit) { if (span(el)[0] - 16 > main.scrollTop) scrollToFile(path); return; }
   row.classList.add('target');
   setTimeout(() => row.classList.remove('target'), 2500);
 }

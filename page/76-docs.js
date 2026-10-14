@@ -57,7 +57,13 @@ reviewed files on this computer only; GitHub does not see them.</p>
 <h2>Search</h2>
 <ul>
   <li><kbd>Cmd</kbd>+<kbd>F</kbd> starts the search with the text you have selected.</li>
-  <li>While you search, the tree shows only the files with a match, and the number of matches next to each one.</li>
+  <li>While you search, the tree shades the files without a match, and shows the number of matches next to each
+    one.</li>
+  <li><kbd>Enter</kbd> goes to the next match and <kbd>Shift</kbd>+<kbd>Enter</kbd> to the previous one. The match
+    you land on pops for a moment.</li>
+  <li>Click a file in the tree, or move to it with the arrow keys, to go to its first match. <kbd>Enter</kbd> goes on
+    from there, in the tree as in the search box. The arrow keys pass a closed file without opening it; press
+    <kbd>Enter</kbd> on it to open it at its first match.</li>
   <li>The search only looks at lines you can see. It skips folded lines, closed files and hidden files, and it never
     opens a fold.</li>
 </ul>

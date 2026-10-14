@@ -164,6 +164,11 @@ def test_the_height_estimate_counts_the_inline_fold_rows_closed_and_open(page: P
     assert page.evaluate(HEIGHT_MISMATCHES) == []
 
 
+def hit_row(page: Page) -> str:
+    """The element id of the row of the search hit Enter goes on from."""
+    return page.evaluate("rowId(BY_PATH[state.hit.path], state.hit.key)")
+
+
 def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.keyboard.press("Meta+f")
@@ -173,9 +178,77 @@ def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, se
     expect(page.locator("#side .leaf[data-path='src/app.py'] .hits")).to_have_text("1")
     page.keyboard.press("Enter")
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 / 1")
-    target = page.locator(f"{APP} tr.target")
-    expect(target).to_have_count(1)
-    expect(target).to_contain_text('print("hello")')
+    expect(page.locator(f"#{hit_row(page)}")).to_contain_text('print("hello")')
+
+
+def test_a_match_across_highlighter_tokens_is_one_mark(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.fill("#side .search", 'print("hel')
+    mark = page.locator(f"{APP} tr.add mark")
+    expect(mark).to_have_count(1)
+    expect(mark).to_have_text('print("hel')
+
+
+def test_a_file_opened_from_the_tree_while_searching_starts_at_its_first_hit(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    meta = page.locator("#searchmeta")
+    page.fill("#side .search", "re")
+    expect(meta).to_have_text("4 files · 9 lines")
+    page.click("#side .leaf[data-path='src/service.py']")
+    expect(meta).to_have_text("4 files · 6 / 9")
+    expect(page.locator(f"section[data-file='src/service.py'] #{hit_row(page)}")).to_have_count(1)
+    page.keyboard.press("Enter")
+    expect(meta).to_have_text("4 files · 7 / 9")
+    page.keyboard.press("ArrowDown")
+    expect(meta).to_have_text("4 files · 7 / 9")
+    page.keyboard.press("ArrowUp")
+    expect(meta).to_have_text("4 files · 4 / 9")
+    expect(page.locator(f"section[data-file='src/near.py'] #{hit_row(page)}")).to_have_count(1)
+    page.keyboard.press("Enter")
+    expect(meta).to_have_text("4 files · 5 / 9")
+    page.keyboard.press("Shift+Enter")
+    expect(meta).to_have_text("4 files · 4 / 9")
+    page.keyboard.press("ArrowUp")
+    page.keyboard.press("ArrowUp")
+    expect(meta).to_have_text("4 files · 1 / 9")
+    expect(page.locator("#side .leaf.cursor")).to_have_attribute("data-path", "src/config.py")
+    page.click("#side .search")
+    page.keyboard.press("Enter")
+    expect(meta).to_have_text("4 files · 2 / 9")
+
+
+def test_the_tree_cursor_passes_a_closed_section_and_enter_opens_it_at_its_first_hit(
+    page: Page, server_url: str
+) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    meta = page.locator("#searchmeta")
+    config = page.locator("section[data-file='src/config.py']")
+    page.fill("#side .search", "re")
+    page.click("#side .leaf[data-path='src/config.py'] .check")
+    expect(config).to_have_class(re.compile(r"\bclosed\b"))
+    expect(meta).to_have_text("4 files · 7 lines")
+    page.click("#side .leaf[data-path='src/jobs.py']")
+    expect(meta).to_have_text("4 files · 1 / 7")
+    page.keyboard.press("ArrowUp")
+    expect(page.locator("#side .leaf.cursor")).to_have_attribute("data-path", "src/config.py")
+    expect(config).to_have_class(re.compile(r"\bclosed\b"))
+    expect(meta).to_have_text("4 files · 1 / 7")
+    page.keyboard.press("Enter")
+    expect(config).not_to_have_class(re.compile(r"\bclosed\b"))
+    expect(meta).to_have_text("4 files · 1 / 9")
+
+
+def test_enter_in_the_tree_goes_on_when_the_hit_is_in_a_collapsed_folder(page: Page, server_url: str) -> None:
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    meta = page.locator("#searchmeta")
+    page.fill("#side .search", "re")
+    page.click("#side .leaf[data-path='src/config.py']")
+    expect(meta).to_have_text("4 files · 1 / 9")
+    page.click("#side [data-tree='collapse']")
+    expect(page.locator("#side .leaf")).to_have_count(0)
+    page.focus("#side .list")
+    page.keyboard.press("Enter")
+    expect(meta).to_have_text("4 files · 2 / 9")
 
 
 def test_search_keeps_every_file_in_the_tree(page: Page, server_url: str) -> None:
