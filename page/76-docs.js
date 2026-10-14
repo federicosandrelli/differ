@@ -69,6 +69,9 @@ reviewed files on this computer only; GitHub does not see them.</p>
   <li><b>Pending review.</b> "Start a review" and "Add review comment" keep a comment in a pending review that only
     you can see. "Review" in the sidebar header sends the pending review as approve, request changes or comment, or
     discards it.</li>
+  <li><b>Your verdict.</b> After you approve or request changes, the sidebar button shows "Approved" or "Changes
+    requested" until the pull request gets new commits. Until then you can't send the same verdict again, but you
+    can change it or comment.</li>
   <li><b>Drafts.</b> If you open a comment box on another line, the text you typed stays as a draft. It comes back
     when you click the last line number of its range again. <kbd>Escape</kbd> leaves a comment box and keeps its
     text. If you close a tab that has a draft, differ asks you to close it a second time.</li>

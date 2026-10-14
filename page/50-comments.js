@@ -1,7 +1,7 @@
 // Review threads from GitHub, placed on the lines they refer to, and the forms that write back.
 
 // C.version counts the loads, so a file's rendered body knows when its threads changed.
-const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', pending: null, threads: [], reviews: [], comments: [] };
+const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', pending: null, verdict: null, threads: [], reviews: [], comments: [] };
 const THREADS = { byFile: new Map(), orphans: [] };
 
 async function loadComments() {
@@ -54,13 +54,23 @@ function threadCount(f) {
   return n;
 }
 const hasReviewSummary = () => !!state.reviewText.trim();
-// Request changes waits for a review summary, and its title says so only while it waits. While the pointer rests on
-// the button, shell/tooltip.js holds its title in data-tip and puts it back when the pointer leaves; an empty title
-// is no title.
-const requestChangesTip = () => hasReviewSummary() ? '' : 'Requesting changes needs a review summary';
+// The viewer's verdict on the head commit, APPROVED or CHANGES_REQUESTED, or '' when they gave none on it. A verdict
+// on an older commit lets the viewer review the new commits.
+const headVerdict = () => C.verdict && C.verdict.commit === C.head ? C.verdict.state : '';
+// The verdict each review event gives, and why the event waits when the viewer gave that verdict on the head already.
+const REPEAT = { APPROVE: ['APPROVED', 'You approved this commit already'], REQUEST_CHANGES: ['CHANGES_REQUESTED', 'You requested changes on this commit already'] };
+// Why a review event can't go out now, or '' when it can. Request changes also waits for a review summary. The
+// button's title says why only while it waits. While the pointer rests on the button, shell/tooltip.js holds its
+// title in data-tip and puts it back when the pointer leaves; an empty title is no title.
+function submitTip(event) {
+  const r = REPEAT[event];
+  if (r && headVerdict() === r[0]) return r[1];
+  return event === 'REQUEST_CHANGES' && !hasReviewSummary() ? 'Requesting changes needs a review summary' : '';
+}
+const submitBtn = (event, label) => btn(`data-submit="${event}" title="${submitTip(event)}"`, label, false, !!submitTip(event));
 function updateRequestChanges(b) {
-  b.disabled = state.busy || !hasReviewSummary();
-  if (b.dataset.tip !== undefined) b.dataset.tip = requestChangesTip(); else b.title = requestChangesTip();
+  b.disabled = state.busy || !!submitTip('REQUEST_CHANGES');
+  if (b.dataset.tip !== undefined) b.dataset.tip = submitTip('REQUEST_CHANGES'); else b.title = submitTip('REQUEST_CHANGES');
 }
 function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filter(c => c.pending).length, 0); }
 const excerpt = (s) => { const t = s.replace(/```[\s\S]*?```/g, '').replace(/\s+/g, ' ').trim(); return t.length > 90 ? t.slice(0, 90) + '…' : t; };
@@ -136,7 +146,7 @@ function commentNotices() {
 function reviewPanelHtml() {
   const n = pendingCount();
   return `<div class="form review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
-    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn(`data-submit="REQUEST_CHANGES" title="${requestChangesTip()}"`, 'Request changes', false, !hasReviewSummary())}${btn('data-submit="COMMENT"', 'Comment')}
+    <div class="actions">${submitBtn('APPROVE', 'Approve')}${submitBtn('REQUEST_CHANGES', 'Request changes')}${btn('data-submit="COMMENT"', 'Comment')}
     <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
     <div class="hint">${n ? `${plural(n, 'pending comment')} go out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
 }

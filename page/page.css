@@ -232,6 +232,7 @@ button:disabled { opacity: .5; cursor: default; }
 .tree .cnt.bubble { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-inset); color: var(--text-secondary); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
 #side .head .meta button.review { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; padding: 1px 10px; }
 #side .head .meta button.review.primary { color: var(--bg-canvas); }
+#side .head .meta button.review.approved { color: var(--add-fg); } #side .head .meta button.review.changes { color: var(--del-fg); }
 #side .head .meta button.review .count { font-size: 11px; line-height: 16px; min-width: 16px; padding: 0 5px; border-radius: 999px; background: var(--bg-canvas); color: var(--accent); }
 #side .head .meta button.review.on .count { background: var(--accent); color: var(--bg-canvas); }
 #side .form.review { margin: 8px 12px; border-radius: 8px; }

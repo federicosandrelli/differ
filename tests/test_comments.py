@@ -112,6 +112,7 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                                 },
                             ]
                         },
+                        "verdicts": {"nodes": [review("R1", "APPROVED", author="bob")]},
                         "comments": {"nodes": [comment("k1")]},
                     }
                 },
@@ -146,6 +147,7 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
             "url": "u1",
         }
     ]
+    assert result["verdict"] is None
     assert [c["id"] for c in result["comments"]] == ["k1"]
 
 
@@ -165,3 +167,64 @@ def test_graphql_explains_a_missing_gh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(comments.subprocess, "run", missing)
     with pytest.raises(comments.CommentError, match=r"The GitHub CLI \(gh\) is not installed or not on PATH"):
         comments.graphql("query { viewer { login } }")
+
+
+def review(rid: str, state: str, author: str = "ann", commit: str = "c1") -> dict:
+    return {"id": rid, "author": {"login": author}, "state": state, "commit": {"oid": commit}}
+
+
+def test_verdict_is_the_viewers_latest_approval_or_change_request() -> None:
+    reviews = [
+        review("R1", "APPROVED", commit="c1"),
+        review("R2", "CHANGES_REQUESTED", commit="c2"),
+        review("R3", "APPROVED", author="bob", commit="c3"),
+    ]
+    assert comments._verdict(reviews, "ann") == {"state": "CHANGES_REQUESTED", "commit": "c2"}
+    assert comments._verdict(reviews, "bob") == {"state": "APPROVED", "commit": "c3"}
+    assert comments._verdict(reviews, "cid") is None
+
+
+def test_a_dismissed_latest_review_leaves_no_verdict() -> None:
+    assert comments._verdict([review("R1", "APPROVED"), review("R2", "DISMISSED")], "ann") is None
+
+
+def pending_review_reply(reviews: list[dict], head: str = "c1") -> dict:
+    return {
+        "viewer": {"login": "ann"},
+        "repository": {
+            "pullRequest": {"id": "PR1", "headRefOid": head, "reviews": {"nodes": []}, "verdicts": {"nodes": reviews}}
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("event", "state", "message"),
+    [("APPROVE", "APPROVED", "approved"), ("REQUEST_CHANGES", "CHANGES_REQUESTED", "requested changes on")],
+)
+def test_repeating_a_verdict_on_the_head_commit_is_refused(
+    monkeypatch: pytest.MonkeyPatch, event: str, state: str, message: str
+) -> None:
+    def fake_graphql(query: str, **variables: Any) -> dict:
+        assert not query.lstrip().startswith("mutation"), "nothing may be posted"
+        return pending_review_reply([review("R1", state, commit="c1")])
+
+    monkeypatch.setattr(comments, "graphql", fake_graphql)
+    with pytest.raises(comments.CommentError, match=f"You {message} this commit already"):
+        comments.submit("acme", "widgets", 1, event=event, body="Again")
+
+
+@pytest.mark.parametrize(("event", "head"), [("APPROVE", "c2"), ("REQUEST_CHANGES", "c1")])
+def test_a_verdict_on_an_older_commit_or_a_different_verdict_goes_out(
+    monkeypatch: pytest.MonkeyPatch, event: str, head: str
+) -> None:
+    posted: list[str] = []
+
+    def fake_graphql(query: str, **variables: Any) -> dict:
+        if query.lstrip().startswith("mutation"):
+            posted.append(variables["event"])
+            return {}
+        return pending_review_reply([review("R1", "APPROVED", commit="c1")], head=head)
+
+    monkeypatch.setattr(comments, "graphql", fake_graphql)
+    comments.submit("acme", "widgets", 1, event=event, body="Again")
+    assert posted == [event]

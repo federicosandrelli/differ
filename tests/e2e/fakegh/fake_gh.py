@@ -89,6 +89,9 @@ def graphql() -> None:
         "headRefOid": state["head"],
         "bodyHTML": "",
         "reviews": {"nodes": [r for r in state["reviews"] if not pending_only or r["state"] == "PENDING"]},
+        "verdicts": {
+            "nodes": [r for r in state["reviews"] if r["state"] in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")]
+        },
         "reviewThreads": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": state["threads"]},
         "comments": {"nodes": state["comments"]},
     }
