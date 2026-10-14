@@ -2,7 +2,7 @@ import json
 import re
 from pathlib import Path
 
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Position, expect
 
 from e2e.conftest import TITLE
 
@@ -467,7 +467,8 @@ def test_moving_to_another_titled_element_waits_for_its_own_tooltip(page: Page, 
 def test_a_tree_row_shows_a_tooltip_only_while_its_name_is_cut_off(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     row = page.locator("#side .leaf[data-path='src/app.py']")
-    for spot in ({"x": 4, "y": 4}, None):
+    spots: tuple[Position | None, ...] = ({"x": 4, "y": 4}, None)
+    for spot in spots:
         row.hover(position=spot)
         page.wait_for_timeout(600)
         expect(page.locator(".tooltip.on")).to_have_count(0)
