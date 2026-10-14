@@ -53,8 +53,8 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     if (t.closest('#side .tree')) { state.cursor = 'f:' + d.path; document.querySelector('#side .list').focus({ preventScroll: true }); }
     const f = BY_PATH[d.path];
-    let key = f && d.line ? rowKey(f, d.side === 'old' ? 'LEFT' : 'RIGHT', +d.line) : null;
-    if (!key && state.q && t.closest('#side')) key = firstHitKey(f);
+    const key = f && d.line ? rowKey(f, d.side === 'old' ? 'LEFT' : 'RIGHT', +d.line) : null;
+    if (!key && t.closest('#side') && goFirstHit(d.path)) return;
     go(d.path, key);
     return;
   }
@@ -100,12 +100,20 @@ function nextHit(all, dir) {
 }
 function stepHit(dir) {
   const all = allHits();
-  if (!all.length) return;
-  const hit = nextHit(all, dir);
+  if (all.length) goHit(nextHit(all, dir));
+}
+// Go to a search hit and make it the one Enter goes on from.
+function goHit(hit) {
   state.hit = hit;
-  go(hit.path, hit.key);
-  focusBox('.search');
+  go(hit.path, hit.key, true);
+  popHit();
   updateSearchMeta();
+}
+// While searching, a file shown from the tree opens at its first hit; false when the file has none.
+function goFirstHit(path) {
+  const key = state.q ? firstHitKey(BY_PATH[path]) : null;
+  if (key) goHit({ path, key });
+  return !!key;
 }
 
 document.addEventListener('keydown', (e) => {
@@ -117,7 +125,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.target.classList && e.target.classList.contains('search')) {
     if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input', { bubbles: true })); e.target.blur(); }
-    if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); }
+    if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); focusBox('.search'); }
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;

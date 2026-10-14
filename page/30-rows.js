@@ -282,24 +282,30 @@ function wordDiff(a, b) {
   return { a: join(ra, a), b: join(rb, b) };
 }
 // Wrap plain-text ranges of a highlighted line in the open and close tags, walking only its text nodes. A
-// range that crosses a tag is closed before the tag and reopened after it, so the HTML stays well formed.
-function wrapRanges(html, ranges, open = '<span class="ic">', close = '</span>') {
+// range that crosses a tag is closed before the tag and reopened after it, so the HTML stays well formed. A whole
+// range is one element instead: the tags open where it starts or ends are closed before that point and reopened
+// after it.
+function wrapRanges(html, ranges, open = '<span class="ic">', close = '</span>', whole = false) {
   if (!ranges || !ranges.length) return html;
   const ENT = /&(?:amp|lt|gt|quot|#x27|#39);|./gs;
-  let pos = 0, ri = 0;
-  return html.split(/(<[^>]+>)/).map(part => {
-    if (part.startsWith('<') && part.endsWith('>') && part.length > 1 && !part.startsWith('&')) return part;
-    let out = '', wrapped = false;
+  const tags = [];
+  const around = (tag) => whole ? tags.map(t => `</${/^<(\w+)/.exec(t)[1]}>`).reverse().join('') + tag + tags.join('') : tag;
+  let pos = 0, ri = 0, wrapped = false, out = '';
+  for (const part of html.split(/(<[^>]+>)/)) {
+    if (part.startsWith('<') && part.endsWith('>') && part.length > 1) {
+      if (wrapped && !whole) { out += close; wrapped = false; }
+      if (whole) { if (part.startsWith('</')) tags.pop(); else tags.push(part); }
+      out += part;
+      continue;
+    }
     for (const m of part.matchAll(ENT)) {
       while (ri < ranges.length && pos >= ranges[ri][1]) ri++;
       const inside = ri < ranges.length && pos >= ranges[ri][0] && pos < ranges[ri][1];
-      if (inside && !wrapped) { out += open; wrapped = true; }
-      if (!inside && wrapped) { out += close; wrapped = false; }
+      if (inside !== wrapped) { out += around(inside ? open : close); wrapped = inside; }
       out += m[0]; pos++;
     }
-    if (wrapped) out += close;
-    return out;
-  }).join('');
+  }
+  return wrapped ? out + close : out;
 }
 // Mark the word changes in a run's rows, which hold its removed lines followed by its added ones.
 function markPairs(rows) {

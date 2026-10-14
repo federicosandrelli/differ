@@ -130,13 +130,14 @@ function setCursor(el) {
   el.classList.add('cursor');
   const list = document.querySelector('#side .list'), a = el.getBoundingClientRect(), l = list.getBoundingClientRect();
   if (a.top < l.top || a.bottom > l.bottom) el.scrollIntoView({ block: 'nearest' });
-  if (el.dataset.path) scrollToFile(el.dataset.path);
+  if (el.dataset.path && !goFirstHit(el.dataset.path)) scrollToFile(el.dataset.path);
 }
 function toggleFolder(folder) {
   state.closed.has(folder) ? state.closed.delete(folder) : state.closed.add(folder);
   renderSide();
 }
-// Handle an arrow, Enter or space key in the focused tree; true when it was one.
+// Handle an arrow, Enter or space key in the focused tree; true when it was one. While searching, Enter on a file
+// with a hit steps through the hits from the current one, as it does in the search box.
 function treeKey(e) {
   const rows = treeRows(); if (!rows.length) return false;
   let i = rows.findIndex(r => cursorKey(r) === state.cursor);
@@ -159,7 +160,8 @@ function treeKey(e) {
   }
   if (e.key === 'Enter' || e.key === ' ') {
     if (folder !== undefined) toggleFolder(folder);
-    else go(cur.dataset.path);
+    else if (e.key === 'Enter' && state.hit && !noHit(BY_PATH[cur.dataset.path])) stepHit(e.shiftKey ? -1 : 1);
+    else if (!goFirstHit(cur.dataset.path)) go(cur.dataset.path);
     return true;
   }
   return false;
