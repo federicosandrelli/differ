@@ -178,6 +178,16 @@ def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, se
     expect(target).to_contain_text('print("hello")')
 
 
+def test_search_keeps_every_file_in_the_tree(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    leaves = page.locator("#side .leaf")
+    count = leaves.count()
+    page.fill("#side .search", "hello")
+    expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+    expect(leaves).to_have_count(count)
+    expect(page.locator("#main section[data-file]")).to_have_count(1)
+
+
 def test_search_counts_the_lines_on_screen_and_skips_closed_folds_and_sections(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)

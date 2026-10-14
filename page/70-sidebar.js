@@ -1,6 +1,8 @@
 // The sidebar: the PR header, the controls, the search box and the file tree.
 
 function countFiles(node) { let n = node.files.length; for (const c of node.dirs.values()) n += countFiles(c); return n; }
+const noHit = (f) => state.q && !viewHits(f).length;
+const allNoHit = (node) => node.files.every(noHit) && [...node.dirs.values()].every(allNoHit);
 function allFolders(node, acc) { for (const d of node.dirs.values()) { acc.push(d.full); allFolders(d, acc); } return acc; }
 // Background gradients paint the guide lines, so a row can span the full sidebar width.
 function guides(depth) {
@@ -18,7 +20,7 @@ function leafHtml(f, depth) {
   const k = changeKind(f);
   const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
   const hitCount = state.q ? hits(f) : 0, threads = threadCount(f);
-  return `<div class="row leaf ${state.view === f.path ? 'active' : ''} ${state.cursor === 'f:' + f.path ? 'cursor' : ''} ${isReviewed(f) ? 'reviewed' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.path)}">
+  return `<div class="row leaf ${state.view === f.path ? 'active' : ''} ${state.cursor === 'f:' + f.path ? 'cursor' : ''} ${isReviewed(f) ? 'reviewed' : ''} ${noHit(f) ? 'nohit' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.path)}">
       <span class="ico"></span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
@@ -29,14 +31,14 @@ function leafHtml(f, depth) {
 function renderTreeNode(node, depth, out) {
   for (const d of [...node.dirs.values()].sort(byLabel)) {
     const closed = state.closed.has(d.full);
-    out.push(`<div class="row dir ${state.cursor === 'd:' + d.full ? 'cursor' : ''}" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
+    out.push(`<div class="row dir ${state.cursor === 'd:' + d.full ? 'cursor' : ''} ${allNoHit(d) ? 'nohit' : ''}" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
       <span class="ico folder">${closed ? FOLDER_CLOSED : FOLDER_OPEN}</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
     if (!closed) renderTreeNode(d, depth + 1, out);
   }
   for (const f of [...node.files].sort(byBase)) out.push(leafHtml(f, depth));
 }
 function renderTree() {
-  const files = visibleFiles();
+  const files = FILES.filter(fileListed);
   const root = buildTree(files);
   const counts = {}; for (const f of files) { const k = changeKind(f); counts[k] = (counts[k] || 0) + 1; }
   const out = [`<div class="tree"><div class="legend">${['A', 'M', 'D', 'R', 'V'].filter(k => counts[k]).map(k => `<span class="pill st-${k}">${KIND_LABEL[k]}</span><span class="n">${counts[k]}</span>`).join('')}</div>`];
@@ -157,7 +159,7 @@ function treeKey(e) {
   }
   if (e.key === 'Enter' || e.key === ' ') {
     if (folder !== undefined) toggleFolder(folder);
-    else scrollToFile(cur.dataset.path);
+    else go(cur.dataset.path);
     return true;
   }
   return false;

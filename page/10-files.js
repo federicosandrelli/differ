@@ -8,12 +8,13 @@ function noiseOnly(f) {
     (f.stats.raw > 0 || (f.similarity === 100 && !f.mode_changed));
 }
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
+// The files the tree lists: the search leaves them all in place.
+function fileListed(f) {
+  return kindVisible(f) && (state.showNoiseOnly || !noiseOnly(f)) && (state.showGenerated || !f.generated);
+}
 // While searching, the page shows the files with a hit in their view. A closed section counts its view too, so
 // closing a section keeps its file on the page.
-function fileShown(f) {
-  return kindVisible(f) && (state.showNoiseOnly || !noiseOnly(f)) && (state.showGenerated || !f.generated) &&
-    (!state.q || viewHits(f).length > 0);
-}
+function fileShown(f) { return fileListed(f) && (!state.q || viewHits(f).length > 0); }
 
 // The keys of the rows the file's view shows that hold the query, in file order, whether its section is open
 // or not. The rows are kept per fold state and searched once per query.
