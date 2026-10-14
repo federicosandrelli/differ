@@ -128,7 +128,7 @@ To release a new version:
    release itself:
 
    ```sh
-   gh release download v0.2.0 --pattern '*.dmg' --output - | shasum -a 256
+   gh release download v0.2.0 --repo federicosandrelli/differ --pattern '*.dmg' --output - | shasum -a 256
    ```
 
 ## Checks
