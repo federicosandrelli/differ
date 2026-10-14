@@ -438,6 +438,28 @@ def test_a_title_shows_as_a_quick_tooltip_and_comes_back_after_the_pointer_leave
     expect(button).to_have_attribute("title", "Requesting changes needs a review summary")
 
 
+def test_request_changes_shows_its_tooltip_only_while_it_waits_for_a_summary(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.click("#side button[data-review-panel]")
+    box = page.locator("textarea[data-review-text]")
+    button = page.locator("button[data-submit='REQUEST_CHANGES']")
+    tip = page.locator(".tooltip")
+    box.fill("Please add a test")
+    button.hover()
+    page.wait_for_timeout(600)
+    expect(page.locator(".tooltip.on")).to_have_count(0)
+    box.fill("")
+    page.locator("#side h1").hover()
+    button.hover()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(tip).to_have_text("Requesting changes needs a review summary")
+    box.fill("Please add a test")
+    page.locator("#side h1").hover()
+    button.hover()
+    page.wait_for_timeout(600)
+    expect(page.locator(".tooltip.on")).to_have_count(0)
+
+
 def test_a_tooltip_inside_a_titled_element_hides_the_outer_title_too(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.click("#side button[data-review-panel]")

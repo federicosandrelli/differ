@@ -54,6 +54,15 @@ function threadCount(f) {
   return n;
 }
 const hasReviewSummary = () => !!state.reviewText.trim();
+// Request changes waits for a review summary, and its title says so only while it waits. While the pointer rests on
+// the button, shell/tooltip.js holds its title in data-tip and puts it back when the pointer leaves; an empty title
+// is no title.
+const NEEDS_SUMMARY = 'Requesting changes needs a review summary';
+const requestChangesTip = () => hasReviewSummary() ? '' : NEEDS_SUMMARY;
+function updateRequestChanges(b) {
+  b.disabled = state.busy || !hasReviewSummary();
+  if (b.dataset.tip !== undefined) b.dataset.tip = requestChangesTip(); else b.title = requestChangesTip();
+}
 function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filter(c => c.pending).length, 0); }
 const excerpt = (s) => { const t = s.replace(/```[\s\S]*?```/g, '').replace(/\s+/g, ' ').trim(); return t.length > 90 ? t.slice(0, 90) + '…' : t; };
 const lineRange = (a, b) => a && a !== b ? `${a}–${b}` : `${b}`;
@@ -128,7 +137,7 @@ function commentNotices() {
 function reviewPanelHtml() {
   const n = pendingCount();
   return `<div class="form review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
-    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn('data-submit="REQUEST_CHANGES" title="Requesting changes needs a review summary"', 'Request changes', false, !hasReviewSummary())}${btn('data-submit="COMMENT"', 'Comment')}
+    <div class="actions">${btn('data-submit="APPROVE"', 'Approve')}${btn(`data-submit="REQUEST_CHANGES" title="${requestChangesTip()}"`, 'Request changes', false, !hasReviewSummary())}${btn('data-submit="COMMENT"', 'Comment')}
     <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
     <div class="hint">${n ? `${plural(n, 'pending comment')} go out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
 }
