@@ -458,6 +458,11 @@ def test_request_changes_shows_its_tooltip_only_while_it_waits_for_a_summary(pag
     button.hover()
     page.wait_for_timeout(600)
     expect(page.locator(".tooltip.on")).to_have_count(0)
+    page.click("#side button[data-review-panel]")
+    page.click("#side button[data-review-panel]")
+    button.hover()
+    page.wait_for_timeout(600)
+    expect(page.locator(".tooltip.on")).to_have_count(0)
 
 
 def test_a_tooltip_inside_a_titled_element_hides_the_outer_title_too(page: Page, server_url: str) -> None:

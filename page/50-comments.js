@@ -57,8 +57,7 @@ const hasReviewSummary = () => !!state.reviewText.trim();
 // Request changes waits for a review summary, and its title says so only while it waits. While the pointer rests on
 // the button, shell/tooltip.js holds its title in data-tip and puts it back when the pointer leaves; an empty title
 // is no title.
-const NEEDS_SUMMARY = 'Requesting changes needs a review summary';
-const requestChangesTip = () => hasReviewSummary() ? '' : NEEDS_SUMMARY;
+const requestChangesTip = () => hasReviewSummary() ? '' : 'Requesting changes needs a review summary';
 function updateRequestChanges(b) {
   b.disabled = state.busy || !hasReviewSummary();
   if (b.dataset.tip !== undefined) b.dataset.tip = requestChangesTip(); else b.title = requestChangesTip();
