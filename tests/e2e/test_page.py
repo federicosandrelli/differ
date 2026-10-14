@@ -438,48 +438,88 @@ def test_a_title_shows_as_a_quick_tooltip_and_comes_back_after_the_pointer_leave
     expect(button).to_have_attribute("title", "Requesting changes needs a review summary")
 
 
-def test_a_tooltip_inside_a_titled_row_hides_the_row_title_too(page: Page, server_url: str) -> None:
+def test_a_tooltip_inside_a_titled_element_hides_the_outer_title_too(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.click("#side button[data-review-panel]")
+    actions = page.locator("#side .actions")
+    actions.evaluate("e => e.title = 'Review actions'")
+    page.locator("button[data-submit='REQUEST_CHANGES']").hover()
+    expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(page.locator(".tooltip")).to_have_text("Requesting changes needs a review summary")
+    expect(actions).not_to_have_attribute("title", re.compile(".*"))
+    page.locator("#side h1").hover()
+    expect(actions).to_have_attribute("title", "Review actions")
+
+
+def test_moving_to_another_titled_element_waits_for_its_own_tooltip(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    badge = page.locator(f"{APP} .fhead .badge")
+    badge.scroll_into_view_if_needed()
+    tip = page.locator(".tooltip")
+    page.locator("#side input.search").hover()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
+    badge.hover()
+    assert "on" not in (tip.get_attribute("class") or "").split()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
+    expect(tip).to_have_text("modified")
+
+
+def test_a_tree_row_shows_a_tooltip_only_while_its_name_is_cut_off(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     row = page.locator("#side .leaf[data-path='src/app.py']")
-    pill = row.locator(".pill")
-    pill.hover()
-    expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
-    expect(page.locator(".tooltip")).to_have_text("modified")
-    expect(row).not_to_have_attribute("title", re.compile(".*"))
-    expect(pill).not_to_have_attribute("title", re.compile(".*"))
+    for spot in ({"x": 4, "y": 4}, None):
+        row.hover(position=spot)
+        page.wait_for_timeout(600)
+        expect(page.locator(".tooltip.on")).to_have_count(0)
     page.locator("#side h1").hover()
-    expect(row).to_have_attribute("title", "src/app.py")
-    expect(pill).to_have_attribute("title", "modified")
+    page.add_style_tag(content="#side .leaf[data-path='src/app.py'] .nm { max-width: 2ch; }")
+    row.hover(position={"x": 4, "y": 4})
+    expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(page.locator(".tooltip")).to_have_text("app.py")
+
+
+def test_a_folder_row_shows_a_tooltip_only_while_its_name_is_cut_off(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    row = page.locator("#side .dir[data-folder='src']")
+    row.hover(position={"x": 4, "y": 4})
+    page.wait_for_timeout(600)
+    expect(page.locator(".tooltip.on")).to_have_count(0)
+    page.locator("#side h1").hover()
+    page.add_style_tag(content="#side .dir[data-folder='src'] .nm { max-width: 1ch; }")
+    row.hover(position={"x": 4, "y": 4})
+    expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(page.locator(".tooltip")).to_have_text("src/")
 
 
 def test_a_tooltip_in_the_docs_window_shows_above_the_dialog(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.click("button[data-docs-open]")
-    page.hover("button[data-docs-close]")
+    heading = page.locator("#docs h1")
+    heading.evaluate("e => e.title = 'What differ does'")
+    heading.hover()
     expect(page.locator("#docs .tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
-    expect(page.locator("#docs .tooltip")).to_have_text("Close")
+    expect(page.locator("#docs .tooltip")).to_have_text("What differ does")
 
 
 def test_a_tooltip_shows_on_an_element_reached_by_scrolling(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    chevron = page.locator(f"{APP} .fhead .chev")
-    chevron.hover()
+    page.locator(f"{APP} .fhead .badge").hover()
     expect(page.locator(".tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=1000)
 
 
 def test_a_click_dismisses_the_tooltip_even_when_the_click_redraws_the_element(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    check = page.locator("#side .leaf[data-path='src/app.py'] .check")
+    badge = page.locator(f"{APP} .fhead .badge")
     tip = page.locator(".tooltip")
-    check.hover()
-    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=600)
-    check.click()
-    expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_class(re.compile(r"\breviewed\b"))
+    badge.hover()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
+    badge.click()
+    expect(page.locator(APP)).to_have_class(re.compile(r"\bclosed\b"))
     page.wait_for_timeout(600)
     expect(tip).not_to_have_class(re.compile(r"\bon\b"))
     page.locator("#side h1").hover()
-    check.hover()
-    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    badge.hover()
+    expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
 
 
 def test_focusing_the_start_page_search_selects_its_text(page: Page, server_url: str) -> None:
