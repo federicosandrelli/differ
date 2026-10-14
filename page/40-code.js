@@ -4,7 +4,7 @@
 function renderRows(f, rows, out, index) {
   for (const r of rows) {
     const key = rowKeyOf(r);
-    const cls = [r.type, r.dim ? 'dim' : '', r.sel ? 'sel' : ''].join(' ');
+    const cls = [r.type, r.dim ? 'dim' : '', r.sel ? 'sel' : '', r.between ? 'between' : ''].join(' ');
     const tag = r.dim ? '<span class="tag">rename</span>' : '';
     index.set(key, out.length);
     out.push(`<tr class="${cls}" id="${rowId(f, key)}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);

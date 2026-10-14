@@ -145,6 +145,45 @@ window.addEventListener('hashchange', () => {
   document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; lsSet('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); });
 })();
 
+// Pressing a row's comment button and dragging to another row of the same file and side opens a comment on the
+// lines in between. The rows light up as the pointer moves; a release on the starting row leaves the click to open
+// a one-line comment.
+(function commentDrag() {
+  let drag = null;
+  const rowUnder = (el) => { const tr = el.closest && el.closest('table.diff tr[id]'); return tr && rowAt(tr.id); };
+  document.addEventListener('mousedown', (e) => {
+    if (!API || e.button !== 0 || e.shiftKey) return;
+    const cell = e.target.closest('table.diff td.n:first-child');
+    const at = cell && rowAt(cell.parentElement.id);
+    if (!at) return;
+    e.preventDefault();
+    drag = { start: at, end: at };
+    document.body.classList.add('comment-drag');
+  });
+  // A release outside the window never reaches the page, so a move without the button down ends the drag.
+  document.addEventListener('mousemove', (e) => {
+    if (!drag) return;
+    if (!(e.buttons & 1)) { finish(); return; }
+    const at = rowUnder(e.target);
+    if (!at || at.file !== drag.start.file || at.side !== drag.start.side || at.line === drag.end.line) return;
+    drag.end = at;
+    const lo = Math.min(drag.start.line, at.line), hi = Math.max(drag.start.line, at.line);
+    const trs = [...sectionEl(at.file).querySelectorAll('table.diff tr[id]')];
+    const sel = trs.map(tr => { const r = rowAt(tr.id); return !!r && r.side === at.side && r.line >= lo && r.line <= hi; });
+    const between = markBetween(trs, sel);
+    trs.forEach((tr, i) => { tr.classList.toggle('sel', sel[i]); tr.classList.toggle('between', between[i]); });
+  });
+  document.addEventListener('mouseup', () => { if (drag) finish(); });
+  function finish() {
+    const { start, end } = drag;
+    drag = null;
+    document.body.classList.remove('comment-drag');
+    if (start.line === end.line) return;
+    openCompose(start.file.path, start.side, start.line, false);
+    openCompose(start.file.path, start.side, end.line, true);
+  }
+})();
+
 (function init() {
   state.showNoiseOnly = lsGet('dr:noise-only') === '1';
   state.showGenerated = lsGet('dr:generated') === '1';

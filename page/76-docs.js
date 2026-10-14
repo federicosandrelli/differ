@@ -59,8 +59,8 @@ reviewed files on this computer only; GitHub does not see them.</p>
 
 <h2>Comments and reviews</h2>
 <ul>
-  <li><b>Comment on several lines.</b> Click the first line number, then hold <kbd>Shift</kbd> and click the last
-    one.</li>
+  <li><b>Comment on several lines.</b> Press the <kbd>+</kbd> on the first line and drag to the last one. You can
+    also click the first line number, then hold <kbd>Shift</kbd> and click the last one.</li>
   <li><b>Pending review.</b> "Start a review" and "Add review comment" keep a comment in a pending review that only
     you can see. "Review" in the sidebar header sends the pending review as approve, request changes or comment, or
     discards it.</li>
