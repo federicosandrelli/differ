@@ -20,18 +20,18 @@ function leafHtml(f, depth) {
   const k = changeKind(f);
   const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
   const hitCount = state.q ? hits(f) : 0, threads = threadCount(f);
-  return `<div class="row leaf ${state.view === f.path ? 'active' : ''} ${state.cursor === 'f:' + f.path ? 'cursor' : ''} ${isReviewed(f) ? 'reviewed' : ''} ${noHit(f) ? 'nohit' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.path)}">
+  return `<div class="row leaf ${state.view === f.path ? 'active' : ''} ${state.cursor === 'f:' + f.path ? 'cursor' : ''} ${isReviewed(f) ? 'reviewed' : ''} ${noHit(f) ? 'nohit' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.base)}">
       <span class="ico"></span>
-      <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}" title="${KIND_LABEL[k]}">${k === 'R' ? `<s>${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
-      ${k === 'V' ? `<span class="from" title="${esc(f.old_path)}">← ${esc(oldDir)}</span>` : ''}
+      <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}">${k === 'R' ? `<s title="${esc(f.old_path.split('/').pop())}">${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
+      ${k === 'V' ? `<span class="from" title="${esc(oldDir)}">← ${esc(oldDir)}</span>` : ''}
       ${hitCount ? `<span class="cnt hits">${hitCount}</span>` : ''}
-      ${threads ? `<span class="cnt bubble" title="${plural(threads, 'unresolved thread')}">${BUBBLE}${threads}</span>` : ''}
-      <span class="spacer"></span><span class="check" data-review="${esc(f.path)}" title="Mark reviewed">✓</span></div>`;
+      ${threads ? `<span class="cnt bubble">${BUBBLE}${threads}</span>` : ''}
+      <span class="spacer"></span><span class="check" data-review="${esc(f.path)}">✓</span></div>`;
 }
 function renderTreeNode(node, depth, out) {
   for (const d of [...node.dirs.values()].sort(byLabel)) {
     const closed = state.closed.has(d.full);
-    out.push(`<div class="row dir ${state.cursor === 'd:' + d.full ? 'cursor' : ''} ${allNoHit(d) ? 'nohit' : ''}" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.full)}">
+    out.push(`<div class="row dir ${state.cursor === 'd:' + d.full ? 'cursor' : ''} ${allNoHit(d) ? 'nohit' : ''}" style="--d:${depth};${guides(depth)}" data-folder="${esc(d.full)}" title="${esc(d.label)}/">
       <span class="ico folder">${closed ? FOLDER_CLOSED : FOLDER_OPEN}</span><span class="pill"><span class="nm">${esc(d.label)}/</span></span>${closed ? `<span class="cnt">${countFiles(d)}</span>` : ''}</div>`);
     if (!closed) renderTreeNode(d, depth + 1, out);
   }
