@@ -138,53 +138,69 @@ function importSegments(f, rows) {
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
 const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
-// The new line numbers above each change run that adds lines and is not noise, from the start of the innermost
-// class, function or module-level call around the run up to the run.
-function enclosingContext(f) {
-  const lines = new Set();
+// The first body line of the innermost class, function or module-level call around each change run that adds
+// lines and is not noise, by the line the symbol starts on.
+function enclosingBodies(f) {
+  const bodies = new Map();
   for (const r of f.runs) {
     if (isNoise(r) || !r.added.length) continue;
     const first = r.added[0];
-    const around = (f.symbols || []).filter(s => s.start <= first && first <= s.end);
+    const around = (f.symbols || []).filter(s => s.start < first && first <= s.end);
     if (!around.length) continue;
-    const start = Math.max(...around.map(s => s.start));
-    for (let n = start; n < first; n++) lines.add(n);
+    const inner = around.reduce((a, s) => s.start > a.start ? s : a);
+    bodies.set(inner.start, inner.body);
   }
-  return lines;
+  return bodies;
 }
 
-// A context block shows RADIUS lines next to each visible neighbour and folds the middle, unless the
-// reader opened it: head and tail show, mid shows when open. The tail also shows the lines in keep.
-function contextBlock(f, blocks, bi, register, keep) {
+// Context rows that show headLength rows at the start and tailLength rows at the end and fold the middle, unless
+// the reader opened it or the middle is shorter than minFold. A toggle fold also closes again.
+function contextPart(f, rs, headLength, tailLength, register, { minFold = 1, toggle = false } = {}) {
+  const head = rs.slice(0, headLength), tail = rs.slice(Math.max(headLength, rs.length - tailLength));
+  const mid = rs.slice(head.length, rs.length - tail.length);
+  if (mid.length < minFold) return { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
+  const key = `${f.path}:${mid[0].newNo}`;
+  const fold = register(key, () => state.unfolded.add(key), toggle ? toggleIn(state.unfolded, key) : undefined);
+  return { ctx: true, rows: rs, head, mid, tail, fold, open: state.unfolded.has(key) };
+}
+
+// A context block shows RADIUS lines next to each visible neighbour and folds the middle. When the block holds the
+// start of the class, function or call around the next change, the last such start in the block, it splits in
+// two: the first part shows the lines of that start up to its body, and the second folds the body lines into an
+// inline fold, short of the RADIUS lines next to each visible neighbour.
+function contextBlock(f, blocks, bi, register, bodies) {
   const rs = blocks[bi].rows;
-  const whole = { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
   const visible = (nb) => nb && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
   const leftVisible = bi > 0 && visible(blocks[bi - 1]);
   const rightVisible = bi < blocks.length - 1 && visible(blocks[bi + 1]);
-  if (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible)) return whole;
-  const kept = rs.findIndex(r => keep.has(r.newNo));
-  const tailLength = Math.max(rightVisible ? RADIUS : 0, kept < 0 ? 0 : rs.length - kept);
-  const head = leftVisible ? rs.slice(0, RADIUS) : [];
-  const tail = rs.slice(rs.length - tailLength);
-  const mid = rs.slice(head.length, rs.length - tail.length);
-  if (!mid.length) return whole;
-  const key = `${f.path}:${mid[0].newNo}`;
-  return { ctx: true, rows: rs, head, mid, tail, fold: register(key, () => state.unfolded.add(key)), open: state.unfolded.has(key) };
+  if (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible)) return [contextPart(f, rs, rs.length, 0, register)];
+  const head = leftVisible ? RADIUS : 0, tail = rightVisible ? RADIUS : 0;
+  const k = rs.findLastIndex(r => bodies.has(r.newNo));
+  if (k < 0) return [contextPart(f, rs, head, tail, register)];
+  const body = bodies.get(rs[k].newNo);
+  let end = rs.findIndex((r, i) => i > k && r.newNo >= body);
+  if (end < 0) end = rs.length;
+  const rest = rs.slice(end);
+  const above = contextPart(f, rs.slice(0, end), head, Math.max(end - k, tail - rest.length), register, { minFold: 3 });
+  if (!rest.length) return [above];
+  const inner = contextPart(f, rest, Math.max(0, head - end), tail, register, { minFold: 3, toggle: true });
+  return [above, inner.fold ? { ...inner, inline: true } : inner];
 }
 
 // The file as the blocks the diff table draws, every fold decided. A block has its rows, the id of the fold
 // that hides some of them (fold, null when nothing folds) and whether that fold is open:
 //   { imports, rows }                 an import section, shown when open
 //   { group, cls, rows }              noise runs folded together, always closed
-//   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
+//   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open; an inline one keeps its fold
+//                                     row when open
 //   { run, rows }                     a change run; a noise run folds, shown when open
 // Blocks of plain rows leave their folds out of FOLDS, whose entries would keep the rows alive.
 function fileBlocks(f, plain) {
-  const rows = buildRows(f, plain), register = plain ? (id) => id : fold, keep = enclosingContext(f);
+  const rows = buildRows(f, plain), register = plain ? (id) => id : fold, bodies = enclosingBodies(f);
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);
-  return blocks.map((b, bi) => {
+  return blocks.flatMap((b, bi) => {
     if (b.imports) {
       const k = importsKey(f, b);
       return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b) };
@@ -193,7 +209,7 @@ function fileBlocks(f, plain) {
       const keys = b.group.map(r => runKey(f, r));
       return { ...b, fold: register(`${f.path}#runs:${b.group.map(r => r.index).join(',')}`, () => keys.forEach(k => state.expanded.add(k))), open: false };
     }
-    if (b.ctx) return contextBlock(f, blocks, bi, register, keep);
+    if (b.ctx) return contextBlock(f, blocks, bi, register, bodies);
     if (!isNoise(b.run)) return { ...b, fold: null, open: true };
     const k = runKey(f, b.run);
     return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b) };

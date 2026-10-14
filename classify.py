@@ -137,6 +137,12 @@ def build_runs(fd: FileDiff) -> None:
 # ---------------------------------------------------------------- python structure
 
 
+def first_line(node: ast.stmt) -> int:
+    """Return the line a statement starts on, counting its decorators."""
+    decorators = getattr(node, "decorator_list", None)
+    return decorators[0].lineno if decorators else node.lineno
+
+
 def python_structure(source: str) -> tuple[set[int], list[dict]]:
     """Return (import line numbers, symbols) for a Python source; both empty when it does not parse."""
     imports: set[int] = set()
@@ -152,7 +158,7 @@ def python_structure(source: str) -> tuple[set[int], list[dict]]:
                 imports.update(range(child.lineno, (child.end_lineno or child.lineno) + 1))
             elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 kind = "class" if isinstance(child, ast.ClassDef) else "def"
-                start = child.decorator_list[0].lineno if child.decorator_list else child.lineno
+                start = first_line(child)
                 name = f"{parent_name}.{child.name}" if parent_name else child.name
                 symbols.append(
                     {
@@ -160,6 +166,7 @@ def python_structure(source: str) -> tuple[set[int], list[dict]]:
                         "short": child.name,
                         "kind": kind,
                         "start": start,
+                        "body": first_line(child.body[0]),
                         "end": child.end_lineno,
                         "depth": depth,
                     }
@@ -180,6 +187,7 @@ def python_structure(source: str) -> tuple[set[int], list[dict]]:
                         "short": callee.rsplit(".", 1)[-1],
                         "kind": "call",
                         "start": child.lineno,
+                        "body": child.lineno + 1,
                         "end": child.end_lineno,
                         "depth": depth,
                     }

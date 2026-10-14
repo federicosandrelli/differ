@@ -189,11 +189,33 @@ def f():
     )
 """
     _, symbols = classify.python_structure(source)
-    assert [(s["name"], s["short"], s["kind"], s["start"], s["end"]) for s in symbols] == [
-        ("Settings", "Settings", "call", 1, 3),
-        ("app.run", "run", "call", 4, 6),
-        ("f", "f", "def", 13, 16),
+    assert [(s["name"], s["short"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
+        ("Settings", "Settings", "call", 1, 2, 3),
+        ("app.run", "run", "call", 4, 5, 6),
+        ("f", "f", "def", 13, 14, 16),
     ]
+
+
+def test_python_structure_starts_the_body_after_the_decorators_and_the_signature() -> None:
+    source = """@decorator
+def f(
+    a,
+):
+    \"\"\"Docstring.\"\"\"
+    return a
+"""
+    _, symbols = classify.python_structure(source)
+    assert [(s["start"], s["body"]) for s in symbols] == [(1, 5)]
+
+
+def test_python_structure_starts_a_class_body_at_the_decorator_of_its_first_method() -> None:
+    source = """class C:
+    @property
+    def a(self):
+        return 1
+"""
+    _, symbols = classify.python_structure(source)
+    assert [(s["name"], s["start"], s["body"]) for s in symbols] == [("C", 1, 2), ("C.a", 2, 4)]
 
 
 def test_python_structure_is_empty_for_a_file_that_does_not_parse() -> None:

@@ -157,6 +157,8 @@ table.diff tr.dim td.c { opacity: var(--dim); }
 table.diff tr.target td { box-shadow: inset 0 0 0 100px var(--row-target-bg); }
 table.diff tr.target td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px var(--row-target-bg) !important; }
 table.diff td.c .tag { float: right; font: 10px var(--sans); color: var(--text-muted); background: var(--bg-inset); border-radius: 3px; padding: 0 5px; margin-left: 8px; opacity: 1; }
+table.diff td.c .inline-fold { display: inline-block; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-inset); color: var(--text-muted); font: 11px/1.5 var(--sans); vertical-align: 1px; cursor: pointer; user-select: none; }
+table.diff td.c .inline-fold.open, table.diff td.c .inline-fold:hover { color: var(--accent); border-color: var(--accent); }
 tr.fold td, tr.collapsed td, tr.runhead td { white-space: nowrap; }
 tr.fold .lbl, tr.collapsed .lbl, tr.runhead .lbl { position: sticky; left: 12px; display: inline-block; vertical-align: top; max-width: calc(100cqw - 24px); overflow: hidden; text-overflow: ellipsis; }
 tr.fold td { background: var(--bg-panel); color: var(--text-muted); font: 11.5px var(--sans); padding: 3px 12px; cursor: pointer; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }

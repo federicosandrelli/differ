@@ -46,6 +46,9 @@ numbers in the overview show or hide each kind of noise in every file at once.</
 Outside any class or function, it shows the lines up to the start of the call that holds the change, such as a
 long <code>setup(...)</code>. You can then read the class line, the signature or the call without opening a fold.
 This works in Python files, for changes that add lines and are not noise.</p>
+<p>When the body above the change is long, differ shows the class line, the signature or the first line of the call,
+and the 4 lines before the change. The lines between them fold into a small button on its own line. Click the
+button to show the lines, and click it again to fold them.</p>
 
 <h2>Reviewed files</h2>
 <p>When you mark a file as reviewed, its section closes and its name in the tree turns pale. differ remembers your
