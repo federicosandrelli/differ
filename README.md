@@ -118,13 +118,12 @@ To release a new version:
    The `Release` workflow (`.github/workflows/release.yml`) fails when the tag
    differs from `v` plus the version in `tauri.conf.json`. Otherwise it
    builds the `.dmg` on macOS and attaches it to a draft release for the tag.
-   The job log prints the `.dmg`'s SHA-256 checksum. A re-run replaces the
-   `.dmg` of the draft and leaves a published release as it is.
+   To run the workflow again, delete the draft first
+   (`gh release delete v0.2.0 --yes`); a re-run fails while a release exists.
 3. Check the draft release on GitHub, edit its notes, and publish it.
 4. In `homebrew-tap`, set `version` and `sha256` in `Casks/differ.rb` to the
    new version and the checksum of the published `.dmg`, and push the
-   change. Every build gives the `.dmg` a new checksum, so take it from the
-   release itself:
+   change:
 
    ```sh
    gh release download v0.2.0 --repo federicosandrelli/differ --pattern '*.dmg' --output - | shasum -a 256
