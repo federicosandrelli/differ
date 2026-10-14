@@ -11,4 +11,13 @@ const loadRecent = () => {
 };
 loadRecent();
 document.addEventListener('tab-shown', loadRecent);
+// Focus selects the whole field, so a pasted link replaces the old one. A click that focuses the field would put the
+// caret where it lands on mouseup, so that one mouseup keeps the selection.
+const pr = document.querySelector('input[name=pr]');
+let clickFocus = false;
+pr.addEventListener('mousedown', () => { clickFocus = document.activeElement !== pr; });
+pr.addEventListener('mouseup', (e) => { if (clickFocus) e.preventDefault(); clickFocus = false; });
+pr.addEventListener('focus', () => pr.select());
+// The browser reads the field when the submit event ends, so the field empties after that.
+pr.form.addEventListener('submit', () => setTimeout(() => { pr.value = ''; }));
 </script>
