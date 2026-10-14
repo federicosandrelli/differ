@@ -17,6 +17,9 @@
     "active": true,
     "targets": ["app", "dmg"],
     "icon": ["icons/icon.icns", "icons/icon.png"],
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "resources": {
       "../*.py": "python/",
       "../page/*": "python/page/",

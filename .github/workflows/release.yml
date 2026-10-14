@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that the tag matches the app version
+        id: version
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match the version $version in src-tauri/tauri.conf.json."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npx tauri build --bundles dmg
+      - name: Attach the dmg to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          dmg="src-tauri/target/release/bundle/dmg/differ_${VERSION}_aarch64.dmg"
+          shasum -a 256 "$dmg"
+          # A re-run of this job finds the release from the first run. Each build gives the dmg a new checksum,
+          # so a published release keeps its dmg: the cask names that dmg's checksum.
+          draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2> /dev/null || echo missing)
+          case "$draft" in
+            missing)
+              gh release create "$GITHUB_REF_NAME" "$dmg" --draft --title "differ $VERSION" --generate-notes ;;
+            true)
+              gh release upload "$GITHUB_REF_NAME" "$dmg" --clobber ;;
+            *)
+              echo "::error::The release $GITHUB_REF_NAME is already published, so this job leaves its dmg as it is."
+              exit 1 ;;
+          esac

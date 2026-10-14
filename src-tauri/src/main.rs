@@ -227,7 +227,9 @@ fn main() {
             let port = pick_port()?;
             let log = server_log();
             let mut server_command = Command::new(python);
+            // A __pycache__ written next to the bundled scripts would break the app's code signature.
             server_command
+                .env("PYTHONDONTWRITEBYTECODE", "1")
                 .arg(server_script(app)?)
                 .arg(port.to_string())
                 .arg("--exit-with-parent");
