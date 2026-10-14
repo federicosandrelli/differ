@@ -373,3 +373,22 @@ def test_a_click_dismisses_the_tooltip_even_when_the_click_redraws_the_element(p
     page.locator("#side h1").hover()
     check.hover()
     expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=600)
+
+
+def test_focusing_the_start_page_search_selects_its_text(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/home")
+    field = page.locator("input[name=pr]")
+    field.fill("acme/widgets#2")
+    page.locator("h1").click()
+    field.click()
+    assert field.evaluate("f => [f.selectionStart, f.selectionEnd]") == [0, len("acme/widgets#2")]
+
+
+def test_opening_a_pull_request_from_the_shell_empties_the_start_page_search(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    home = page.frame_locator("#panes iframe.on")
+    home.locator("input[name=pr]").fill("acme/widgets#1")
+    home.locator("input[name=pr]").press("Enter")
+    expect(page.locator("#tabs .tab:not(.home)")).to_have_count(1)
+    page.click("#tabs .tab.home")
+    expect(page.frame_locator("#panes iframe.on").locator("input[name=pr]")).to_have_value("")
