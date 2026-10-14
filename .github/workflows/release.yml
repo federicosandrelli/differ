@@ -1,42 +1,102 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: macos-latest
+  check:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.needed.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check that the tag matches the app version
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          sparse-checkout: .github
+      - id: needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: .github/scripts/release-needed.sh
+
+  release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: macos-latest
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      # Main can move while this job waits, and a re-run of this job reuses the output of the check job.
+      - id: needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: .github/scripts/release-needed.sh
+      - name: Set the version to major.minor from tauri.conf.json and the run number as patch
         id: version
+        if: steps.needed.outputs.release == 'true'
         run: |
-          version=$(jq -r .version src-tauri/tauri.conf.json)
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::The tag $GITHUB_REF_NAME does not match the version $version in src-tauri/tauri.conf.json."
-            exit 1
-          fi
+          base=$(jq -r .version src-tauri/tauri.conf.json)
+          version="$(echo "$base" | cut -d. -f1-2).$GITHUB_RUN_NUMBER"
+          jq --arg v "$version" '.version = $v' src-tauri/tauri.conf.json > tauri.conf.json.tmp
+          mv tauri.conf.json.tmp src-tauri/tauri.conf.json
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
+        if: steps.needed.outputs.release == 'true'
         with:
           node-version: 20
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.needed.outputs.release == 'true'
       - run: npm ci
+        if: steps.needed.outputs.release == 'true'
       - run: npx tauri build --bundles dmg
-      - name: Attach the dmg to a draft release
+        if: steps.needed.outputs.release == 'true'
+      - uses: actions/checkout@v4
+        if: steps.needed.outputs.release == 'true'
+        with:
+          repository: federicosandrelli/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - name: Publish the release
+        id: release
+        if: steps.needed.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            echo "::error::A release for $GITHUB_REF_NAME already exists. To rebuild a draft, delete it first: gh release delete $GITHUB_REF_NAME --yes"
+          dmg="src-tauri/target/release/bundle/dmg/differ_${VERSION}_aarch64.dmg"
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "::error::A release for v$VERSION already exists. To publish it again, delete it and its tag first: gh release delete v$VERSION --cleanup-tag --yes"
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" \
-            "src-tauri/target/release/bundle/dmg/differ_${VERSION}_aarch64.dmg" \
-            --draft --title "differ $VERSION" --generate-notes
+          gh release create "v$VERSION" "$dmg" \
+            --target "$SHA" --title "differ $VERSION" --generate-notes
+          echo "sha256=$(shasum -a 256 "$dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Point the cask at the new release
+        if: steps.needed.outputs.release == 'true'
+        working-directory: homebrew-tap
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA256: ${{ steps.release.outputs.sha256 }}
+        run: |
+          sed -i '' -E \
+            -e "s/^  version \".*\"/  version \"$VERSION\"/" \
+            -e "s/^  sha256 \".*\"/  sha256 \"$SHA256\"/" \
+            Casks/differ.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update differ to $VERSION"
+          git push
