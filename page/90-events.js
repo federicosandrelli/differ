@@ -198,8 +198,10 @@ window.addEventListener('hashchange', () => {
   if (!FILES.some(kindVisible)) state.filter = 'all';
   document.body.classList.toggle('commentable', !!API);
   render();
+  // A hash without a line puts the reader back on its file and leaves a reviewed file closed.
   const t = hashTarget();
-  if (t) go(t.path, t.key);
+  if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
+  else if (t) go(t.path, t.key);
   loadComments();
   // A reload rebuilds the forms, so it waits while a comment box has focus.
   const refresh = () => {

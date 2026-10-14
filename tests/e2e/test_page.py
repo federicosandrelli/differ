@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 from playwright.sync_api import Page, Position, expect
 
 from e2e.conftest import TITLE
@@ -662,3 +663,53 @@ def test_an_approval_of_the_head_commit_names_itself_and_blocks_another(
         expect(page.locator("button[data-submit='APPROVE']")).to_be_enabled()
     finally:
         comments_file.write_text(saved)
+
+
+def test_the_tree_cursor_stays_on_a_file_near_the_end_that_cannot_scroll_to_the_top(
+    page: Page, server_url: str
+) -> None:
+    page.set_viewport_size({"width": 1280, "height": 720})
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    page.click("section[data-file='src/near.py'] button[data-review]")
+    page.click("#side .leaf[data-path='src/jobs.py']")
+    page.keyboard.press("ArrowDown")
+    near = page.locator("#side .leaf[data-path='src/near.py']")
+    page.evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
+    expect(near).to_have_class(re.compile(r"\bcursor\b"))
+    expect(near).to_have_class(re.compile(r"\bactive\b"))
+    page.keyboard.press("Shift")
+    page.mouse.move(100, 300)
+    page.mouse.wheel(0, 200)
+    page.mouse.move(640, 360)
+    page.mouse.wheel(0, 300)
+    page.click("section[data-file='src/jobs.py'] button[data-review]")
+    page.evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
+    expect(near).to_have_class(re.compile(r"\bcursor\b"))
+    expect(near).to_have_class(re.compile(r"\bactive\b"))
+    page.mouse.move(640, 360)
+    page.mouse.wheel(0, -2000)
+    expect(near).not_to_have_class(re.compile(r"\bactive\b"))
+
+
+@pytest.mark.parametrize(("pr", "path"), [(6, "src/config.py"), (1, "package-lock.json")])
+def test_opening_an_address_that_names_a_reviewed_file_leaves_it_closed(
+    page: Page, server_url: str, pr: int, path: str
+) -> None:
+    open_pr(page, server_url, f"/acme/widgets/pull/{pr}#{path}")
+    page.click(f"section[data-file='{path}'] button[data-review]")
+    page.goto("about:blank")
+    open_pr(page, server_url, f"/acme/widgets/pull/{pr}#{path}")
+    expect(page.locator(f"section[data-file='{path}']")).to_have_class(re.compile(r"\bclosed\b"))
+
+
+def test_while_searching_the_tree_cursor_stays_on_a_hit_near_the_end(page: Page, server_url: str) -> None:
+    page.set_viewport_size({"width": 1280, "height": 720})
+    open_pr(page, server_url, "/acme/widgets/pull/6")
+    page.keyboard.press("Meta+f")
+    page.keyboard.type("a + b")
+    page.click("#side .leaf[data-path='src/jobs.py']")
+    page.keyboard.press("ArrowDown")
+    near = page.locator("#side .leaf[data-path='src/near.py']")
+    page.evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
+    expect(near).to_have_class(re.compile(r"\bcursor\b"))
+    expect(near).to_have_class(re.compile(r"\bactive\b"))
