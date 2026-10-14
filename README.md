@@ -104,31 +104,26 @@ brew install differ
 The cask removes the `com.apple.quarantine` attribute after the install, so
 macOS opens the app on the first launch.
 
-To release a new version:
+Every push to `main` releases a new version. After the `CI` workflow passes
+on the push, the `Release` workflow (`.github/workflows/release.yml`):
 
-1. Set `version` in `src-tauri/tauri.conf.json` to the new version, and merge
-   the change into `main`.
-2. Tag the latest `main` and push the tag:
+1. Takes the major and minor version from `version` in
+   `src-tauri/tauri.conf.json` and sets the patch to the workflow run number,
+   for example `0.1.57`. The workflow never commits the new version to `main`.
+2. Builds the `.dmg` on macOS and publishes it in a release with the tag
+   `v0.1.57` on the pushed commit.
+3. Sets `version` and `sha256` in `Casks/differ.rb` in `homebrew-tap` to the
+   new release, and pushes the change. The push uses the `HOMEBREW_TAP_TOKEN`
+   secret: a fine-grained personal access token with read and write access
+   to the contents of `federicosandrelli/homebrew-tap`.
 
-   ```sh
-   git fetch origin main
-   git tag v0.2.0 origin/main
-   git push origin v0.2.0
-   ```
+To start a new major or minor version, set `version` in `tauri.conf.json` to
+it, for example `0.2.0`, and merge the change into `main`. The workflow
+ignores the patch in that file.
 
-   The `Release` workflow (`.github/workflows/release.yml`) fails when the tag
-   differs from `v` plus the version in `tauri.conf.json`. Otherwise it
-   builds the `.dmg` on macOS and attaches it to a draft release for the tag.
-   To run the workflow again, delete the draft first
-   (`gh release delete v0.2.0 --yes`); a re-run fails while a release exists.
-3. Check the draft release on GitHub, edit its notes, and publish it.
-4. In `homebrew-tap`, set `version` and `sha256` in `Casks/differ.rb` to the
-   new version and the checksum of the published `.dmg`, and push the
-   change:
-
-   ```sh
-   gh release download v0.2.0 --repo federicosandrelli/differ --pattern '*.dmg' --output - | shasum -a 256
-   ```
+A push releases nothing when its `CI` run fails, or when a newer push to
+`main` cancels its `CI` run. While a release runs, GitHub keeps only the
+newest waiting release and cancels older ones.
 
 ## Checks
 
