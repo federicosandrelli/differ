@@ -7,7 +7,6 @@ import subprocess
 TIMEOUT = 120
 # A clone or a fetch downloads history, so it gets longer.
 LONG_TIMEOUT = 600
-NAMES = {"gh": "The GitHub CLI (gh)"}
 
 
 class CommandError(Exception):
@@ -20,7 +19,8 @@ def call(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT) 
     try:
         return subprocess.run(args, capture_output=True, input=input, timeout=timeout)
     except FileNotFoundError:
-        raise CommandError(f"{NAMES.get(args[0], args[0])} is not installed or not on PATH") from None
+        name = "The GitHub CLI (gh)" if args[0] == "gh" else args[0]
+        raise CommandError(f"{name} is not installed or not on PATH") from None
     except subprocess.TimeoutExpired:
         raise CommandError(f"`{shown(args)}` did not finish within {timeout:g} seconds") from None
 

@@ -38,7 +38,7 @@ import traceback
 from dataclasses import asdict, dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import Any, Literal, TextIO, get_args
 from urllib.parse import parse_qs, urlparse
 
 import build
@@ -324,28 +324,26 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             if action == "comment":
+                start_side = body.get("start_side")
                 result = comments.add_thread(
                     ref,
                     path=body["path"],
                     body=body["body"],
                     line=int(body["line"]),
-                    side=body.get("side", "RIGHT"),
+                    side=one_of(body.get("side", "RIGHT"), comments.Side),
                     start_line=body.get("start_line"),
-                    start_side=body.get("start_side"),
-                    mode=body.get("mode", "review"),
+                    start_side=None if start_side is None else one_of(start_side, comments.Side),
+                    mode=one_of(body.get("mode", "review"), comments.Mode),
                 )
             elif action == "reply":
-                result = comments.reply(
-                    ref, thread_id=body["thread"], body=body["body"], mode=body.get("mode", "review")
-                )
+                mode = one_of(body.get("mode", "review"), comments.Mode)
+                result = comments.reply(ref, thread_id=body["thread"], body=body["body"], mode=mode)
             elif action == "resolve":
                 result = comments.resolve(body["thread"], bool(body.get("resolved", True)))
             elif action == "delete":
                 result = comments.delete_comment(body["comment"])
             elif action == "submit":
-                if body["event"] not in comments.EVENTS:
-                    raise ValueError(f"Unknown review event {body['event']!r}")
-                result = comments.submit(ref, event=body["event"], body=body.get("body", ""))
+                result = comments.submit(ref, event=one_of(body["event"], comments.Event), body=body.get("body", ""))
             elif action == "discard":
                 result = comments.discard(ref)
             elif action == "conversation":
@@ -364,6 +362,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args) -> None:
         sys.stderr.write(f"{self.address_string()} {format % args}\n")
+
+
+def one_of(value: object, kind: object) -> Any:
+    """The value of a request's field when the Literal type allows it; else a ValueError, which answers 400."""
+    if value not in get_args(kind):
+        raise ValueError(f"{value!r} is not one of {', '.join(map(repr, get_args(kind)))}")
+    return value
 
 
 def port_taken(port: int) -> str | None:

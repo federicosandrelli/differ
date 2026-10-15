@@ -5,9 +5,9 @@ from __future__ import annotations
 import ast
 import re
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict
 
 TOKEN = re.compile(r"[\w.]")
 IDENT = re.compile(r"^[\w.]+$")
@@ -37,8 +37,7 @@ class Diff:
     generated: set[str]
 
 
-@dataclass(frozen=True)
-class Place:
+class Place(TypedDict):
     """A line of a file: on the new side for added lines, on the old side for removed ones."""
 
     path: str
@@ -94,8 +93,7 @@ class FileDiff:
         return self.new_path or self.old_path or ""
 
 
-@dataclass(frozen=True)
-class Symbol:
+class Symbol(TypedDict):
     """A class, a function, or a call at module level that spans several lines, in a Python file. It starts on
     `start` (at its first decorator), its body on `body`, and it ends on `end`."""
 
@@ -106,8 +104,7 @@ class Symbol:
     end: int
 
 
-@dataclass(frozen=True)
-class Origin:
+class Origin(TypedDict):
     """Where a rename is defined."""
 
     path: str
@@ -129,12 +126,12 @@ class ClassifiedFile:
     old_import_lines: set[int]
 
 
-def parse_patch(text: str) -> list[FileDiff]:
+def parse_patch(patch: str) -> list[FileDiff]:
     files: list[FileDiff] = []
     current: FileDiff | None = None
     hunk: Hunk | None = None
     old_no = new_no = 0
-    for raw in text.splitlines():
+    for raw in patch.splitlines():
         if raw.startswith("diff --git "):
             m = re.match(r"diff --git a/(.*) b/(.*)$", raw)
             assert m
@@ -235,7 +232,15 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
                 imports.update(range(child.lineno, last_line(child) + 1))
             elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 kind = "class" if isinstance(child, ast.ClassDef) else "def"
-                symbols.append(Symbol(child.name, kind, first_line(child), first_line(child.body[0]), last_line(child)))
+                symbols.append(
+                    Symbol(
+                        name=child.name,
+                        kind=kind,
+                        start=first_line(child),
+                        body=first_line(child.body[0]),
+                        end=last_line(child),
+                    )
+                )
                 visit(child, module_level=False)
             elif isinstance(child, ast.If | ast.Try | ast.With | ast.For | ast.While):
                 visit(child, module_level)
@@ -246,7 +251,9 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
                 and last_line(child) != child.lineno
             ):
                 callee = ast.unparse(child.value.func).rsplit(".", 1)[-1]
-                symbols.append(Symbol(callee, "call", child.lineno, child.lineno + 1, last_line(child)))
+                symbols.append(
+                    Symbol(name=callee, kind="call", start=child.lineno, body=child.lineno + 1, end=last_line(child))
+                )
 
     visit(tree, module_level=True)
     return imports, symbols
@@ -392,8 +399,8 @@ def link_moves(files: list[FileDiff]) -> None:
         for run in fd.runs:
             if not run.added and (target := added.get(key(run.removed))):
                 target_file, target_run = target
-                run.moved_to = Place(target_file.path, target_run.added[0][0])
-                target_run.moved_to = Place(fd.path, run.removed[0][0])
+                run.moved_to = Place(path=target_file.path, line=target_run.added[0][0])
+                target_run.moved_to = Place(path=fd.path, line=run.removed[0][0])
 
 
 TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
@@ -504,7 +511,7 @@ def language(path: str) -> str:
     return SPECIAL_FILES.get(name) or LANGUAGES.get(suffix, "text")
 
 
-def text(content: bytes | None) -> str:
+def decoded(content: bytes | None) -> str:
     """A file's content as text, or empty for a binary file or a file that is not there."""
     if content is None or b"\0" in content[:8192]:
         return ""
@@ -525,8 +532,8 @@ def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | 
     longest_first = sorted(renames, key=lambda p: -len(p[0]))
     classified = []
     for fd in files:
-        old_src = text(diff.old.get(fd.old_path)) if fd.old_path else ""
-        new_src = text(diff.new.get(fd.new_path)) if fd.new_path else ""
+        old_src = decoded(diff.old.get(fd.old_path)) if fd.old_path else ""
+        new_src = decoded(diff.new.get(fd.new_path)) if fd.new_path else ""
         content, content_side = (new_src, "new") if fd.new_path else (old_src, "old")
         if fd.path.endswith(".py"):
             old_imports, _ = python_structure(old_src)
@@ -546,19 +553,19 @@ def find_origins(files: list[ClassifiedFile], renames: dict[Pair, str | None]) -
     for fd in sorted((f.diff for f in files), key=lambda fd: file_kind(fd.path) == "test"):
         for pair, renamed_file in renames.items():
             if renamed_file == fd.path and origins[pair] is None:
-                origins[pair] = Origin(fd.path, 1, "new", f"renamed from {fd.old_path}")
+                origins[pair] = Origin(path=fd.path, line=1, side="new", text=f"renamed from {fd.old_path}")
         for run in fd.runs:
             for (a, b), origin in origins.items():
                 if origin is not None:
                     continue
                 for no, line in run.added:
                     if is_definition(line, b):
-                        origins[(a, b)] = Origin(fd.path, no, "new", line.strip())
+                        origins[(a, b)] = Origin(path=fd.path, line=no, side="new", text=line.strip())
                         break
                 else:
                     for no, line in run.removed:
                         if is_definition(line, a):
-                            origins[(a, b)] = Origin(fd.path, no, "old", line.strip())
+                            origins[(a, b)] = Origin(path=fd.path, line=no, side="old", text=line.strip())
                             break
     return origins
 
@@ -590,11 +597,11 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
                 "origin": run.origin,
                 "pair_rename": run.pair_rename,
                 "noise": run.noise,
-                "moved_to": asdict(run.moved_to) if run.moved_to else None,
+                "moved_to": run.moved_to,
             }
             for run in fd.runs
         ],
-        "symbols": [asdict(s) for s in f.symbols],
+        "symbols": f.symbols,
         "import_lines": sorted(f.import_lines),
         "old_import_lines": sorted(f.old_import_lines),
         "stats": {
@@ -621,7 +628,7 @@ def renames_json(files: list[FileDiff], origins: dict[Pair, Origin | None]) -> l
             "to": b,
             "runs": runs[(a, b)],
             "files": sorted(paths[(a, b)]),
-            "origin": asdict(origin) if origin else None,
+            "origin": origin,
         }
         for (a, b), origin in origins.items()
         if runs[(a, b)]

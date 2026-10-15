@@ -274,3 +274,59 @@ def test_port_taken_skips_an_address_family_the_host_does_not_support(monkeypatc
         port = listener.getsockname()[1]
         assert server.port_taken(port) == "127.0.0.1"
     assert server.port_taken(port) is None
+
+
+def test_a_failed_command_answers_502_as_json_on_the_api_and_as_the_error_page_elsewhere(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise commands.CommandError("`gh api graphql --input -` failed: boom")
+
+    monkeypatch.setattr(server.comments, "fetch", fail)
+    h = request("GET", "/api/o/r/1/comments")
+    h.do_GET()
+    code, body = response(h)
+    assert (code, json.loads(body)) == (502, {"error": "`gh api graphql --input -` failed: boom"})
+
+    monkeypatch.setattr(server.github, "head_sha", fail)
+    h = request("GET", "/o/r/pull/1?refresh=1")
+    h.do_GET()
+    code, body = response(h)
+    assert code == 502 and b"Could not open that" in body and b"failed: boom" in body
+
+    monkeypatch.setattr(server.comments, "discard", fail)
+    h = request("POST", "/api/o/r/1/discard", b"{}")
+    h.do_POST()
+    assert response(h)[0] == 502
+
+
+def test_a_reference_that_names_no_pull_request_answers_400() -> None:
+    h = request("GET", "/open?pr=junk")
+    h.do_GET()
+    code, body = response(h)
+    assert code == 400 and b"Not a pull request reference" in body
+
+
+@pytest.mark.parametrize(
+    ("action", "fields", "why"),
+    [
+        ("submit", {"event": "MERGE"}, "'MERGE' is not one of 'APPROVE', 'REQUEST_CHANGES', 'COMMENT'"),
+        ("reply", {"thread": "T", "body": "b", "mode": "now"}, "'now' is not one of 'review', 'single'"),
+        ("comment", {"path": "a.py", "body": "b", "line": 1, "side": "UP"}, "'UP' is not one of 'LEFT', 'RIGHT'"),
+    ],
+)
+def test_a_request_field_outside_its_type_answers_400(
+    action: str, fields: dict, why: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server.comments, "graphql", lambda *args, **kwargs: pytest.fail("GitHub was called"))
+    h = request("POST", f"/api/o/r/1/{action}", json.dumps(fields).encode())
+    h.do_POST()
+    code, body = response(h)
+    assert (code, json.loads(body)) == (400, {"error": f"Bad request: {why}"})
+
+
+def test_a_refused_review_answers_400_with_the_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    h = request("POST", "/api/o/r/1/submit", json.dumps({"event": "REQUEST_CHANGES", "body": " "}).encode())
+    h.do_POST()
+    code, body = response(h)
+    assert (code, json.loads(body)) == (400, {"error": "Requesting changes needs a summary."})

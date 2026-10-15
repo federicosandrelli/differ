@@ -14,6 +14,7 @@ import shutil
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 
 import classify
@@ -179,22 +180,8 @@ def build(ref: PullRef, log: Log = print) -> Path:
     merge_base = git(repo_dir, "merge-base", pr.base, pr.head).decode().strip()
     diff = read_diff(repo_dir, merge_base, pr.head, log)
 
-    page_pr = {
-        "number": ref.number,
-        "title": pr.title,
-        "url": pr.url,
-        "repo": ref.slug,
-        "base": merge_base,
-        "head": pr.head,
-        "author": pr.author,
-        "commits": pr.commits,
-        "body": pr.body,
-        "base_ref": pr.base_ref,
-        "head_ref": pr.head_ref,
-        "state": pr.state,
-        "draft": pr.draft,
-        "status": pr.status or "",
-    }
+    # The page diffs the head against the merge base, as GitHub does, so that is the base it names.
+    page_pr = asdict(pr) | {"number": ref.number, "repo": ref.slug, "base": merge_base, "status": pr.status or ""}
     log("Classifying changes")
     classified = classify.classify(diff)
     log("Rendering the page")

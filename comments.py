@@ -19,13 +19,30 @@ from github import PullRef, graphql
 
 Side = Literal["LEFT", "RIGHT"]
 Event = Literal["APPROVE", "REQUEST_CHANGES", "COMMENT"]
-EVENTS: tuple[Event, ...] = ("APPROVE", "REQUEST_CHANGES", "COMMENT")
 # "review" adds a comment to the viewer's pending review, starting one when needed; "single" posts it at once.
 Mode = Literal["review", "single"]
+VerdictState = Literal["APPROVED", "CHANGES_REQUESTED"]
 
 
 class ReviewRefused(Exception):
     """GitHub would take the review, but the page must not send it."""
+
+
+@dataclass(frozen=True)
+class Verdict:
+    state: VerdictState
+    commit: str
+
+
+@dataclass(frozen=True)
+class Target:
+    """What a write to the pull request needs: its node id and head commit, the id of the viewer's pending review
+    if there is one, and the viewer's verdict."""
+
+    pr_id: str
+    head: str
+    pending: str | None
+    verdict: Verdict | None
 
 
 THREAD_FIELDS = """
@@ -101,15 +118,6 @@ def _thread(t: dict, pending_review: str | None) -> dict | None:
     }
 
 
-VerdictState = Literal["APPROVED", "CHANGES_REQUESTED"]
-
-
-@dataclass(frozen=True)
-class Verdict:
-    state: VerdictState
-    commit: str
-
-
 def _verdict(reviews: list[dict], viewer: str) -> Verdict | None:
     """The viewer's verdict on the pull request: the state of their latest approval or change request and the commit
     it reviewed. None when they gave neither, or when GitHub dismissed the latest one. Takes the approvals, change
@@ -171,17 +179,6 @@ def fetch(ref: PullRef) -> dict:
         "reviews": reviews,
         "comments": comments,
     }
-
-
-@dataclass(frozen=True)
-class Target:
-    """What a write to the pull request needs: its node id and head commit, the id of the viewer's pending review
-    if there is one, and the viewer's verdict."""
-
-    pr_id: str
-    head: str
-    pending: str | None
-    verdict: Verdict | None
 
 
 def _target(ref: PullRef) -> Target:

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 import classify
-from classify import FileDiff, Hunk, Place, Run
+from classify import FileDiff, Hunk, Run
 from helpers import make_diff
 
 OLD_APP = """import os
@@ -78,7 +78,7 @@ def test_parse_patch_keeps_a_binary_file_without_hunks(tmp_path: Path) -> None:
     diff = make_diff(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
     (fd,) = classify.parse_patch(diff.patch)
     assert fd.path == "img.bin" and fd.hunks == [] and fd.binary
-    assert classify.text(diff.new["img.bin"]) == ""
+    assert classify.decoded(diff.new["img.bin"]) == ""
 
 
 def test_classify_gives_a_binary_file_its_size_on_each_side(tmp_path: Path) -> None:
@@ -172,7 +172,7 @@ def f():
 """
     imports, symbols = classify.python_structure(source)
     assert imports == {1, 2, 3, 4, 5}
-    assert [(s.name, s.kind, s.start) for s in symbols] == [
+    assert [(s["name"], s["kind"], s["start"]) for s in symbols] == [
         ("C", "class", 8),
         ("m", "def", 9),
         ("f", "def", 13),
@@ -199,7 +199,7 @@ def f():
     )
 """
     _, symbols = classify.python_structure(source)
-    assert [(s.name, s.kind, s.start, s.body, s.end) for s in symbols] == [
+    assert [(s["name"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
         ("Settings", "call", 1, 2, 3),
         ("run", "call", 4, 5, 6),
         ("f", "def", 13, 14, 16),
@@ -215,7 +215,7 @@ def f(
     return a
 """
     _, symbols = classify.python_structure(source)
-    assert [(s.start, s.body) for s in symbols] == [(1, 5)]
+    assert [(s["start"], s["body"]) for s in symbols] == [(1, 5)]
 
 
 def test_python_structure_starts_a_class_body_at_the_decorator_of_its_first_method() -> None:
@@ -225,7 +225,7 @@ def test_python_structure_starts_a_class_body_at_the_decorator_of_its_first_meth
         return 1
 """
     _, symbols = classify.python_structure(source)
-    assert [(s.name, s.start, s.body) for s in symbols] == [("C", 1, 2), ("a", 2, 4)]
+    assert [(s["name"], s["start"], s["body"]) for s in symbols] == [("C", 1, 2), ("a", 2, 4)]
 
 
 def test_python_structure_is_empty_for_a_file_that_does_not_parse() -> None:
@@ -342,7 +342,8 @@ def test_link_moves_links_a_block_removed_here_and_added_there() -> None:
     dst = FileDiff(old_path="dst.py", new_path="dst.py", status="M")
     dst.runs = [run_of([], ["  " + line for line in block], start=20)]
     classify.link_moves([src, dst])
-    assert src.runs[0].moved_to == Place("dst.py", 20) and dst.runs[0].moved_to == Place("src.py", 10)
+    assert src.runs[0].moved_to == {"path": "dst.py", "line": 20}
+    assert dst.runs[0].moved_to == {"path": "src.py", "line": 10}
     classify.classify_run(src.runs[0], set(), set(), [])
     assert src.runs[0].cls == "moved"
 

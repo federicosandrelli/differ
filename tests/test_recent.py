@@ -27,9 +27,9 @@ def test_note_opened_keeps_the_newest_ten(tmp_path: Path, monkeypatch: pytest.Mo
         recent.note_opened(PullRef("o", "r", n), f"<title>#{n} Title &amp; {n}</title>".encode())
     recent.note_opened(PullRef("o", "r", 3), b"<html>no title</html>")
     pages = recent.load()
-    assert [p.ref.number for p in pages] == [3, 11, 10, 9, 8, 7, 6, 5, 4, 2]
-    assert pages[0].title == "o/r#3"
-    assert pages[1].title == "Title & 11"
+    assert [p["number"] for p in pages] == [3, 11, 10, 9, 8, 7, 6, 5, 4, 2]
+    assert pages[0]["title"] == "o/r#3"
+    assert pages[1]["title"] == "Title & 11"
     saved = json.loads((tmp_path / "recent.json").read_text())
     assert saved[1] == {
         "owner": "o",
@@ -37,7 +37,7 @@ def test_note_opened_keeps_the_newest_ten(tmp_path: Path, monkeypatch: pytest.Mo
         "number": 11,
         "title": "Title & 11",
         "status": "",
-        "opened": pages[1].opened,
+        "opened": pages[1]["opened"],
     }
 
 
@@ -72,7 +72,7 @@ def test_refresh_statuses_saves_the_statuses_github_reports(tmp_path: Path, monk
     monkeypatch.setattr(commands.subprocess, "run", fake_run)
     recent.refresh_statuses()
     assert sent["n0"] == 3 and sent["o0"] == "o" and sent["r0"] == "r"
-    assert {p.ref.number: p.status for p in recent.load()} == {3: "open", 2: "open", 1: "draft", 0: "merged"}
+    assert {p["number"]: p["status"] for p in recent.load()} == {3: "open", 2: "open", 1: "draft", 0: "merged"}
 
 
 def test_refresh_statuses_keeps_the_saved_statuses_when_gh_fails(
@@ -102,7 +102,7 @@ def test_refresh_statuses_skips_github_while_another_refresh_runs(
     monkeypatch.setattr(commands.subprocess, "run", fail)
     with recent.refreshing:
         recent.refresh_statuses()
-    assert recent.load()[0].status == "open"
+    assert recent.load()[0]["status"] == "open"
 
 
 def test_note_opened_keeps_the_old_list_when_a_write_dies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,4 +118,11 @@ def test_note_opened_keeps_the_old_list_when_a_write_dies(tmp_path: Path, monkey
     with pytest.raises(OSError):
         recent.note_opened(PullRef("o", "r", 2), b"<title>#2 Second</title>")
     assert (tmp_path / "recent.json").read_text() == before
-    assert [p.ref.number for p in recent.load()] == [1]
+    assert [p["number"] for p in recent.load()] == [1]
+
+
+def test_an_entry_saved_without_a_status_loads_with_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
+    (tmp_path / "recent.json").write_text('[{"owner": "o", "repo": "r", "number": 1, "title": "T", "opened": 0}]')
+    assert recent.load()[0]["status"] == ""
+    assert 'href="/o/r/pull/1"' in recent.items_html()
