@@ -76,7 +76,6 @@ function isCollapsed(f, b) {
   const r = b.run;
   if (!isNoise(r)) return false;
   if (b.rows.some(pinned)) return false;
-  if (state.show[r.class]) return false;
   return !state.expanded.has(runKey(f, r));
 }
 
@@ -126,7 +125,7 @@ function importSegments(f, rows) {
   return segs;
 }
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
-const importsOpen = (f, b) => state.show.import || state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
+const importsOpen = (f, b) => state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
 // The first body line of the innermost class, function or module-level call around each change run that adds
 // lines and is not noise, by the line the symbol starts on.
@@ -185,7 +184,7 @@ function contextBlock(f, blocks, bi, register, bodies) {
 //   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
 //   { run, rows }                     a change run; a noise run folds, shown when open
 //   { joined, parts, rows }           closed folds with nothing drawn between them, always closed
-// An import section or a noise run is locked while a noise button or a pinned row holds it open, so a click on
+// An import section or a noise run is locked while a pinned row holds it open, so a click on
 // its fold row would change nothing on the page.
 // Blocks only read, for the search and the height estimate, leave their folds out of FOLDS, whose entries would keep
 // the rows alive.
@@ -197,7 +196,7 @@ function fileBlocks(f, readOnly) {
   return joinFolds(f, blocks.flatMap((b, bi) => {
     if (b.imports) {
       const k = importsKey(f, b);
-      return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b), locked: state.show.import || b.rows.some(pinned) };
+      return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b), locked: b.rows.some(pinned) };
     }
     if (b.group) {
       const keys = b.group.map(r => runKey(f, r));
@@ -206,7 +205,7 @@ function fileBlocks(f, readOnly) {
     if (b.ctx) return contextBlock(f, blocks, bi, register, bodies);
     if (!isNoise(b.run)) return { ...b, fold: null, open: true };
     const k = runKey(f, b.run);
-    return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b), locked: state.show[b.run.class] || b.rows.some(pinned) };
+    return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b), locked: b.rows.some(pinned) };
   }), register);
 }
 // Closed folds with no row drawn between them read as one fold, so they join into one fold row that opens them
@@ -266,7 +265,7 @@ function revealRows(f, keys) {
 function foldKey(f) {
   const runs = f.path + '#', folds = f.path + ':', c = state.compose && state.compose.path === f.path ? state.compose : null;
   const threads = THREADS.byFile.get(f.path);
-  return JSON.stringify([state.show, [...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds)),
+  return JSON.stringify([[...state.expanded].filter(k => k.startsWith(runs)), [...state.unfolded].filter(k => k.startsWith(folds)),
     threads ? [...threads.rows.keys()] : [], c && [c.side, c.startLine, c.line]]);
 }
 // The state the file's blocks depend on, for a cache key: the folds, and the search marks in the rows.

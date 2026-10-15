@@ -587,6 +587,3 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     assert rename["from"] == "old_name" and rename["to"] == "new_name"
     assert rename["runs"] == 3 and rename["files"] == ["app.py", "cli.py"]
     assert rename["origin"] == {"path": "app.py", "line": 5, "side": "new", "text": "def new_name(x):"}
-
-    # gen.py and package-lock.json are generated, so their lines count in no total.
-    assert result["totals"] == {"import": 3, "rename": 4, "substantive": 4}

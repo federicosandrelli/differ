@@ -121,7 +121,7 @@ What the tests cover:
   `substantive`); `detect_moves`; `file_kind`; `is_generated` for the
   `.gitattributes` mark, lock files and the header markers; `language`;
   and `classify()` end to end on a small pull request, asserting the
-  `totals` and the per-file `stats`.
+  per-file `stats`.
 - `build.py`: `parse_ref` with the URL and `owner/repo#n` forms, upper-case
   names and bad input; `changed_paths` with renames; `page_path`;
   `page_current` and `latest_page` with files whose mtimes are set by the

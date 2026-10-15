@@ -22,7 +22,6 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     classified = {
         "files": [{"path": "x.html", "content": "<script></script>"}],
         "renames": [],
-        "totals": {},
     }
     html = render.render_page(classified, PR)
     assert "<title>#3 Fix &lt;b&gt;&amp;&lt;/b&gt; things</title>" in html
@@ -40,13 +39,13 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
 
 
 def test_read_head_reads_back_the_title_and_status_render_page_writes() -> None:
-    page = render.render_page({"files": [], "renames": [], "totals": {}}, PR | {"status": "merged"})
+    page = render.render_page({"files": [], "renames": []}, PR | {"status": "merged"})
     assert render.read_head(page.encode()) == ("Fix <b>&</b> things", "merged")
     assert render.read_head(b"<html></html>") == (None, "")
 
 
 def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
-    html = render.render_page({"files": [], "renames": [], "totals": {}}, PR)
+    html = render.render_page({"files": [], "renames": []}, PR)
     assert "<script src=" not in html
     assert "<link " not in html
     assert (render.VENDOR_DIR / "highlight.min.js").read_text() in html

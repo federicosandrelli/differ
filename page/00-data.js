@@ -3,7 +3,6 @@ const D = JSON.parse(document.getElementById('data').textContent);
 const PR = D.pr;
 const FILES = D.files;
 const BY_PATH = Object.fromEntries(FILES.map(f => [f.path, f]));
-const NOISE = ['import', 'rename', 'whitespace', 'moved'];
 const NOISE_LABEL = { import: 'imports', rename: 'rename fallout', whitespace: 'whitespace', moved: 'moved code' };
 const KIND_LABEL = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', V: 'moved' };
 const RADIUS = 4;
@@ -20,7 +19,6 @@ FILES.forEach((f, i) => {
 const state = {
   view: 'overview', filter: 'implementation', closed: new Set(), q: '', hit: null,
   showNoiseOnly: false, showGenerated: false, cursor: null, openOverride: new Map(),
-  show: Object.fromEntries(NOISE.map(k => [k, false])),
   expanded: new Set(), unfolded: new Set(),
   compose: null, drafts: new Map(), replyOpen: new Map(), openThreads: new Set(), showOutdated: new Set(),
   reviewPanel: false, reviewText: '', convText: '', busy: false, focus: null,
@@ -74,7 +72,7 @@ const LOG = { errors: [], actions: [] };
 function logPush(list, entry) { list.push({ t: Date.now(), ...entry }); if (list.length > 25) list.shift(); }
 function logTarget(el) {
   if (!el.closest || el.closest('#side .foot')) return '';
-  const t = el.closest('[data-path],[data-folder],[data-fold],[data-toggle],[data-go],[data-filter],[data-show],[data-review],button,a,td.n,.check,.thread.folded');
+  const t = el.closest('[data-path],[data-folder],[data-fold],[data-toggle],[data-go],[data-filter],[data-review],button,a,td.n,.check,.thread.folded');
   if (!t) return '';
   const ds = Object.entries(t.dataset).slice(0, 2).map(([k, v]) => v ? `${k}=${v}` : k).join(' ');
   const row = el.closest('tr[id]'), text = (t.textContent || '').replace(/\s+/g, ' ').trim();
