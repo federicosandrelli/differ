@@ -327,18 +327,20 @@ def test_the_tree_cursor_passes_a_closed_section_and_enter_opens_it_at_its_first
 
 
 def test_enter_in_the_tree_goes_on_when_the_hit_is_in_a_collapsed_folder(
-    page: Page, server_url: str, config_pr: str
+    page: Page, server_url: str, add_pr: AddPr
 ) -> None:
-    open_pr(page, server_url, config_pr)
+    pr = add_pr({"lib/a.py": "a = 1\n", "src/b.py": "b = 1\n"}, {"lib/a.py": "a = 2\n", "src/b.py": "b = 2\n"})
+    open_pr(page, server_url, pr)
     meta = page.locator("#searchmeta")
-    page.fill("#side .search", "re")
-    page.click("#side .leaf[data-path='src/config.py']")
-    expect(meta).to_have_text("4 files · 1 / 9")
-    page.click("#side [data-tree='collapse']")
-    expect(page.locator("#side .leaf")).to_have_count(0)
-    page.focus("#side .list")
+    page.fill("#side .search", "= 2")
+    page.click("#side .dir[data-folder='lib']")
+    page.click("#side .leaf[data-path='src/b.py']")
+    expect(meta).to_have_text("2 files · 2 / 2")
     page.keyboard.press("Enter")
-    expect(meta).to_have_text("4 files · 2 / 9")
+    expect(meta).to_have_text("2 files · 1 / 2")
+    expect(page.locator("#side .leaf[data-path='lib/a.py']")).to_have_count(0)
+    page.keyboard.press("Enter")
+    expect(meta).to_have_text("2 files · 2 / 2")
 
 
 def test_search_keeps_every_file_in_the_tree(page: Page, server_url: str) -> None:
