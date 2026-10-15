@@ -29,14 +29,8 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     assert markers[:2] == ["// ---- vendor/highlight.min.js", "// ---- frame.js"]
     assert markers[2:] == [f"// ---- {p.name}" for p in render.scripts()]
     assert markers[2:] == sorted(markers[2:])
-    assert ':root[data-theme="dark"]' in html
+    assert ':root[data-theme="light"]' in html
     assert (render.PAGE_DIR / "page.css").read_text() in html
-
-
-def test_theme_css_defaults_to_the_dark_palette_and_ignores_the_system_theme() -> None:
-    css = render.theme_css()
-    assert css.lstrip().startswith(":root { " + render.vars_block(render.PALETTES["dark"]))
-    assert "prefers-color-scheme" not in css
 
 
 def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:

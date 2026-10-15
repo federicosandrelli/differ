@@ -1,8 +1,6 @@
 // The theme of every document the server sends, in one place: the saved choice applied before the first paint
 // (this script sits in the head), the native window following it in the desktop app, every open document
 // following a change made in another, and the picker on the document that has one (buttons with data-theme).
-// Dark is the default: the app never follows the system theme, and a saved value it no longer knows (such as
-// the old `auto`) counts as dark.
 const Theme = (() => {
   const THEMES = ['light', 'sepia', 'dark'], DEFAULT = 'dark', KEY = 'dr:theme';
   const valid = (t) => THEMES.includes(t) ? t : DEFAULT;
