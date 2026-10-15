@@ -689,21 +689,14 @@ def renames_json(files: list[FileDiff], origins: dict[Pair, Origin | None]) -> l
 
 
 def classify(diff: Diff) -> dict:
-    """The diff's files, the renames found across them, and the line totals by class of the files that aren't
-    generated, a run the page shows counting as substantive."""
+    """The diff's files and the renames found across them."""
     files = parse_patch(diff.patch)
     for fd in files:
         build_runs(fd)
     link_moves(files)
     renames = collect_renames(files)
     classified = classify_files(diff, files, renames)
-    totals: Counter[RunClass] = Counter()
-    for f in classified:
-        if not f.generated:
-            for run in f.diff.runs:
-                totals[run.cls if run.noise else "substantive"] += run.size
     return {
         "files": [file_json(f, diff) for f in classified],
         "renames": renames_json(files, find_origins(classified, renames)),
-        "totals": dict(totals),
     }

@@ -212,7 +212,7 @@ the second build of a repository fast, and `git fetch` keeps them small.
   `shell/`, highlight.js from `page/vendor/` (version 11.9.0, with its BSD
   licence next to it), and the scripts in `page/` concatenated in name order,
   and turns the classified diff and the PR metadata into one HTML
-  page: the PR description, the noise totals and the rename table, a file tree
+  page: the PR description and the rename table, a file tree
   with change colours and search, a reviewed mark per file kept in
   `localStorage`, and every file with its removed lines interleaved.
 - The page's script is split by concern: `00-data.js` holds the data, the

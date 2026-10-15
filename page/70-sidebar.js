@@ -79,14 +79,13 @@ function reviewButton() {
   return `<button data-review-panel class="review ${look}">${label}${n ? `<span class="count">${n}</span>` : ''}</button>`;
 }
 function renderSide() {
-  const reviewed = FILES.filter(isReviewed).length;
+  const reviewed = FILES.filter(isReviewed).length, tests = FILES.filter(f => f.kind === 'test').length;
+  const filterButton = (filter, label, n) => `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="count">${fmt(n)}</span></button>`;
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
     ${commentNotices()}${state.reviewPanel ? reviewPanelHtml() : ''}
     <div class="controls"><span class="seg">
-      <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
-      <button data-filter="implementation" class="${state.filter === 'implementation' ? 'on' : ''}">Implementation</button>
-      <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
+      ${filterButton('all', 'All', FILES.length)}${filterButton('implementation', 'Implementation', FILES.length - tests)}${filterButton('test', 'Tests', tests)}</span>
       <span class="hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>o</kbd> top</span></div>
     <div class="searchbar">
       <input type="search" class="search" placeholder="Search" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">

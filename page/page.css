@@ -8,6 +8,8 @@ button:hover { background: var(--bg-hover); } button.on { background: var(--acce
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; padding: 3px 10px; } .seg button + button { border-left: 1px solid var(--border); }
 .seg button.on { background: var(--accent-bg); color: var(--accent); }
+.seg button .count { margin-left: 6px; display: inline-block; font-size: 11px; line-height: 16px; min-width: 16px; padding: 0 5px; border-radius: 999px; text-align: center; background: var(--bg-inset); color: var(--text-secondary); }
+.seg button.on .count { background: var(--accent); color: var(--bg-canvas); }
 kbd { font: 11px var(--mono); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
 .hint { color: var(--text-muted); font-size: 12px; }
 /* A mark wraps a whole match, highlighter tokens and all, so the tokens take its colour. */
@@ -113,13 +115,6 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 .prbody details, .cbody details { margin: 6px 0; } .prbody summary, .cbody summary { cursor: pointer; }
 .prbody img, .cbody img { max-width: 100%; } .prbody blockquote, .cbody blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border); color: var(--text-secondary); }
 .prbody .contains-task-list, .cbody .contains-task-list { list-style: none; padding-left: 4px; }
-.stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
-.stat { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; min-width: 130px; }
-.stat b { display: block; font-size: 20px; font-weight: 600; } .stat span { color: var(--text-secondary); font-size: 12px; }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.chip { font-size: 12px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; cursor: pointer; color: var(--text-secondary); }
-.chip.on { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
-.chip b { font-weight: 600; }
 .scrollx { overflow-x: auto; }
 table.plain { border-collapse: collapse; width: 100%; font-size: 13px; }
 table.plain th, table.plain td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; white-space: nowrap; }

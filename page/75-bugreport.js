@@ -37,7 +37,7 @@ function bugState() {
   const c = state.compose;
   return {
     view: state.view, cursor: state.cursor, filter: state.filter, q: state.q, hit: state.hit,
-    showNoiseOnly: state.showNoiseOnly, showGenerated: state.showGenerated, show: state.show,
+    showNoiseOnly: state.showNoiseOnly, showGenerated: state.showGenerated,
     closedFolders: cap([...state.closed]), openOverride: Object.fromEntries(state.openOverride),
     expanded: cap([...state.expanded]), unfolded: cap([...state.unfolded]),
     compose: c && { ...c, text: `${c.text.length} chars` }, drafts: [...state.drafts.values()].map(d => ({ ...d, text: `${d.text.length} chars` })),

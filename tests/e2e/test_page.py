@@ -237,21 +237,6 @@ def test_folds_with_nothing_between_them_join_into_one_row_that_opens_them_all(
     expect(section.locator("tr.fold")).to_have_count(0)
 
 
-def test_a_noise_button_locks_the_fold_rows_of_its_kind(page: Page, server_url: str) -> None:
-    open_pr(page, server_url)
-    section = page.locator(APP)
-    imports = section.locator("tr.add", has_text="import sys")
-    page.click("#overview .chip[data-show='import']")
-    expect(imports).to_be_visible()
-    locked = section.locator("tr.runhead.locked", has_text="import")
-    expect(locked).to_have_count(1)
-    expect(section.locator("tr.runhead[data-fold]")).to_have_count(0)
-    locked.click()
-    page.click("#overview .chip[data-show='import']")
-    expect(imports).to_have_count(0)
-    expect(section.locator("tr.collapsed[data-fold]", has_text="import")).to_have_count(1)
-
-
 def test_the_line_number_a_row_shows_starts_and_extends_a_comment(page: Page, server_url: str, add_pr: AddPr) -> None:
     open_pr(page, server_url, add_pr({"src/abc.py": "a = 1\nb = 2\nc = 3\n"}, {"src/abc.py": "a = 1\nb = 20\nc = 3\n"}))
     section = page.locator("section[data-file='src/abc.py']")

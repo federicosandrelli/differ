@@ -1,4 +1,4 @@
-// The overview at the top of the main pane: the PR description, the noise totals, the renames and the conversation.
+// The overview at the top of the main pane: the PR description, the renames and the conversation.
 
 // Enough markdown for a PR description: headings, bullets, paragraphs, links, bold, inline code.
 function renderMarkdown(md, ctx) {
@@ -46,24 +46,12 @@ function renamesHtml() {
 }
 
 function overviewHtml() {
-  const t = D.totals, sub = t.substantive || 0;
-  const hidden = NOISE.reduce((a, k) => a + (t[k] || 0), 0), raw = sub + hidden;
-  const impl = FILES.filter(f => f.kind === 'implementation'), tests = FILES.filter(f => f.kind === 'test');
-  const reviewed = FILES.filter(isReviewed).length;
   return `<h1>${esc(PR.title)}</h1>
     <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a> · ${esc(PR.author)} · ${plural(PR.commits, 'commit')} · <span class="mono">${PR.base.slice(0, 8)}…${PR.head.slice(0, 8)}</span></div>
     <div class="prbody">${bodyHtml({ body: PR.body || '', html: C.body_html })}</div>
-    <div class="stats">
-      <div class="stat"><b>${fmt(sub)}</b><span>lines to read</span></div>
-      <div class="stat"><b>${fmt(hidden)}</b><span>lines of noise hidden (${raw ? Math.round(100 * hidden / raw) : 0}% of ${fmt(raw)})</span></div>
-      <div class="stat"><b>${impl.length} / ${tests.length}</b><span>implementation / test files</span></div>
-      <div class="stat"><b>${reviewed} / ${FILES.length}</b><span>files reviewed</span></div>
-    </div>
-    <div class="chips">${NOISE.filter(k => t[k]).map(k => `<span class="chip ${state.show[k] ? 'on' : ''}" data-show="${k}">${state.show[k] ? 'showing' : 'hiding'} ${NOISE_LABEL[k]} <b>${fmt(t[k])}</b></span>`).join('')}</div>
-    <p class="hint" style="margin-top:6px">Import sections are folded to one row in every file, changed or not. Other lines are collapsed only when the classifier can prove what they are: the removed line becomes the added line exactly by applying a rename that recurs elsewhere in the PR.</p>
     ${renamesHtml()}${conversationHtml()}`;
 }
 // Everything the overview's HTML depends on, so it is rebuilt only when one of them changes.
 function overviewKey() {
-  return JSON.stringify([C.version, C.loaded, C.error, state.show, FILES.filter(isReviewed).length, state.busy]);
+  return JSON.stringify([C.version, C.loaded, C.error, state.busy]);
 }
