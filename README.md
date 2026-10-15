@@ -230,8 +230,9 @@ the second build of a repository fast, and `git fetch` keeps them small.
   the DOM stays small whatever the size of the pull request. A file's rows are
   computed once per state they depend on, so toggling a fold or typing in the
   search costs only the files on screen.
-- `server.py` serves the tabbed shell, the start page and the pages, building
-  them in the background with a progress page, and the comments API. Those
+- `server.py` serves the tabbed shell, the start page and the pages, with a
+  progress page while a page builds, and the comments API. `build.serve`
+  decides which page to serve and when to build one in the background. Those
   documents are the files in `shell/`: `tabs.html` and `tabs.js` are the shell,
   which holds each page in an iframe; `frame.js` runs in every page and hands
   the shell its title and its links, so a click opens or switches a tab;

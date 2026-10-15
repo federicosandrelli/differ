@@ -12,10 +12,12 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import threading
 import time
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import classify
 import commands
@@ -27,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 CACHE = Path(os.environ.get("DIFF_REVIEW_CACHE", Path.home() / ".cache" / "diff-review"))
 PAGES_KEPT = 2
 PAGE_MAX_AGE = 30 * 86400
+HEAD_TTL = 20
 
 Log = Callable[[str], None]
 
@@ -61,6 +64,86 @@ def latest_page(ref: PullRef) -> Path | None:
 
 def forget_pages(ref: PullRef) -> None:
     shutil.rmtree(pages_dir(ref), ignore_errors=True)
+
+
+@dataclass
+class Job:
+    """A page building in the background, as /status reports it."""
+
+    state: Literal["building", "done", "error"] = "building"
+    log: list[str] = field(default_factory=list)
+    error: str = ""
+
+
+jobs: dict[PullRef, Job] = {}
+# When the head commit of each pull request was last read from GitHub.
+head_checked: dict[PullRef, float] = {}
+lock = threading.Lock()
+
+
+def serve(ref: PullRef) -> Path | None:
+    """The newest current page of the pull request, or None while its first page builds. A page that has none
+    starts building, and serving a page checks the head commit in the background, at most once every HEAD_TTL
+    seconds, to build the page for a new push while the reader reads the old one."""
+    page = latest_page(ref)
+    if not page:
+        start(ref)
+        return None
+    with lock:
+        if time.time() - head_checked.get(ref, 0.0) < HEAD_TTL:
+            return page
+        head_checked[ref] = time.time()
+
+    def check() -> None:
+        try:
+            if head_moved(ref):
+                start(ref)
+        except commands.CommandError as exc:
+            sys.stderr.write(f"head check for {ref} failed: {exc}\n")
+
+    threading.Thread(target=check, daemon=True).start()
+    return page
+
+
+def refresh(ref: PullRef) -> None:
+    """Check the head commit now, and when the newest page was built from an older one, drop the old pages and
+    build the page for the head, so the next visit waits for it. Raises CommandError when gh can't tell the head."""
+    if head_moved(ref):
+        forget_pages(ref)
+        start(ref)
+
+
+def head_moved(ref: PullRef) -> bool:
+    """Whether the head commit on GitHub has no current page. Raises CommandError when gh can't tell the head."""
+    head = github.head_sha(ref)
+    with lock:
+        head_checked[ref] = time.time()
+    return not page_current(page_path(ref, head))
+
+
+def start(ref: PullRef) -> Job:
+    """Build the pull request's page in the background, unless a build of it is running."""
+    with lock:
+        job = jobs.get(ref)
+        if job and job.state == "building":
+            return job
+        job = jobs[ref] = Job()
+
+    def work() -> None:
+        try:
+            build(ref, log=job.log.append)
+            job.state = "done"
+        except Exception as exc:
+            job.error = str(exc)
+            job.state = "error"
+
+    threading.Thread(target=work, daemon=True).start()
+    return job
+
+
+def job_of(ref: PullRef) -> Job | None:
+    with lock:
+        return jobs.get(ref)
 
 
 def mtime(path: Path) -> float:

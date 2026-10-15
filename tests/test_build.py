@@ -146,3 +146,69 @@ def test_prune_all_on_an_empty_cache_is_a_no_op(tmp_path: Path, monkeypatch: pyt
 
 def test_a_page_is_stale_once_any_module_that_shapes_it_changes() -> None:
     assert {"build.py", "classify.py", "github.py", "render.py"} <= {p.name for p in build.sources()}
+
+
+class AtOnce:
+    """A stand-in for threading.Thread that runs its target when started."""
+
+    def __init__(self, target: Any, daemon: bool) -> None:
+        self.target = target
+
+    def start(self) -> None:
+        self.target()
+
+
+@pytest.fixture
+def pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """A cache with one current page for REF built from head "a", a GitHub whose head is in the dict, and the
+    builds started, in the dict too."""
+    monkeypatch.setattr(build, "CACHE", tmp_path)
+    monkeypatch.setattr(build, "jobs", {})
+    monkeypatch.setattr(build, "head_checked", {})
+    monkeypatch.setattr(build.threading, "Thread", AtOnce)
+    state: dict[str, Any] = {"head": "a" * 40, "head_reads": 0, "started": []}
+
+    def head_sha(ref: PullRef) -> str:
+        state["head_reads"] += 1
+        return state["head"]
+
+    monkeypatch.setattr(build.github, "head_sha", head_sha)
+    monkeypatch.setattr(build, "build", lambda ref, log: state["started"].append(ref))
+    page = build.page_path(REF, "a" * 40)
+    page.parent.mkdir(parents=True)
+    page.write_text("page")
+    future = time.time() + 60
+    os.utime(page, (future, future))
+    return state
+
+
+def test_serve_reads_the_head_at_most_once_in_head_ttl(pages: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    assert build.serve(REF) == build.page_path(REF, "a" * 40)
+    assert build.serve(REF) is not None
+    assert pages["head_reads"] == 1 and pages["started"] == []
+    monkeypatch.setitem(build.head_checked, REF, time.time() - build.HEAD_TTL)
+    pages["head"] = "b" * 40
+    assert build.serve(REF) == build.page_path(REF, "a" * 40)
+    assert pages["head_reads"] == 2 and pages["started"] == [REF]
+
+
+def test_serve_starts_the_first_build_of_a_pull_request(pages: dict[str, Any]) -> None:
+    other = PullRef("owner", "repo", 8)
+    assert build.serve(other) is None
+    assert pages["started"] == [other] and pages["head_reads"] == 0
+
+
+def test_a_build_already_running_is_not_started_again(pages: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        build.threading, "Thread", lambda target, daemon: type("Idle", (), {"start": lambda self: None})()
+    )
+    first = build.start(REF)
+    assert build.start(REF) is first and build.job_of(REF) is first and first.state == "building"
+
+
+def test_refresh_rebuilds_only_when_the_head_moved(pages: dict[str, Any]) -> None:
+    build.refresh(REF)
+    assert pages["started"] == [] and build.latest_page(REF) is not None
+    pages["head"] = "b" * 40
+    build.refresh(REF)
+    assert pages["started"] == [REF] and build.latest_page(REF) is None

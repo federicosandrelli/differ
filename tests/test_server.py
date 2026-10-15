@@ -40,7 +40,7 @@ def get(path: str, site: str | None = None) -> tuple[int, bytes]:
 
 @pytest.mark.parametrize("path", ["/o/r/pull/1", "/open?pr=o/r%231", "/status/o/r/1"])
 def test_a_cross_site_get_to_a_page_open_or_status_is_refused(path: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "start_job", lambda ref: pytest.fail("a cross-site GET started a build"))
+    monkeypatch.setattr(server.build, "start", lambda ref: pytest.fail("a cross-site GET started a build"))
     monkeypatch.setattr(server.build, "latest_page", lambda ref: pytest.fail("a cross-site GET read a page"))
     status, body = get(path, "cross-site")
     assert status == 403
@@ -50,7 +50,7 @@ def test_a_cross_site_get_to_a_page_open_or_status_is_refused(path: str, monkeyp
 @pytest.mark.parametrize("site", [None, "same-origin", "none"])
 def test_a_get_without_a_cross_site_header_passes(site: str | None, monkeypatch: pytest.MonkeyPatch) -> None:
     started = []
-    monkeypatch.setattr(server, "start_job", lambda ref: started.append(ref))
+    monkeypatch.setattr(server.build, "start", lambda ref: started.append(ref))
     monkeypatch.setattr(server.build, "latest_page", lambda ref: None)
     status, body = get("/o/r/pull/1", site)
     assert status == 200 and started == [PullRef("o", "r", 1)]

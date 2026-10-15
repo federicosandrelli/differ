@@ -35,10 +35,10 @@ import sys
 import threading
 import time
 import traceback
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Literal, TextIO, get_args
+from typing import Any, TextIO, get_args
 from urllib.parse import parse_qs, urlparse
 
 import build
@@ -53,73 +53,12 @@ PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
 STATUS = re.compile(rf"^/status/{SLUG}/(?P<number>\d+)$")
 API = re.compile(rf"^/api/{SLUG}/(?P<number>\d+)/(?P<action>\w+)$")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
-HEAD_TTL = 20
 GH_TTL = 60
 LOG_MAX = 5 * 1024 * 1024
 
 
-@dataclass
-class Job:
-    """A page building in the background, as /status reports it."""
-
-    state: Literal["building", "done", "error"] = "building"
-    log: list[str] = field(default_factory=list)
-    error: str = ""
-
-
-jobs: dict[PullRef, Job] = {}
-heads: dict[PullRef, tuple[float, str]] = {}
 gh_checked: tuple[float, str | None] = (0.0, None)
 lock = threading.Lock()
-
-
-def head_checked_recently(ref: PullRef) -> bool:
-    with lock:
-        cached = heads.get(ref)
-    return bool(cached) and time.time() - cached[0] < HEAD_TTL
-
-
-def current_head(ref: PullRef) -> str:
-    sha = github.head_sha(ref)
-    with lock:
-        heads[ref] = (time.time(), sha)
-    return sha
-
-
-def rebuild_if_moved(ref: PullRef) -> None:
-    """Build the page for the head commit in the background when the one served was built from an older one."""
-    if head_checked_recently(ref):
-        return
-    with lock:
-        heads[ref] = (time.time(), "")
-
-    def work() -> None:
-        try:
-            if not build.page_current(build.page_path(ref, current_head(ref))):
-                start_job(ref)
-        except commands.CommandError as exc:
-            sys.stderr.write(f"head check for {ref} failed: {exc}\n")
-
-    threading.Thread(target=work, daemon=True).start()
-
-
-def start_job(ref: PullRef) -> Job:
-    with lock:
-        job = jobs.get(ref)
-        if job and job.state == "building":
-            return job
-        job = jobs[ref] = Job()
-
-    def work() -> None:
-        try:
-            build.build(ref, log=job.log.append)
-            job.state = "done"
-        except Exception as exc:
-            job.error = str(exc)
-            job.state = "error"
-
-    threading.Thread(target=work, daemon=True).start()
-    return job
 
 
 def gh_problem() -> str | None:
@@ -240,24 +179,19 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return self.send(400, error_page(str(exc)))
             if m := STATUS.match(url.path):
-                with lock:
-                    job = jobs.get(PullRef.from_match(m))
+                job = build.job_of(PullRef.from_match(m))
                 return self.send_json(asdict(job) if job else {"state": "none", "log": [], "error": ""})
             if m := PAGE.match(url.path):
                 if url.path != url.path.lower():
                     return self.redirect(url.path.lower() + (f"?{url.query}" if url.query else ""))
                 ref = PullRef.from_match(m)
                 if "refresh" in query:
-                    if not build.page_current(build.page_path(ref, current_head(ref))):
-                        build.forget_pages(ref)
-                        start_job(ref)
+                    build.refresh(ref)
                     return self.redirect(url.path)
-                if page := build.latest_page(ref):
-                    rebuild_if_moved(ref)
+                if page := build.serve(ref):
                     body = page.read_bytes()
                     recent.note_opened(ref, body)
                     return self.send(200, body)
-                start_job(ref)
                 return self.send(200, progress_page(ref))
             if (m := API.match(url.path)) and m["action"] == "comments":
                 return self.send_json(comments.fetch(PullRef.from_match(m)))
