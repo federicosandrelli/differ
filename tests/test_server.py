@@ -1,14 +1,13 @@
 import io
 import json
-import re
 import subprocess
-import time
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
 import commands
+import recent
 import server
 from github import PullRef
 
@@ -62,7 +61,7 @@ def test_a_get_without_a_cross_site_header_passes(site: str | None, monkeypatch:
 
 
 def test_the_home_page_serves_a_cross_site_get(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     status, body = get("/home", "cross-site")
     assert status == 200
     assert b"No pull requests opened yet" in body
@@ -131,91 +130,6 @@ def test_a_route_names_its_pull_request_in_lower_case() -> None:
     assert server.PAGE.match("/owner/repo/pull/12/files") is None
 
 
-def test_ago() -> None:
-    now = time.time()
-    assert server.ago(now) == "just now"
-    assert server.ago(now - 90) == "1m ago"
-    assert server.ago(now - 3700) == "1h ago"
-    assert server.ago(now - 2 * 86400) == "2d ago"
-
-
-def test_note_opened_keeps_the_newest_ten(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
-    assert server.recent_pages() == []
-    for n in range(12):
-        server.note_opened(PullRef("o", "r", n), f"<title>#{n} Title &amp; {n}</title>".encode())
-    server.note_opened(PullRef("o", "r", 3), b"<html>no title</html>")
-    recent = server.recent_pages()
-    assert [p["number"] for p in recent] == [3, 11, 10, 9, 8, 7, 6, 5, 4, 2]
-    assert recent[0]["title"] == "o/r#3"
-    assert recent[1]["title"] == "Title & 11"
-    assert json.loads((tmp_path / "recent.json").read_text()) == recent
-
-
-def test_recent_items_escapes_titles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
-    assert "No pull requests opened yet" in server.recent_items()
-    server.note_opened(PullRef("o", "r", 1), b"<title>#1 a &lt;b&gt;</title>")
-    items = server.recent_items()
-    assert 'href="/o/r/pull/1"' in items
-    assert re.search(r'<span class="t">a &lt;b&gt;</span>', items)
-
-
-def test_refresh_statuses_saves_the_statuses_github_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
-    for n in range(4):
-        server.note_opened(PullRef("o", "r", n), b'<meta name="pr-status" content="open">')
-    answer = {
-        "data": {
-            "p0": {"pullRequest": None},
-            "p1": None,
-            "p2": {"pullRequest": {"state": "OPEN", "isDraft": True}},
-            "p3": {"pullRequest": {"state": "MERGED", "isDraft": False}},
-        },
-        "errors": [{"message": "Could not resolve to a Repository"}],
-    }
-    sent = {}
-
-    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
-        sent.update(json.loads(kwargs["input"])["variables"])
-        return subprocess.CompletedProcess(args, 1, json.dumps(answer).encode(), b"")
-
-    monkeypatch.setattr(commands.subprocess, "run", fake_run)
-    server.refresh_statuses()
-    assert sent["n0"] == 3 and sent["o0"] == "o" and sent["r0"] == "r"
-    assert {p["number"]: p["status"] for p in server.recent_pages()} == {3: "open", 2: "open", 1: "draft", 0: "merged"}
-
-
-def test_refresh_statuses_keeps_the_saved_statuses_when_gh_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
-    server.note_opened(PullRef("o", "r", 1), b'<meta name="pr-status" content="merged">')
-    before = (tmp_path / "recent.json").read_text()
-    monkeypatch.setattr(
-        commands.subprocess,
-        "run",
-        lambda args, **kwargs: subprocess.CompletedProcess(args, 1, b"", b"gh: not logged in"),
-    )
-    server.refresh_statuses()
-    assert (tmp_path / "recent.json").read_text() == before
-
-
-def test_refresh_statuses_skips_github_while_another_refresh_runs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
-    server.note_opened(PullRef("o", "r", 1), b'<meta name="pr-status" content="open">')
-
-    def fail(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
-        raise AssertionError("gh ran during another refresh")
-
-    monkeypatch.setattr(commands.subprocess, "run", fail)
-    with server.refreshing:
-        server.refresh_statuses()
-    assert server.recent_pages()[0]["status"] == "open"
-
-
 def request(method: str, path: str, body: bytes = b"") -> server.Handler:
     h = handler("http://localhost:8765", "application/json", host="localhost:8765")
     h.command, h.path, h.request_version = method, path, "HTTP/1.1"
@@ -265,22 +179,6 @@ def test_api_answers_an_unexpected_error_as_json(monkeypatch: pytest.MonkeyPatch
     assert (code, json.loads(body)) == (500, {"error": "Unexpected error: RuntimeError: boom"})
 
 
-def test_note_opened_keeps_the_old_list_when_a_write_dies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
-    server.note_opened(PullRef("o", "r", 1), b"<title>#1 First</title>")
-    before = (tmp_path / "recent.json").read_text()
-
-    def die(self: Path, data: str, **kwargs: Any) -> int:
-        self.write_bytes(data[: len(data) // 2].encode())
-        raise OSError("disk full")
-
-    monkeypatch.setattr(Path, "write_text", die)
-    with pytest.raises(OSError):
-        server.note_opened(PullRef("o", "r", 2), b"<title>#2 Second</title>")
-    assert (tmp_path / "recent.json").read_text() == before
-    assert [p["number"] for p in server.recent_pages()] == [1]
-
-
 def gh_run(returncode: int) -> Any:
     calls: list[list[str]] = []
 
@@ -293,7 +191,7 @@ def gh_run(returncode: int) -> Any:
 
 
 def test_start_page_shows_a_banner_when_gh_is_signed_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     monkeypatch.setattr(server, "gh_checked", (0.0, None))
     monkeypatch.setattr(commands.subprocess, "run", gh_run(1))
     page = server.start_page().decode()
@@ -304,7 +202,7 @@ def test_start_page_shows_a_banner_when_gh_is_signed_out(tmp_path: Path, monkeyp
 
 
 def test_start_page_shows_a_banner_when_gh_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     monkeypatch.setattr(server, "gh_checked", (0.0, None))
 
     def missing(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
@@ -317,7 +215,7 @@ def test_start_page_shows_a_banner_when_gh_is_missing(tmp_path: Path, monkeypatc
 
 
 def test_start_page_shows_no_banner_when_gh_is_signed_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server, "RECENT", tmp_path / "recent.json")
+    monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     monkeypatch.setattr(server, "gh_checked", (0.0, None))
     monkeypatch.setattr(commands.subprocess, "run", gh_run(0))
     page = server.start_page().decode()

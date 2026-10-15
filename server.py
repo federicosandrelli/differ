@@ -35,15 +35,17 @@ import sys
 import threading
 import time
 import traceback
+from dataclasses import asdict, dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import TextIO
+from typing import Literal, TextIO
 from urllib.parse import parse_qs, urlparse
 
 import build
 import commands
 import comments
 import github
+import recent
 import render
 from github import SLUG, PullRef
 
@@ -52,24 +54,23 @@ STATUS = re.compile(rf"^/status/{SLUG}/(?P<number>\d+)$")
 API = re.compile(rf"^/api/{SLUG}/(?P<number>\d+)/(?P<action>\w+)$")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 HEAD_TTL = 20
-RECENT = build.CACHE / "recent.json"
-RECENT_MAX = 10
 GH_TTL = 60
 LOG_MAX = 5 * 1024 * 1024
 
 
+@dataclass
 class Job:
-    def __init__(self) -> None:
-        self.log: list[str] = []
-        self.state = "building"
-        self.error = ""
+    """A page building in the background, as /status reports it."""
+
+    state: Literal["building", "done", "error"] = "building"
+    log: list[str] = field(default_factory=list)
+    error: str = ""
 
 
 jobs: dict[PullRef, Job] = {}
 heads: dict[PullRef, tuple[float, str]] = {}
 gh_checked: tuple[float, str | None] = (0.0, None)
 lock = threading.Lock()
-refreshing = threading.Lock()
 
 
 def head_checked_recently(ref: PullRef) -> bool:
@@ -121,61 +122,6 @@ def start_job(ref: PullRef) -> Job:
     return job
 
 
-def recent_pages() -> list[dict]:
-    """The pull requests opened last, newest first: owner, repo, number, title, status and the time of the last
-    open."""
-    try:
-        return json.loads(RECENT.read_text())
-    except (OSError, ValueError):
-        return []
-
-
-def entry_ref(entry: dict) -> PullRef:
-    return PullRef(entry["owner"], entry["repo"], entry["number"])
-
-
-def note_opened(ref: PullRef, page: bytes) -> None:
-    """Move the pull request to the top of the recently opened list, with the title and status of the page just
-    served."""
-    title, status = render.read_head(page)
-    with lock:
-        rest = [p for p in recent_pages() if entry_ref(p) != ref]
-        entry = {
-            "owner": ref.owner,
-            "repo": ref.repo,
-            "number": ref.number,
-            "title": title or str(ref),
-            "status": status,
-            "opened": time.time(),
-        }
-        save_recent([entry, *rest][:RECENT_MAX])
-
-
-def save_recent(pages: list[dict]) -> None:
-    """Replace recent.json in one step, so a reader sees the old list or the new one and never part of one. The
-    list goes to recent.json.tmp first and is renamed over recent.json, so a crash mid-write leaves the old list."""
-    RECENT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = RECENT.with_name(RECENT.name + ".tmp")
-    tmp.write_text(json.dumps(pages))
-    os.replace(tmp, RECENT)
-
-
-def refresh_statuses() -> None:
-    """Save the status GitHub reports now for each pull request in the recently opened list. A pull request
-    GitHub can't return keeps the status saved before. While one refresh runs, another returns at once."""
-    if not refreshing.acquire(blocking=False):
-        return
-    try:
-        live = github.pr_statuses([entry_ref(p) for p in recent_pages()])
-        with lock:
-            pages = recent_pages()
-            updated = [p | {"status": live.get(entry_ref(p), p.get("status", ""))} for p in pages]
-            if updated != pages:
-                save_recent(updated)
-    finally:
-        refreshing.release()
-
-
 def gh_problem() -> str | None:
     """Why gh cannot reach GitHub, or None. The answer from the last check serves for a minute, so signing in
     shows on the start page within a minute, without a restart."""
@@ -201,14 +147,6 @@ def gh_banner() -> str:
     )
 
 
-def ago(ts: float) -> str:
-    s = max(0, int(time.time() - ts))
-    for unit, n in (("d", 86400), ("h", 3600), ("m", 60)):
-        if s >= n:
-            return f"{s // n}{unit} ago"
-    return "just now"
-
-
 def shell_file(name: str) -> str:
     return (render.SHELL_DIR / name).read_text()
 
@@ -229,22 +167,12 @@ def tabs_page() -> bytes:
     return render.fill(shell_file("tabs.html"), THEME=render.theme_head(), SCRIPT=shell_file("tabs.js")).encode()
 
 
-def pr_item(p: dict) -> str:
-    ref = entry_ref(p)
-    return (
-        f'<a class="item" href="{ref.path}"><span class="t">{render.pr_icon(p.get("status", ""))}{html.escape(p["title"])}</span>'
-        f'<span class="w">{html.escape(ago(p["opened"]))}</span><span class="m">{html.escape(str(ref))}</span></a>'
-    )
-
-
-def recent_items() -> str:
-    return "".join(map(pr_item, recent_pages())) or '<div class="empty">No pull requests opened yet.</div>'
-
-
 def start_page() -> bytes:
     """The start page, with the statuses saved last. Its list, with each status fetched from GitHub, is fetched
     again when the page loads and each time its tab comes to the front."""
-    return shell("I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent_items()))
+    return shell(
+        "I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent.items_html())
+    )
 
 
 def progress_page(ref: PullRef) -> bytes:
@@ -301,8 +229,8 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/home":
                 return self.send(200, start_page())
             if url.path == "/recent":
-                refresh_statuses()
-                return self.send(200, recent_items().encode())
+                recent.refresh_statuses()
+                return self.send(200, recent.items_html().encode())
             if url.path == "/open" or STATUS.match(url.path) or PAGE.match(url.path):
                 if why := self.cross_site():
                     return self.send(403, error_page(f"Forbidden: {why}"))
@@ -314,12 +242,7 @@ class Handler(BaseHTTPRequestHandler):
             if m := STATUS.match(url.path):
                 with lock:
                     job = jobs.get(PullRef.from_match(m))
-                data = (
-                    {"state": job.state, "log": job.log, "error": job.error}
-                    if job
-                    else {"state": "none", "log": [], "error": ""}
-                )
-                return self.send(200, json.dumps(data).encode(), "application/json")
+                return self.send_json(asdict(job) if job else {"state": "none", "log": [], "error": ""})
             if m := PAGE.match(url.path):
                 if url.path != url.path.lower():
                     return self.redirect(url.path.lower() + (f"?{url.query}" if url.query else ""))
@@ -332,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
                 if page := build.latest_page(ref):
                     rebuild_if_moved(ref)
                     body = page.read_bytes()
-                    note_opened(ref, body)
+                    recent.note_opened(ref, body)
                     return self.send(200, body)
                 start_job(ref)
                 return self.send(200, progress_page(ref))

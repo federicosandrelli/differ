@@ -244,6 +244,8 @@ the second build of a repository fast, and `git fetch` keeps them small.
   app runs, and `PullRef`, the name of a pull request (`owner/repo#123`).
   `commands.py` runs `gh` and `git` with a time limit and says how a command
   failed.
+- `recent.py` keeps the start page's list of the pull requests opened last,
+  in `recent.json` in the cache.
 
 Keys in the page: arrow keys in the tree, Cmd+F search (it starts from the
 selected text) and Enter for the next hit, `o` back to the top.
