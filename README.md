@@ -219,7 +219,8 @@ the second build of a repository fast, and `git fetch` keeps them small.
   chosen from the file extension by `classify.py`); `25-address.js` the row
   keys that name a line of a file on either side; `30-rows.js` the view of one
   file: its rows, blocks and folds, and `reveal`, which opens whatever hides a
-  row; `40-code.js` draws that view as the diff table; `50-comments.js` the
+  row; `35-marks.js` the search matches and word changes marked inside a
+  line; `40-code.js` draws that view as the diff table; `50-comments.js` the
   review threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
   `75-bugreport.js` the bug report prompt; `76-docs.js` the docs window; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its

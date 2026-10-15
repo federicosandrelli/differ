@@ -94,13 +94,3 @@ function allHits() {
 // The position of the hit Enter last went to, or -1 when it is no longer among the hits.
 const hitPosition = (all) => state.hit ? all.findIndex(h => h.path === state.hit.path && h.key === state.hit.key) : -1;
 const firstHitKey = (f) => f && viewHits(f)[0] || null;
-// Wrap every occurrence of the query in one <mark>. The query is found in the plain text of the HTML fragment,
-// so a match can span several highlighter tokens but never starts or ends inside an entity such as &gt;.
-function markHtml(html, q) {
-  if (!q) return html;
-  const needle = caseFold(q);
-  const text = caseFold(html.split(/(<[^>]+>)/).filter((_, i) => i % 2 === 0).map(unesc).join(''));
-  const ranges = [];
-  for (let j = text.indexOf(needle); j >= 0; j = text.indexOf(needle, j + needle.length)) ranges.push([j, j + needle.length]);
-  return wrapRanges(html, ranges, '<mark>', '</mark>', true);
-}

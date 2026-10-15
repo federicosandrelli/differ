@@ -375,17 +375,18 @@ def script_name(path: Path) -> str:
     return str(path.relative_to(PAGE_DIR)) if path.is_relative_to(VENDOR_DIR) else path.name
 
 
-def render_page(classified: dict, annotations: dict) -> str:
-    data = {**classified, "annotations": annotations, "app": app_info()}
+def render_page(classified: dict, pr: dict) -> str:
+    """The review page of a pull request: its classified diff, and the pull request as build.py describes it."""
+    data = {**classified, "pr": pr, "app": app_info()}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    title = f"#{annotations['pr']['number']} {annotations['pr']['title']}"
+    title = f"#{pr['number']} {pr['title']}"
     js = "\n".join(
         f"// ---- {script_name(path)}\n{path.read_text()}" for path in [*vendored(), SHELL_DIR / "frame.js", *scripts()]
     )
     return fill(
         TEMPLATE,
         TITLE=html.escape(title),
-        STATUS=annotations["pr"]["status"],
+        STATUS=pr["status"],
         THEME=theme_head(),
         CSS=(PAGE_DIR / "page.css").read_text(),
         JS=js,

@@ -24,13 +24,13 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
         "renames": [],
         "totals": {},
     }
-    html = render.render_page(classified, {"pr": PR})
+    html = render.render_page(classified, PR)
     assert "<title>#3 Fix &lt;b&gt;&amp;&lt;/b&gt; things</title>" in html
     payload = html.split('<script id="data" type="application/json">')[1].split("</script>")[0]
     assert "</" not in payload and "<\\/script>" in payload
     data = json.loads(payload)
     assert data["files"][0]["content"] == "<script></script>"
-    assert data["annotations"] == {"pr": PR}
+    assert data["pr"] == PR
     assert set(data["app"]) == {"commit", "dirty", "built"}
     markers = [line for line in html.splitlines() if line.startswith("// ---- ")]
     assert markers[:2] == ["// ---- vendor/highlight.min.js", "// ---- frame.js"]
@@ -41,7 +41,7 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
 
 
 def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
-    html = render.render_page({"files": [], "renames": [], "totals": {}}, {"pr": PR})
+    html = render.render_page({"files": [], "renames": [], "totals": {}}, PR)
     assert "<script src=" not in html
     assert "<link " not in html
     assert (render.VENDOR_DIR / "highlight.min.js").read_text() in html

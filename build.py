@@ -178,28 +178,26 @@ def build(ref: PullRef, log: Log = print) -> Path:
     merge_base = git(repo_dir, "merge-base", pr.base, pr.head).decode().strip()
     diff = read_diff(repo_dir, merge_base, pr.head, log)
 
-    annotations = {
-        "pr": {
-            "number": ref.number,
-            "title": pr.title,
-            "url": pr.url,
-            "repo": ref.slug,
-            "base": merge_base,
-            "head": pr.head,
-            "author": pr.author,
-            "commits": pr.commits,
-            "body": pr.body,
-            "base_ref": pr.base_ref,
-            "head_ref": pr.head_ref,
-            "state": pr.state,
-            "draft": pr.draft,
-            "status": pr.status,
-        }
+    page_pr = {
+        "number": ref.number,
+        "title": pr.title,
+        "url": pr.url,
+        "repo": ref.slug,
+        "base": merge_base,
+        "head": pr.head,
+        "author": pr.author,
+        "commits": pr.commits,
+        "body": pr.body,
+        "base_ref": pr.base_ref,
+        "head_ref": pr.head_ref,
+        "state": pr.state,
+        "draft": pr.draft,
+        "status": pr.status,
     }
     log("Classifying changes")
     classified = classify.classify(diff)
     log("Rendering the page")
-    html = render.render_page(classified, annotations)
+    html = render.render_page(classified, page_pr)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(html)
     prune(ref)
