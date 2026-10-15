@@ -139,8 +139,8 @@ def graphql(query: str, **variables: object) -> dict:
     returncode, stderr, out = ask(query, variables, timeout=60)
     errors = out.get("errors") or []
     if returncode or errors:
-        detail = "; ".join(e["message"] for e in errors) or stderr or f"gh exited with {returncode}"
-        raise commands.CommandError(detail[:600])
+        messages = "; ".join(e["message"] for e in errors)[: commands.ERROR_MAX]
+        raise commands.CommandError(messages or commands.tail(stderr) or f"gh exited with {returncode}")
     return out["data"]
 
 
