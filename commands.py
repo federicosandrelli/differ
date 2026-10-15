@@ -7,6 +7,7 @@ import subprocess
 TIMEOUT = 120
 # A clone or a fetch downloads history, so it gets longer.
 LONG_TIMEOUT = 600
+ERROR_MAX = 600
 
 
 class CommandError(Exception):
@@ -30,10 +31,16 @@ def run(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT) -
     r = call(args, input, timeout)
     if r.returncode:
         err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
-        raise CommandError(f"`{shown(args)}` failed: {err[:600]}")
+        raise CommandError(f"`{shown(args)}` failed: {tail(err)}")
     return r.stdout
 
 
 def shown(args: list[str]) -> str:
     """The start of a command line, enough to name the command in a message."""
     return " ".join(args[:4])
+
+
+def tail(text: str) -> str:
+    """The last ERROR_MAX characters of the text, after an ellipsis when the text is longer. A command prints its
+    error last, after any progress or warnings."""
+    return text if len(text) <= ERROR_MAX else "…" + text[-ERROR_MAX:]

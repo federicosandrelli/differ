@@ -201,3 +201,15 @@ def test_refresh_rebuilds_only_when_the_head_moved(pages: dict[str, Any]) -> Non
     pages["head"] = "b" * 40
     build.refresh(REF)
     assert pages["started"] == [REF] and build.latest_page(REF) is None
+
+
+def test_refresh_without_a_current_page_builds_without_reading_the_head(
+    pages: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(ref: PullRef) -> str:
+        raise commands.CommandError("`gh pr view 8` failed: no pull requests found")
+
+    monkeypatch.setattr(build.github, "head_sha", fail)
+    other = PullRef("owner", "repo", 8)
+    build.refresh(other)
+    assert pages["started"] == [other]

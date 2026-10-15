@@ -109,9 +109,10 @@ def serve(ref: PullRef) -> Path | None:
 
 
 def refresh(ref: PullRef) -> None:
-    """Check the head commit now, and when the newest page was built from an older one, drop the old pages and
-    build the page for the head, so the next visit waits for it. Raises CommandError when gh can't tell the head."""
-    if needs_build(ref):
+    """Build the page for the head commit now, so the next visit waits for it, when the pull request has no current
+    page or when the newest page was built from an older head commit; the old pages go. Reads the head commit only
+    when a current page exists, and raises CommandError when gh can't tell it."""
+    if latest_page(ref) is None or needs_build(ref):
         forget_pages(ref)
         start(ref)
 

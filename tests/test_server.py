@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pytest
 
+import build
 import commands
 import recent
 import server
@@ -289,6 +290,7 @@ def test_a_failed_command_answers_502_as_json_on_the_api_and_as_the_error_page_e
     assert (code, json.loads(body)) == (502, {"error": "`gh api graphql --input -` failed: boom"})
 
     monkeypatch.setattr(server.github, "head_sha", fail)
+    monkeypatch.setattr(server.build, "latest_page", lambda ref: Path("page.html"))
     h = request("GET", "/o/r/pull/1?refresh=1")
     h.do_GET()
     code, body = response(h)
@@ -333,3 +335,25 @@ def test_a_refused_review_answers_400_with_the_reason(monkeypatch: pytest.Monkey
     h.do_POST()
     code, body = response(h)
     assert (code, json.loads(body)) == (400, {"error": "Requesting changes needs a summary."})
+
+
+def test_try_again_after_a_failed_build_starts_a_new_build_and_shows_its_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_pull_request(ref: PullRef) -> str:
+        raise commands.CommandError("`gh pr view 1` failed: no pull requests found")
+
+    ref = PullRef("o", "r", 1)
+    monkeypatch.setattr(build, "CACHE", tmp_path)
+    monkeypatch.setattr(build, "jobs", {ref: build.Job(state="error", error="no pull requests found")})
+    monkeypatch.setattr(build.github, "head_sha", no_pull_request)
+    monkeypatch.setattr(
+        build.threading, "Thread", lambda target, daemon: type("Idle", (), {"start": lambda self: None})()
+    )
+    status, body = get("/o/r/pull/1?refresh=1")
+    assert status == 303
+    job = build.job_of(ref)
+    assert job is not None and job.state == "building"
+    status, body = get("/o/r/pull/1")
+    assert status == 200 and b"Building o/r#1" in body
+    assert build.job_of(ref) is job
