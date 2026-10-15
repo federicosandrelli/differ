@@ -77,7 +77,6 @@ function bugPrompt(text) {
   const anchor = viewportAnchor(), at = anchor && anchor.rowId && rowAt(anchor.rowId);
   const side = document.getElementById('side');
   const app = D.app || {};
-  const theme = document.documentElement.dataset.theme || `auto (${matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'})`;
   const where = [
     `- Page: ${location.href}${SHELL ? ' · inside the tabbed shell' : ' · top-level document'}${window.__TAURI__ ? ' · desktop app' : ''}`,
     `- Pull request: ${PR.repo}#${PR.number} (${PR.url}) · ${PR.state}${PR.draft ? ', draft' : ''} · head ${short(PR.head)} (${PR.head_ref}) · base ${short(PR.base)} (${PR.base_ref}) · ${plural(FILES.length, 'file')} · ${plural(PR.commits, 'commit')}`,
@@ -87,7 +86,7 @@ function bugPrompt(text) {
   ].filter(Boolean).join('\n');
   const env = [
     `- differ commit ${app.commit || 'unknown'}${app.dirty ? ' with uncommitted changes' : ''} · page built ${app.built || 'unknown'} · highlight.js ${yesNo(window.hljs)} · served ${yesNo(SERVED)}`,
-    `- Window ${innerWidth}×${innerHeight} · devicePixelRatio ${devicePixelRatio} · sidebar ${side ? side.offsetWidth : '?'}px wide · theme ${theme}, saved ${Theme.get()}`,
+    `- Window ${innerWidth}×${innerHeight} · devicePixelRatio ${devicePixelRatio} · sidebar ${side ? side.offsetWidth : '?'}px wide · theme ${Theme.get()}`,
     `- ${navigator.userAgent}`,
     window.differServerLog ? `- Server log: ${window.differServerLog} (the desktop app appends the server's stderr there; its last lines may hold the server side of this failure)` : '',
     `- Reported ${new Date().toISOString()}`,

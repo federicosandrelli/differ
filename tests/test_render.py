@@ -29,7 +29,7 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     assert markers[:2] == ["// ---- vendor/highlight.min.js", "// ---- frame.js"]
     assert markers[2:] == [f"// ---- {p.name}" for p in render.scripts()]
     assert markers[2:] == sorted(markers[2:])
-    assert ':root[data-theme="dark"]' in html
+    assert ':root[data-theme="light"]' in html
     assert (render.PAGE_DIR / "page.css").read_text() in html
 
 

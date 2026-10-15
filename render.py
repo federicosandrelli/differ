@@ -177,11 +177,9 @@ def vars_block(p: dict) -> str:
 def theme_css() -> str:
     light, sepia, dark = (vars_block(PALETTES[k]) for k in ("light", "sepia", "dark"))
     return f"""
-:root {{ {light} }}
-@media (prefers-color-scheme: dark) {{ :root:not([data-theme]) {{ {dark} }} }}
+:root {{ {dark} }}
 :root[data-theme="light"] {{ {light} }}
 :root[data-theme="sepia"] {{ {sepia} }}
-:root[data-theme="dark"] {{ {dark} }}
 """
 
 
