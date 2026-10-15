@@ -805,3 +805,36 @@ def test_while_searching_the_tree_cursor_stays_on_a_hit_near_the_end(
     page.evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
     expect(near).to_have_class(re.compile(r"\bcursor\b"))
     expect(near).to_have_class(re.compile(r"\bactive\b"))
+
+
+def in_view(page: Page, selector: str) -> bool:
+    """Whether the element lies inside the main pane's viewport."""
+    return page.evaluate(
+        """(selector) => {
+          const r = document.querySelector(selector).getBoundingClientRect();
+          const m = document.getElementById('main').getBoundingClientRect();
+          return r.top >= m.top && r.bottom <= m.bottom;
+        }""",
+        selector,
+    )
+
+
+@pytest.mark.parametrize(("link", "anchor"), [(":12", "tr[id$='-L12']"), ("", ".fhead")])
+def test_an_address_near_the_end_stays_in_place_when_the_comments_load(
+    page: Page, server_url: str, add_pr: AddPr, link: str, anchor: str
+) -> None:
+    page.set_viewport_size({"width": 1400, "height": 900})
+    old = {
+        "src/a.py": "".join(f"a{n} = {n}\n" for n in range(1, 6)),
+        "src/b.py": "".join(f"b{n} = {n}\n" for n in range(1, 13)),
+    }
+    new = {
+        "src/a.py": "".join(f"a{n} = {n + 1}\n" for n in range(1, 6)),
+        "src/b.py": "".join(f"b{n} = {n}\n" for n in range(1, 12)) + "b12 = 0\n",
+    }
+    open_pr(page, server_url, add_pr(old, new) + f"#src/b.py{link}")
+    selector = f"section[data-file='src/b.py'] {anchor}"
+    assert in_view(page, selector)
+    expect(page.locator("#side .leaf[data-path='src/b.py']")).to_have_class(re.compile(r"\bactive\b"))
+    if link:
+        expect(page.locator(selector)).to_have_class(re.compile(r"\btarget\b"))
