@@ -76,7 +76,15 @@ def parse_patch(text: str) -> list[FileDiff]:
             continue
         if current is None:
             continue
-        if hunk is None or raw.startswith(("---", "+++", "similarity", "rename", "new file", "deleted file", "index ")):
+        if raw.startswith("@@"):
+            m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$", raw)
+            assert m
+            old_no, new_no = int(m.group(1)), int(m.group(3))
+            hunk = Hunk(old_start=old_no, new_start=new_no, header=m.group(5))
+            current.hunks.append(hunk)
+            continue
+        if hunk is None:
+            # The file's header, up to its first hunk.
             if raw.startswith("new file mode"):
                 current.status = "A"
                 current.old_path = None
@@ -90,18 +98,9 @@ def parse_patch(text: str) -> list[FileDiff]:
                 current.binary = True
             elif raw.startswith("old mode"):
                 current.mode_changed = True
-            if not raw.startswith("@@"):
-                continue
-        if raw.startswith("@@"):
-            m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$", raw)
-            assert m
-            old_no, new_no = int(m.group(1)), int(m.group(3))
-            hunk = Hunk(old_start=old_no, new_start=new_no, header=m.group(5))
-            current.hunks.append(hunk)
             continue
         if raw.startswith("\\ No newline"):
             continue
-        assert hunk is not None
         tag, body = raw[:1], raw[1:]
         if tag == " " or raw == "":
             hunk.lines.append((" ", old_no, new_no, body))

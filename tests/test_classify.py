@@ -62,6 +62,18 @@ def test_parse_patch_reads_statuses_and_line_numbers(tmp_path: Path) -> None:
     ]
 
 
+def test_parse_patch_reads_changed_lines_that_look_like_file_headers(tmp_path: Path) -> None:
+    diff = make_diff(tmp_path, old={"a.yml": "x: 1\n---\n-- note\ny: 2\n"}, new={"a.yml": "x: 1\n++ added\ny: 2\n"})
+    ((hunk,),) = [fd.hunks for fd in classify.parse_patch(diff.patch)]
+    assert hunk.lines == [
+        (" ", 1, 1, "x: 1"),
+        ("-", 2, None, "---"),
+        ("-", 3, None, "-- note"),
+        ("+", None, 2, "++ added"),
+        (" ", 4, 3, "y: 2"),
+    ]
+
+
 def test_parse_patch_keeps_a_binary_file_without_hunks(tmp_path: Path) -> None:
     diff = make_diff(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
     (fd,) = classify.parse_patch(diff.patch)
