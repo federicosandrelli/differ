@@ -304,7 +304,7 @@ function popHit() {
 function unhide(f) {
   if (visibleFiles().includes(f)) return false;
   if (!kindVisible(f)) state.filter = 'all';
-  if (noiseOnly(f)) state.showNoiseOnly = true;
+  if (f.noise_only) state.showNoiseOnly = true;
   if (f.generated) state.showGenerated = true;
   if (state.q && !viewHits(f).length) { state.q = ''; state.hit = null; }
   return true;

@@ -46,8 +46,8 @@ function renamesHtml() {
 }
 
 function overviewHtml() {
-  const t = D.totals, raw = Object.values(t).reduce((a, b) => a + b, 0);
-  const sub = FILES.filter(f => !f.generated).reduce((a, f) => a + f.stats.substantive, 0);
+  const t = D.totals, sub = t.substantive || 0;
+  const hidden = NOISE.reduce((a, k) => a + (t[k] || 0), 0), raw = sub + hidden;
   const impl = FILES.filter(f => f.kind === 'implementation'), tests = FILES.filter(f => f.kind === 'test');
   const reviewed = FILES.filter(isReviewed).length;
   return `<h1>${esc(PR.title)}</h1>
@@ -55,7 +55,7 @@ function overviewHtml() {
     <div class="prbody">${bodyHtml({ body: PR.body || '', html: C.body_html })}</div>
     <div class="stats">
       <div class="stat"><b>${fmt(sub)}</b><span>lines to read</span></div>
-      <div class="stat"><b>${fmt(raw - sub)}</b><span>lines of noise hidden (${raw ? Math.round(100 * (raw - sub) / raw) : 0}% of ${fmt(raw)})</span></div>
+      <div class="stat"><b>${fmt(hidden)}</b><span>lines of noise hidden (${raw ? Math.round(100 * hidden / raw) : 0}% of ${fmt(raw)})</span></div>
       <div class="stat"><b>${impl.length} / ${tests.length}</b><span>implementation / test files</span></div>
       <div class="stat"><b>${reviewed} / ${FILES.length}</b><span>files reviewed</span></div>
     </div>

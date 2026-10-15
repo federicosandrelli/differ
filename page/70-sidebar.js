@@ -52,7 +52,7 @@ function hiddenNotice(n, what, toggle, showing) {
   return `<div class="notice">${showing ? `Showing ${files}` : `${files} hidden`} · <a href="#" ${toggle}="${showing ? '0' : '1'}">${showing ? 'hide' : 'show'}</a></div>`;
 }
 function renderList() {
-  const noiseOnlyCount = FILES.filter(f => kindVisible(f) && noiseOnly(f)).length;
+  const noiseOnlyCount = FILES.filter(f => kindVisible(f) && f.noise_only).length;
   const generatedCount = FILES.filter(f => kindVisible(f) && f.generated).length;
   return hiddenNotice(noiseOnlyCount, 'file with only noise', 'data-noiseonly', state.showNoiseOnly) +
     hiddenNotice(generatedCount, 'generated file', 'data-generated', state.showGenerated) + renderTree();

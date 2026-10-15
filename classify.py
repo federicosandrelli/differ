@@ -124,6 +124,19 @@ class ClassifiedFile:
     symbols: list[Symbol]
     import_lines: set[int]
     old_import_lines: set[int]
+    generated: bool
+
+    @property
+    def noise_only(self) -> bool:
+        """Whether the page hides the file as noise: every run of it folds, or it is renamed or moved without a
+        change, which git reports as 100% similarity and no mode change. A generated file is hidden as generated,
+        and a changed binary file has no runs but has changed."""
+        fd = self.diff
+        if self.generated:
+            return False
+        if fd.runs:
+            return all(run.noise for run in fd.runs)
+        return fd.similarity == 100 and not fd.mode_changed
 
 
 C_ESCAPES = {
@@ -575,7 +588,8 @@ def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | 
             old_imports, imports, symbols = set(), set(), []
         for run in fd.runs:
             classify_run(run, old_imports, imports if content_side == "new" else old_imports, longest_first)
-        classified.append(ClassifiedFile(fd, content, content_side, symbols, imports, old_imports))
+        generated = is_generated(fd.path, content, diff.generated)
+        classified.append(ClassifiedFile(fd, content, content_side, symbols, imports, old_imports, generated))
     return classified
 
 
@@ -611,10 +625,9 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
         "old_path": fd.old_path,
         "new_path": fd.new_path,
         "status": fd.status,
-        "similarity": fd.similarity,
-        "mode_changed": fd.mode_changed,
         "kind": file_kind(fd.path),
-        "generated": is_generated(fd.path, f.content, diff.generated),
+        "generated": f.generated,
+        "noise_only": f.noise_only,
         "lang": language(fd.path),
         "content": f.content,
         "content_side": f.content_side,
@@ -638,8 +651,6 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
         "import_lines": sorted(f.import_lines),
         "old_import_lines": sorted(f.old_import_lines),
         "stats": {
-            "raw": sum(run.size for run in fd.runs),
-            "substantive": sum(run.size for run in fd.runs if not run.noise),
             "additions": sum(len(run.added) for run in fd.runs),
             "deletions": sum(len(run.removed) for run in fd.runs),
         },
@@ -670,8 +681,8 @@ def renames_json(files: list[FileDiff], origins: dict[Pair, Origin | None]) -> l
 
 
 def classify(diff: Diff) -> dict:
-    """The diff's files, the renames found across them, and the line totals by class, a run the page shows
-    counting as substantive."""
+    """The diff's files, the renames found across them, and the line totals by class of the files that aren't
+    generated, a run the page shows counting as substantive."""
     files = parse_patch(diff.patch)
     for fd in files:
         build_runs(fd)
@@ -679,9 +690,10 @@ def classify(diff: Diff) -> dict:
     renames = collect_renames(files)
     classified = classify_files(diff, files, renames)
     totals: Counter[RunClass] = Counter()
-    for fd in files:
-        for run in fd.runs:
-            totals[run.cls if run.noise else "substantive"] += run.size
+    for f in classified:
+        if not f.generated:
+            for run in f.diff.runs:
+                totals[run.cls if run.noise else "substantive"] += run.size
     return {
         "files": [file_json(f, diff) for f in classified],
         "renames": renames_json(files, find_origins(classified, renames)),

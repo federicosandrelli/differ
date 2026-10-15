@@ -484,6 +484,32 @@ def test_language(path: str, lang: str) -> None:
     assert classify.language(path) == lang
 
 
+def test_classify_hides_a_file_as_noise_only_when_none_of_its_changes_shows(tmp_path: Path) -> None:
+    blob = bytes(range(256)) * 4
+    diff = make_diff(
+        tmp_path,
+        old={"moved.py": "x = 1\n", "imports.py": "import os\n\nx = 1\n", "img.bin": blob, "real.py": "x = 1\n"},
+        new={
+            "pkg/moved.py": "x = 1\n",
+            "imports.py": "import os\nimport sys\n\nx = 1\n",
+            "img.bin": blob[:-1] + b"\0",
+            "real.py": "x = 2\n",
+            "package-lock.json": "{}\n",
+        },
+    )
+    files = {f["path"]: f["noise_only"] for f in classify.classify(diff)["files"]}
+    assert files == {
+        "pkg/moved.py": True,
+        "imports.py": True,
+        "img.bin": False,
+        "real.py": False,
+        "package-lock.json": False,
+    }
+
+    chmod = FileDiff(old_path="run.sh", new_path="bin/run.sh", status="R", similarity=100, mode_changed=True)
+    assert not classify.ClassifiedFile(chmod, "", "new", [], set(), set(), generated=False).noise_only
+
+
 def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     diff = make_diff(
         tmp_path,
@@ -515,7 +541,7 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
         ("rename", True),
     ]
     assert files["app.py"]["runs"][1]["origin"] is True
-    assert files["app.py"]["stats"] == {"raw": 5, "substantive": 2, "additions": 3, "deletions": 2}
+    assert files["app.py"]["stats"] == {"additions": 3, "deletions": 2}
     assert files["app.py"]["import_lines"] == [1, 2] and files["app.py"]["old_import_lines"] == [1]
     assert [s["name"] for s in files["app.py"]["symbols"]] == ["new_name", "main"]
 
@@ -525,13 +551,13 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     assert files["gone.txt"]["status"] == "D" and files["gone.txt"]["content_side"] == "old"
     assert files["gone.txt"]["content"] == "bye\n"
     assert files["README.md"]["status"] == "A" and files["README.md"]["kind"] == "docs"
-    assert files["docs/notes.txt"]["similarity"] == 100 and files["docs/notes.txt"]["stats"]["raw"] == 0
-    assert files["app.py"]["similarity"] is None and files["app.py"]["mode_changed"] is False
+    noise_only = {path for path, f in files.items() if f["noise_only"]}
+    assert noise_only == {"cli.py", "docs/notes.txt"}
 
     (rename,) = result["renames"]
     assert rename["from"] == "old_name" and rename["to"] == "new_name"
     assert rename["runs"] == 3 and rename["files"] == ["app.py", "cli.py"]
     assert rename["origin"] == {"path": "app.py", "line": 5, "side": "new", "text": "def new_name(x):"}
 
-    assert result["totals"] == {"import": 3, "rename": 4, "substantive": 8}
-    assert sum(result["totals"].values()) == sum(f["stats"]["raw"] for f in result["files"])
+    # gen.py and package-lock.json are generated, so their lines count in no total.
+    assert result["totals"] == {"import": 3, "rename": 4, "substantive": 4}

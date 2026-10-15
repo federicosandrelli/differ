@@ -39,8 +39,9 @@ differ folds lines in these cases:</p>
     they fold into one row that says how many places it covers.</li>
 </ul>
 <p>Inside a real change, a line that only follows a rename appears pale, with a "rename" tag.</p>
-<p>A fold always stays open when it holds a comment thread or the comment you are writing. The buttons under the
-numbers in the overview show or hide each kind of noise in every file at once.</p>
+<p>A fold always stays open when it holds a comment thread or the comment you are writing. The numbers in the
+overview count the lines of every file but the generated ones, and the buttons under them show or hide each kind of
+noise in every file at once.</p>
 
 <h2>The class or function above a change</h2>
 <p>differ also shows the lines above each change, up to the start of the innermost class or function that holds it.

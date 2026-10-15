@@ -1,16 +1,9 @@
 // Which files the page shows, in which order, and where the search hits are.
 
-// All the file's change blocks fold: imports, rename fallout, whitespace or moved code. A file renamed or moved
-// without changes also counts: git gives it 100% similarity. A changed binary file has no blocks either, but its
-// similarity is below 100, or it has none.
-function noiseOnly(f) {
-  return !f.generated && f.stats.substantive === 0 &&
-    (f.stats.raw > 0 || (f.similarity === 100 && !f.mode_changed));
-}
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 // The files the tree lists: the search leaves them all in place.
 function fileListed(f) {
-  return kindVisible(f) && (state.showNoiseOnly || !noiseOnly(f)) && (state.showGenerated || !f.generated);
+  return kindVisible(f) && (state.showNoiseOnly || !f.noise_only) && (state.showGenerated || !f.generated);
 }
 // While searching, the page shows the files with a hit in their view. A closed section counts its view too, so
 // closing a section keeps its file on the page.
