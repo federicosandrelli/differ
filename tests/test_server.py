@@ -357,3 +357,20 @@ def test_parse_args() -> None:
     assert (args.port, args.log, args.exit_with_parent) == (8765, None, False)
     args = server.parse_args(["8766", "--exit-with-parent", "--log", "/tmp/differ/server.log"])
     assert (args.port, args.log, args.exit_with_parent) == (8766, Path("/tmp/differ/server.log"), True)
+
+
+def test_port_taken_skips_an_address_family_the_host_does_not_support(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_socket = server.socket.socket
+
+    def ipv4_only(family: int, *args: Any) -> Any:
+        if family == server.socket.AF_INET6:
+            raise OSError(97, "Address family not supported by protocol")
+        return real_socket(family, *args)
+
+    monkeypatch.setattr(server.socket, "socket", ipv4_only)
+    with real_socket(server.socket.AF_INET, server.socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        assert server.port_taken(port) == "127.0.0.1"
+    assert server.port_taken(port) is None

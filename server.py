@@ -462,9 +462,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def port_taken(port: int) -> str | None:
-    """The address something already answers on, IPv4 or IPv6; browsers try either for localhost."""
+    """The address something already answers on, IPv4 or IPv6; browsers try either for localhost. A family the
+    host does not support has nothing answering on it."""
     for family, host in ((socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")):
-        with socket.socket(family, socket.SOCK_STREAM) as probe:
+        try:
+            probe = socket.socket(family, socket.SOCK_STREAM)
+        except OSError:
+            continue
+        with probe:
             probe.settimeout(0.3)
             if probe.connect_ex((host, port)) == 0:
                 return host
