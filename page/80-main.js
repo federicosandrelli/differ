@@ -60,7 +60,7 @@ function bodyParts(f) {
 // About how tall the body will be, from the rows the diff view draws with every fold decided.
 function estimateHeight(f) {
   if (!f.runs.length) return EMPTY_PX + 14;
-  return Math.round(fileBlocks(f, true).reduce((n, b) => n + drawnRows(b), 0) * ROW_PX + 14);
+  return Math.round(fileBlocks(f, true).reduce((n, b) => n + drawn(b).length, 0) * ROW_PX + 14);
 }
 
 const sectionEl = (f) => document.getElementById(`sec-${f.index}`);

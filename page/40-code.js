@@ -1,16 +1,15 @@
 // The diff table of one file: draws the blocks the file view decided.
 
-// Append the rows' HTML to out, noting in index where each row's key landed.
-function renderRows(f, rows, out, index) {
-  for (const r of rows) {
-    const key = rowKeyOf(r);
-    const cls = [r.type, r.dim ? 'dim' : '', r.sel ? 'sel' : '', r.between ? 'between' : ''].join(' ');
-    const tag = r.dim ? '<span class="tag">rename</span>' : '';
-    index.set(key, out.length);
-    out.push(`<tr class="${cls}" id="${rowId(f, key)}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
-    if (r.threads) for (const t of r.threads) out.push(`<tr class="thread"><td colspan="4">${threadHtml(f, t)}</td></tr>`);
-    if (r.compose) out.push(`<tr class="compose"><td colspan="4">${composeHtml(f, state.compose)}</td></tr>`);
-  }
+// Append the row's HTML to out, with its threads and the comment being written on it, noting in index where the
+// row's key landed.
+function renderRow(f, r, out, index) {
+  const key = rowKeyOf(r);
+  const cls = [r.type, r.dim ? 'dim' : '', r.sel ? 'sel' : '', r.between ? 'between' : ''].join(' ');
+  const tag = r.dim ? '<span class="tag">rename</span>' : '';
+  index.set(key, out.length);
+  out.push(`<tr class="${cls}" id="${rowId(f, key)}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
+  if (r.threads) for (const t of r.threads) out.push(`<tr class="thread"><td colspan="4">${threadHtml(f, t)}</td></tr>`);
+  if (r.compose) out.push(`<tr class="compose"><td colspan="4">${composeHtml(f, state.compose)}</td></tr>`);
 }
 
 // A row with a chip in the code column, indented like the first folded line.
@@ -29,6 +28,13 @@ function runSummary(r) {
   return `${n} lines`;
 }
 
+// The row that opens or closes a block's fold.
+function foldRowHtml(b, symStarts) {
+  if (b.inline) return inlineFoldRow(b);
+  if (b.ctx) return `<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">${contextLabel(b, symStarts)}</span></td></tr>`;
+  const label = b.imports ? importsLabel(b) : b.group ? groupLabel(b) : runSummary(b.run);
+  return (b.open ? openRow : foldRow)(b.fold, label);
+}
 const foldRow = (id, label) => `<tr class="collapsed" data-fold="${esc(id)}"><td colspan="4"><span class="lbl">▸ ${label}</span></td></tr>`;
 const openRow = (id, label) => `<tr class="runhead" data-fold="${esc(id)}"><td colspan="4"><span class="lbl">▾ ${label}</span></td></tr>`;
 
@@ -62,36 +68,15 @@ function codeRows(f) {
   const symStarts = new Map(f.symbols.filter(s => s.kind !== 'call').map(s => [s.start, s]));
   const html = [], index = new Map();
   let cols = 0;
-  const draw = (rows) => {
-    renderRows(f, rows, html, index);
-    for (const r of rows) cols = Math.max(cols, lineColumns(r.text));
-  };
   for (const b of fileBlocks(f)) {
-    if (b.imports) {
-      html.push((b.open ? openRow : foldRow)(b.fold, importsLabel(b)));
-      if (b.open) draw(b.rows);
-    } else if (b.group) {
-      html.push(foldRow(b.fold, groupLabel(b)));
-    } else if (b.ctx) {
-      draw(b.head);
-      if (b.inline && b.mid.length) html.push(inlineFoldRow(b));
-      if (b.open) draw(b.mid);
-      else if (b.mid.length && !b.inline) html.push(`<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">${contextLabel(b, symStarts)}</span></td></tr>`);
-      draw(b.tail);
-    } else {
-      const r = b.run;
-      if (b.fold) html.push((b.open ? openRow : foldRow)(b.fold, runSummary(r)));
-      if (!b.open) continue;
-      if (r && r.removed.length === r.added.length && b.rows.length === r.removed.length * 2) markPairs(b.rows);
-      draw(b.rows);
+    const r = b.run;
+    if (b.open && r && r.removed.length === r.added.length && b.rows.length === r.removed.length * 2) markPairs(b.rows);
+    for (const item of drawn(b)) {
+      if (item === FOLD_ROW) { html.push(foldRowHtml(b, symStarts)); continue; }
+      renderRow(f, item, html, index);
+      cols = Math.max(cols, lineColumns(item.text));
     }
   }
   return { html, index, cols };
-}
-// How many rows codeRows draws for a block, leaving out threads: the shown rows and the fold row (an open context
-// block has none, unless it is inline).
-function drawnRows(b) {
-  const shown = b.rows.length - hiddenRows(b).length;
-  return shown + (b.fold && (b.inline || !(b.ctx && b.open)) ? 1 : 0);
 }
 const tableHtml = (rows) => `<table class="diff"><colgroup><col style="width:38px"><col style="width:38px"><col style="width:16px"><col></colgroup>${rows.join('')}</table>`;

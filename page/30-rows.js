@@ -1,6 +1,7 @@
 // The view of one file: the whole new file with the removed lines interleaved where they were, grouped into
-// blocks of context and change runs, with every fold decided. fileBlocks gives the diff table what to draw,
-// reveal opens whatever hides a row, and toggleFold answers a click on a fold row; the fold keys stay in here.
+// blocks of context and change runs, with every fold decided. fileBlocks gives the blocks and drawn what the diff
+// table draws of each, reveal opens whatever hides a row, and toggleFold answers a click on a fold row; the fold
+// keys stay in here.
 
 // Plain rows skip the syntax highlighting and have no HTML: they decide the folds but are never drawn.
 function buildRows(f, plain) {
@@ -215,12 +216,17 @@ function fileBlocks(f, plain) {
     return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b) };
   });
 }
-const hiddenRows = (b) => b.open ? [] : b.ctx ? b.mid : b.rows;
-// The rows of the file the diff table draws when the file's section is open, in order, as plain rows.
-function shownRows(f) {
-  if (!f.runs.length) return [];
-  return fileBlocks(f, true).flatMap(b => b.open ? b.rows : b.ctx ? [...b.head, ...b.tail] : []);
+// Where a block's fold row goes among the rows drawn of it.
+const FOLD_ROW = { foldRow: true };
+// What the diff table draws of a block, in order: its rows that show, and FOLD_ROW where its fold row goes. A
+// context block's fold row stands in for the middle while it is closed; an inline one stays when it opens.
+function drawn(b) {
+  if (b.ctx) return [...b.head, ...(b.inline || !b.open ? [FOLD_ROW] : []), ...(b.open ? b.mid : []), ...b.tail];
+  return [...(b.fold ? [FOLD_ROW] : []), ...(b.open ? b.rows : [])];
 }
+const rowsDrawn = (b) => drawn(b).filter(x => x !== FOLD_ROW);
+// The rows of the file the diff table draws when the file's section is open, in order, as plain rows.
+const shownRows = (f) => f.runs.length ? fileBlocks(f, true).flatMap(rowsDrawn) : [];
 
 // Open whatever hides the row with this key, so the next render shows it; false when the file has no such row.
 // Opening one fold can uncover another (a grouped run's context folds on its own), so it looks again.
@@ -229,7 +235,7 @@ function reveal(f, key) {
   for (let pass = 0; pass < 4; pass++) {
     const b = fileBlocks(f).find(b => has(b.rows));
     if (!b) return false;
-    if (!has(hiddenRows(b))) return true;
+    if (has(rowsDrawn(b))) return true;
     FOLDS.get(b.fold).open();
   }
   return true;

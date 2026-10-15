@@ -144,27 +144,6 @@ def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> 
     expect(section.locator("tr.add", has_text="import sys")).to_have_count(0)
 
 
-HEIGHT_MISMATCHES = """() => ['', 'name'].flatMap(q => {
-    state.q = q;
-    const drawn = (f) => codeRows(f).html.filter(h => !/^<tr class="(thread|compose)"/.test(h)).length;
-    const counted = (f) => fileBlocks(f, true).reduce((n, b) => n + drawnRows(b), 0);
-    return FILES.filter(f => f.runs.length && counted(f) !== drawn(f)).map(f => `${q}:${f.path}`);
-})"""
-
-
-def test_the_height_estimate_counts_the_rows_each_file_draws(page: Page, server_url: str) -> None:
-    open_pr(page, server_url)
-    assert page.evaluate(HEIGHT_MISMATCHES) == []
-
-
-def test_the_height_estimate_counts_the_inline_fold_rows_closed_and_open(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
-    assert page.evaluate(HEIGHT_MISMATCHES) == []
-    page.evaluate("() => FILES.forEach(f => fileBlocks(f).filter(b => b.inline).forEach(b => toggleFold(b.fold)))")
-    assert page.evaluate("() => FILES.flatMap(f => fileBlocks(f)).filter(b => b.inline).every(b => b.open)")
-    assert page.evaluate(HEIGHT_MISMATCHES) == []
-
-
 def hit_row(page: Page) -> str:
     """The element id of the row of the search hit Enter goes on from."""
     return page.evaluate("rowId(BY_PATH[state.hit.path], state.hit.key)")
