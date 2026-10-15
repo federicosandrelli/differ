@@ -142,3 +142,7 @@ def test_prune_all_on_an_empty_cache_is_a_no_op(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(build, "CACHE", tmp_path / "missing")
     build.prune_all()
     assert not (tmp_path / "missing").exists()
+
+
+def test_a_page_is_stale_once_any_module_that_shapes_it_changes() -> None:
+    assert {"build.py", "classify.py", "github.py", "render.py"} <= {p.name for p in build.sources()}
