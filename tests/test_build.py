@@ -154,6 +154,7 @@ def pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(build, "CACHE", tmp_path)
     monkeypatch.setattr(build, "jobs", {})
     monkeypatch.setattr(build, "head_checked", {})
+    monkeypatch.setattr(build, "heads", {})
     monkeypatch.setattr(build.threading, "Thread", AtOnce)
     state: dict[str, Any] = {"head": "a" * 40, "head_reads": 0, "started": []}
 
@@ -213,3 +214,27 @@ def test_refresh_without_a_current_page_builds_without_reading_the_head(
     other = PullRef("owner", "repo", 8)
     build.refresh(other)
     assert pages["started"] == [other]
+
+
+def test_serve_returns_the_page_of_a_head_moved_back_to_an_older_commit(
+    pages: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old, new = build.page_path(REF, "a" * 40), build.page_path(REF, "b" * 40)
+
+    def serve_after_head_ttl() -> Path | None:
+        monkeypatch.setitem(build.head_checked, REF, time.time() - build.HEAD_TTL)
+        return build.serve(REF)
+
+    pages["head"] = "b" * 40
+    serve_after_head_ttl()
+    assert pages["started"] == [REF]
+    new.write_text("new page")
+    later = time.time() + 120
+    os.utime(new, (later, later))
+    assert build.serve(REF) == new
+
+    pages["head"] = "a" * 40
+    serve_after_head_ttl()
+    assert build.serve(REF) == old
+    build.refresh(REF)
+    assert build.serve(REF) == old and pages["started"] == [REF]
