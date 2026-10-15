@@ -152,13 +152,13 @@ function enclosingBodies(f) {
 }
 
 // Context rows that show headLength rows at the start and tailLength rows at the end and fold the middle, unless
-// the reader opened it or the middle is shorter than minFold. A toggle fold also closes again.
-function contextPart(f, rs, headLength, tailLength, register, { minFold = 1, toggle = false } = {}) {
+// the reader opened it or the middle is shorter than minFold.
+function contextPart(f, rs, headLength, tailLength, register, { minFold = 1 } = {}) {
   const head = rs.slice(0, headLength), tail = rs.slice(Math.max(headLength, rs.length - tailLength));
   const mid = rs.slice(head.length, rs.length - tail.length);
   if (mid.length < minFold) return { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
   const key = `${f.path}:${mid[0].newNo}`;
-  const fold = register(key, () => state.unfolded.add(key), toggle ? toggleIn(state.unfolded, key) : undefined);
+  const fold = register(key, () => state.unfolded.add(key), toggleIn(state.unfolded, key));
   return { ctx: true, rows: rs, head, mid, tail, fold, open: state.unfolded.has(key) };
 }
 
@@ -181,7 +181,7 @@ function contextBlock(f, blocks, bi, register, bodies) {
   const rest = rs.slice(end);
   const above = contextPart(f, rs.slice(0, end), head, Math.max(end - k, tail - rest.length), register, { minFold: 3 });
   if (!rest.length) return [above];
-  const inner = contextPart(f, rest, Math.max(0, head - end), tail, register, { minFold: 3, toggle: true });
+  const inner = contextPart(f, rest, Math.max(0, head - end), tail, register, { minFold: 3 });
   return [above, inner.fold ? { ...inner, inline: true } : inner];
 }
 
@@ -189,9 +189,10 @@ function contextBlock(f, blocks, bi, register, bodies) {
 // that hides some of them (fold, null when nothing folds) and whether that fold is open:
 //   { imports, rows }                 an import section, shown when open
 //   { group, cls, rows }              noise runs folded together, always closed
-//   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open; an inline one keeps its fold
-//                                     row when open
+//   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
 //   { run, rows }                     a change run; a noise run folds, shown when open
+// An import section or a noise run is locked while a noise button or a pinned row holds it open, so a click on
+// its fold row would change nothing on the page.
 // Blocks of plain rows leave their folds out of FOLDS, whose entries would keep the rows alive.
 function fileBlocks(f, plain) {
   const rows = buildRows(f, plain), register = plain ? (id) => id : fold, bodies = enclosingBodies(f);
@@ -201,7 +202,7 @@ function fileBlocks(f, plain) {
   return blocks.flatMap((b, bi) => {
     if (b.imports) {
       const k = importsKey(f, b);
-      return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b) };
+      return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b), locked: state.show.import || b.rows.some(pinned) };
     }
     if (b.group) {
       const keys = b.group.map(r => runKey(f, r));
@@ -210,15 +211,15 @@ function fileBlocks(f, plain) {
     if (b.ctx) return contextBlock(f, blocks, bi, register, bodies);
     if (!isNoise(b.run)) return { ...b, fold: null, open: true };
     const k = runKey(f, b.run);
-    return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b) };
+    return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b), locked: state.show[b.run.class] || b.rows.some(pinned) };
   });
 }
 // Where a block's fold row goes among the rows drawn of it.
 const FOLD_ROW = { foldRow: true };
 // What the diff table draws of a block, in order: its rows that show, and FOLD_ROW where its fold row goes. A
-// context block's fold row stands in for the middle while it is closed; an inline one stays when it opens.
+// fold row stays when its fold opens, above the rows it showed.
 function drawn(b) {
-  if (b.ctx) return [...b.head, ...(b.inline || !b.open ? [FOLD_ROW] : []), ...(b.open ? b.mid : []), ...b.tail];
+  if (b.ctx) return [...b.head, ...(b.fold ? [FOLD_ROW] : []), ...(b.open ? b.mid : []), ...b.tail];
   return [...(b.fold ? [FOLD_ROW] : []), ...(b.open ? b.rows : [])];
 }
 const rowsDrawn = (b) => drawn(b).filter(x => x !== FOLD_ROW);

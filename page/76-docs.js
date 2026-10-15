@@ -36,12 +36,13 @@ differ folds lines in these cases:</p>
     somewhere else in the pull request, in the same file or another one. The block needs 4 lines or more that are
     not blank. The fold row names the other place.</li>
   <li><b>Several folds close together.</b> When folds of the same kind are separated only by a few unchanged lines,
-    they fold into one row that says how many places it covers.</li>
+    they fold into one row that says how many places it covers. Opening it gives each place its own row.</li>
 </ul>
 <p>Inside a real change, a line that only follows a rename appears pale, with a "rename" tag.</p>
 <p>A fold always stays open when it holds a comment thread or the comment you are writing. The numbers in the
 overview count the lines of every file but the generated ones, and the buttons under them show or hide each kind of
-noise in every file at once.</p>
+noise in every file at once. While a comment or one of these buttons keeps a fold open, its row only names the fold,
+and clicking it does nothing.</p>
 
 <h2>The class or function above a change</h2>
 <p>differ also shows the lines above each change, up to the start of the innermost class or function that holds it.
