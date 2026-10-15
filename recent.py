@@ -57,18 +57,22 @@ def save(pages: list[Opened]) -> None:
 
 
 def note_opened(ref: PullRef, page: bytes) -> None:
-    """Move the pull request to the top of the list, with the title and status of the page just served."""
+    """Move the pull request to the top of the list, with the title of the page just served. A pull request new to
+    the list takes the status the page was built with; one already there keeps its status, which
+    refresh_statuses keeps up to date, since a merge or a close leaves the page as it was."""
     title, status = render.read_head(page)
-    entry = Opened(
-        owner=ref.owner,
-        repo=ref.repo,
-        number=ref.number,
-        title=title or str(ref),
-        status=status,
-        opened=time.time(),
-    )
     with lock:
-        save([entry, *(p for p in load() if ref_of(p) != ref)][:KEPT])
+        pages = load()
+        saved = next((p for p in pages if ref_of(p) == ref), None)
+        entry = Opened(
+            owner=ref.owner,
+            repo=ref.repo,
+            number=ref.number,
+            title=title or str(ref),
+            status=saved["status"] if saved else status,
+            opened=time.time(),
+        )
+        save([entry, *(p for p in pages if p is not saved)][:KEPT])
 
 
 def refresh_statuses() -> None:

@@ -85,6 +85,8 @@ def graphql() -> None:
         "id": "PR_1",
         "headRefOid": state["head"],
         "bodyHTML": "",
+        "state": "OPEN",
+        "isDraft": False,
         "reviews": {"nodes": state["reviews"]},
         "pending": {"nodes": [r for r in state["reviews"] if r["state"] == "PENDING"]},
         "verdicts": {

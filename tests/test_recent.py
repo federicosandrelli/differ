@@ -126,3 +126,13 @@ def test_an_entry_saved_without_a_status_loads_with_none(tmp_path: Path, monkeyp
     (tmp_path / "recent.json").write_text('[{"owner": "o", "repo": "r", "number": 1, "title": "T", "opened": 0}]')
     assert recent.load()[0]["status"] == ""
     assert 'href="/o/r/pull/1"' in recent.items_html()
+
+
+def test_opening_a_page_again_keeps_the_status_the_list_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
+    recent.note_opened(PullRef("o", "r", 1), b'<title>#1 T</title><meta name="pr-status" content="open">')
+    pages = recent.load()
+    pages[0]["status"] = "merged"
+    recent.save(pages)
+    recent.note_opened(PullRef("o", "r", 1), b'<title>#1 T</title><meta name="pr-status" content="open">')
+    assert [(p["number"], p["status"]) for p in recent.load()] == [(1, "merged")]

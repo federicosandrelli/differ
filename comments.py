@@ -15,6 +15,7 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+import github
 from github import PullRef, graphql
 
 Side = Literal["LEFT", "RIGHT"]
@@ -62,7 +63,7 @@ READ = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   viewer { login }
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
-    id headRefOid bodyHTML
+    id headRefOid bodyHTML state isDraft
     reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }
     reviews(first: 100) { nodes { id author { login } state body bodyHTML createdAt submittedAt url } }
     %s
@@ -135,7 +136,8 @@ def _verdict(reviews: list[dict], viewer: str) -> Verdict | None:
 
 def fetch(ref: PullRef) -> dict:
     """Every review thread, review and conversation comment of the pull request, plus the viewer's pending review
-    and verdict."""
+    and verdict, and the pull request's status now: a merge or a close does not move the head, so the page, built
+    per head, learns them here."""
     data = graphql(READ, **asdict(ref), after=None)
     pr = data["repository"]["pullRequest"]
     threads = list(pr["reviewThreads"]["nodes"])
@@ -177,6 +179,7 @@ def fetch(ref: PullRef) -> dict:
         "pr_id": pr["id"],
         "head": pr["headRefOid"],
         "body_html": pr.get("bodyHTML") or "",
+        "status": github.status_of(pr["state"], pr["isDraft"]) or "",
         "pending": {"id": pending_id} if pending_id else None,
         "verdict": asdict(verdict) if (verdict := _verdict(pr["verdicts"]["nodes"], viewer)) else None,
         "threads": [th for t in threads if (th := _thread(t, pending_id))],

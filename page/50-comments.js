@@ -1,7 +1,7 @@
 // Review threads from GitHub, placed on the lines they refer to, and the forms that write back.
 
 // C.version counts the loads, so a file's rendered body knows when its threads changed.
-const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', pending: null, verdict: null, threads: [], reviews: [], comments: [] };
+const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', status: '', pending: null, verdict: null, threads: [], reviews: [], comments: [] };
 const THREADS = { byFile: new Map(), orphans: [] };
 
 async function loadComments() {
@@ -15,7 +15,7 @@ async function loadComments() {
   C.version++;
   indexThreads();
   render();
-  if (SHELL) SHELL.badge(C.threads.filter(t => !t.resolved).length);
+  if (SHELL) { SHELL.badge(C.threads.filter(t => !t.resolved).length); if (C.status) SHELL.status(C.status); }
 }
 // Whether the page holds text the user typed and has not sent. Closing the page's tab would lose it.
 function hasDraft() {

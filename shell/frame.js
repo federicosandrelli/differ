@@ -11,6 +11,7 @@ const SHELL = window.parent === window ? null : {
   step(dir) { this.tell({ type: 'step', dir }); },
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
   badge(n) { this.tell({ type: 'badge', n }); },
+  status(status) { this.tell({ type: 'status', status }); },
   page(url, title, status) { this.tell({ type: 'page', url, title, status }); },
   draft(on) { if (on !== this.drafting) { this.drafting = on; this.tell({ type: 'draft', on }); } },
   drafting: false,

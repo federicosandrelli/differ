@@ -84,6 +84,8 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                         "id": "PR1",
                         "headRefOid": "deadbeef",
                         "bodyHTML": "<p>hi</p>",
+                        "state": "MERGED",
+                        "isDraft": False,
                         "reviewThreads": {
                             "pageInfo": {"hasNextPage": True, "endCursor": "CUR"},
                             "nodes": [
@@ -126,6 +128,7 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
     result = comments.fetch(PullRef("o", "r", 3))
     assert [c.get("after") for c in calls] == [None, "CUR"]
     assert result["viewer"] == "ann" and result["pr_id"] == "PR1" and result["head"] == "deadbeef"
+    assert result["status"] == "merged"
     assert result["pending"] == {"id": "R0"}
     assert [t["id"] for t in result["threads"]] == ["T1", "T2", "T3"]
     assert result["threads"][1]["comments"][0]["pending"] is True
