@@ -265,9 +265,7 @@ def recent_items() -> str:
 def start_page() -> bytes:
     """The start page, with the statuses saved last. Its list, with each status fetched from GitHub, is fetched
     again when the page loads and each time its tab comes to the front."""
-    return shell(
-        "Pull request review", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent_items())
-    )
+    return shell("I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent_items()))
 
 
 def progress_page(key: tuple[str, str, int]) -> bytes:
