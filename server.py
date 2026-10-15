@@ -266,7 +266,7 @@ def start_page() -> bytes:
     """The start page, with the statuses saved last. Its list, with each status fetched from GitHub, is fetched
     again when the page loads and each time its tab comes to the front."""
     return shell(
-        "Pull request review", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent_items())
+        "I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent_items())
     )
 
 
