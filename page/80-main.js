@@ -91,6 +91,8 @@ function fillChunk(parts, chunk) {
   const start = +chunk.dataset.start;
   replaceContent(chunk, tableHtml(parts.rows.slice(start, start + CHUNK)));
   chunk.dataset.filled = '1';
+  const row = lit && document.getElementById(rowId(lit.f, lit.key));
+  if (row) row.classList.add('target');
 }
 function emptyChunk(chunk) {
   if (!chunk.dataset.filled || chunk.contains(document.activeElement)) return;
@@ -192,19 +194,32 @@ function refreshBodies() {
     if (near(span(el)) || el.contains(document.activeElement)) fillBody(f, el); else emptyBody(el);
   }
 }
-// The file scrollToFile last showed. The pane can't bring a file near the end to its top, so that file stays the
+// The file, and the row when there is one, that go or scrollToFile last showed. A render keeps it where it is while
+// it is on screen, until the reader clicks, presses a key, turns the wheel or touches the page.
+let target = null; // { f, key }
+// The row go last lit up, while it stays lit; the row keeps its light when a render rebuilds it.
+let lit = null; // { f, key }
+for (const type of ['pointerdown', 'keydown', 'wheel', 'touchmove']) document.addEventListener(type, () => { target = null; }, true);
+// The file scrollToFile or go last showed. The pane can't bring a file near the end to its top, so that file stays the
 // active one while it is on screen, until the reader scrolls the pane.
 let shown = null;
 // When the reader last turned the wheel, touched or pressed a scroll key in the pane, and whether they hold its
 // scrollbar. A scroll soon after that input is the reader's; the page's own scrolls keep `shown`.
 let readerAt = -Infinity, holding = false;
-// Fill what is near the viewport, empty what is far, and mark the file under the top of the pane.
-function syncViewport() {
+// Fill what is near the viewport, and empty what is far.
+function fillViewport() {
   for (const { f, el } of sections) {
     const s = span(el);
     if (near(s)) fillBody(f, el);
     else if (far(s)) emptyBody(el);
   }
+}
+function syncViewport() {
+  fillViewport();
+  markActive();
+}
+// Mark the file shown last while it is on screen, or else the file under the top of the pane.
+function markActive() {
   const sec = shown && sectionEl(BY_PATH[shown]), at = sec && span(sec);
   if (at && at[0] < main.scrollTop + main.clientHeight && at[1] > main.scrollTop) { setActive(shown); return; }
   shown = null;
@@ -236,6 +251,15 @@ for (const type of ['keydown', 'wheel', 'touchmove']) {
 main.addEventListener('pointerdown', (e) => { if (e.target === main) holding = true; });
 for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, () => { holding = false; });
 
+// The target with where it sits, while it is on screen.
+function targetAnchor() {
+  const sec = target && sectionEl(target.f);
+  if (!sec) return null;
+  const row = target.key != null && document.getElementById(rowId(target.f, target.key));
+  const r = (row || sec).getBoundingClientRect(), mr = main.getBoundingClientRect();
+  if (r.bottom <= mr.top || r.top >= mr.bottom) return null;
+  return { f: target.f, sec, secTop: sec.getBoundingClientRect().top, rowId: row && row.id, rowTop: row && r.top };
+}
 // What is under the top of the pane, below the sticky file header: a code row when there is one, and its
 // section, with where each sits, so a render can put the same line back in the same place.
 function viewportAnchor() {
@@ -254,18 +278,19 @@ function restoreAnchor(a) {
   if (row) main.scrollTop += row.getBoundingClientRect().top - a.rowTop;
   else main.scrollTop += a.sec.getBoundingClientRect().top - a.secTop;
 }
-// Bring the page in line with the state, keeping the line under the top of the pane where it is.
+// Bring the page in line with the state, keeping the target, or else the line under the top of the pane, where it is.
 function render() {
   readerAt = -Infinity;
   renderSide();
-  const anchor = viewportAnchor();
+  const anchor = targetAnchor() || viewportAnchor();
   patchOverview();
   patchSections(visibleFiles());
   refreshBodies();
-  syncViewport();
+  fillViewport();
   restoreAnchor(anchor);
-  syncViewport();
+  fillViewport();
   restoreAnchor(anchor);
+  markActive();
   restoreFocus();
 }
 function restoreFocus() {
@@ -278,16 +303,34 @@ function restoreFocus() {
 }
 
 function scrollToFile(path) {
-  shown = null;
+  shown = null; target = null;
   if (path === 'overview') { main.scrollTop = 0; syncViewport(); return; }
   const f = BY_PATH[path], el = f && sectionEl(f);
   if (!el) return;
   main.scrollTop = span(el)[0] - 16;
   syncViewport();
   main.scrollTop = span(el)[0] - 16;
-  shown = path;
+  keepShown(f);
+}
+// Make a file the one the tree marks as active while it is on screen, and the target, until the reader moves on.
+function keepShown(f, key = null) {
+  shown = f.path;
+  target = { f, key };
   readerAt = -Infinity;
-  setActive(path);
+  setActive(f.path);
+}
+// Light up a row for a moment.
+function light(f, key) {
+  for (const el of main.querySelectorAll('tr.target')) el.classList.remove('target');
+  const mark = lit = { f, key };
+  const row = document.getElementById(rowId(f, key));
+  if (row) row.classList.add('target');
+  setTimeout(() => {
+    if (lit !== mark) return;
+    lit = null;
+    const row = document.getElementById(rowId(f, key));
+    if (row) row.classList.remove('target');
+  }, 2500);
 }
 // Make the matches in the row of the search hit Enter went to pop, so the eye finds where it landed. Once the pop
 // ends, the marks are as before.
@@ -313,7 +356,7 @@ function unhide(f) {
 // moment, unless it is a search hit: then the file's header stays on screen when the row is near the top of the
 // file, so the hit's file is the one the tree marks as active.
 function go(path, key, hit = false) {
-  shown = null;
+  shown = null; target = null;
   const f = BY_PATH[path];
   if (!f) { scrollToFile('overview'); return; }
   let dirty = unhide(f);
@@ -329,7 +372,7 @@ function go(path, key, hit = false) {
   const top = row.getBoundingClientRect().top;
   syncViewport();
   main.scrollTop += row.getBoundingClientRect().top - top;
-  if (hit) { if (span(el)[0] - 16 > main.scrollTop) scrollToFile(path); return; }
-  row.classList.add('target');
-  setTimeout(() => row.classList.remove('target'), 2500);
+  if (hit && span(el)[0] - 16 > main.scrollTop) { scrollToFile(path); return; }
+  keepShown(f, key);
+  if (!hit) light(f, key);
 }
