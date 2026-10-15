@@ -30,7 +30,7 @@ function fileLine(f) {
   const runText = Object.entries(runs).map(([c, n]) => `${n} ${c}`).join(', ') || 'none';
   return [`\`${f.path}\``, KIND_LABEL[k] + (f.old_path && f.old_path !== f.path ? ` from \`${f.old_path}\`` : ''), f.kind,
     f.lang ? `language ${f.lang}` : 'no highlighting', f.binary ? `binary ${binarySize(f)}` : `+${f.stats.additions} −${f.stats.deletions}`, `runs: ${runText}`,
-    plural(f.hunks.length, 'hunk'), `content side ${f.content_side}`, f.generated ? 'generated' : '', noiseOnly(f) ? 'noise only' : '',
+    plural(f.hunks.length, 'hunk'), `content side ${f.content_side}`, f.generated ? 'generated' : '', f.noise_only ? 'noise only' : '',
     `section ${sectionOpen(f) ? 'open' : 'collapsed'}`, isReviewed(f) ? 'reviewed' : 'not reviewed'].filter(Boolean).join(' · ');
 }
 function bugState() {
@@ -44,7 +44,7 @@ function bugState() {
     replyOpen: [...state.replyOpen.keys()], openThreads: cap([...state.openThreads]), showOutdated: [...state.showOutdated],
     reviewPanel: state.reviewPanel, reviewText: `${state.reviewText.length} chars`, convText: `${state.convText.length} chars`,
     busy: state.busy, focus: state.focus, reviewedFiles: FILES.filter(isReviewed).length,
-    visibleFiles: visibleFiles().length, hiddenNoiseOnly: FILES.filter(f => kindVisible(f) && noiseOnly(f) && !state.showNoiseOnly).length,
+    visibleFiles: visibleFiles().length, hiddenNoiseOnly: FILES.filter(f => kindVisible(f) && f.noise_only && !state.showNoiseOnly).length,
     hiddenGenerated: FILES.filter(f => kindVisible(f) && f.generated && !state.showGenerated).length,
   };
 }
@@ -76,7 +76,7 @@ function bugPrompt(text) {
   const f = BY_PATH[state.view];
   const anchor = viewportAnchor(), at = anchor && anchor.rowId && rowAt(anchor.rowId);
   const side = document.getElementById('side');
-  const app = D.app || {};
+  const app = D.app;
   const where = [
     `- Page: ${location.href}${SHELL ? ' · inside the tabbed shell' : ' · top-level document'}${window.__TAURI__ ? ' · desktop app' : ''}`,
     `- Pull request: ${PR.repo}#${PR.number} (${PR.url}) · ${PR.state}${PR.draft ? ', draft' : ''} · head ${short(PR.head)} (${PR.head_ref}) · base ${short(PR.base)} (${PR.base_ref}) · ${plural(FILES.length, 'file')} · ${plural(PR.commits, 'commit')}`,
@@ -125,17 +125,16 @@ ${env}
 
 ## How the page works
 
-- README.md and CONTEXT.md describe the app and its terms. The page is one HTML file: render.py inlines page/page.css, shell/theme.js, page/vendor/highlight.min.js, shell/frame.js and page/*.js in name order; build.py caches it under ~/.cache/diff-review/pages/ and rebuilds it when a source file is newer than the page, or when the page is opened with ?refresh=1.
+- README.md and CONTEXT.md describe the app and its terms. The page is one HTML file: render.py inlines page/page.css, shell/theme.js, page/vendor/highlight.min.js, shell/frame.js and page/*.js in name order; build.py caches it under ~/.cache/diff-review/pages/ and rebuilds it when a source file is newer than the page, or when the head commit moved (checked in the background on a visit, or at once with ?refresh=1).
 - Run \`python3 server.py 8765\` and open http://localhost:8765${location.pathname} to see this pull request. server.py and comments.py answer the comments API under /api/.
 - A "page line" above is a line of the built HTML; the file:line before it is where that line comes from.
 `;
 }
 
 // ---------- page lines back to source files
-// The page's script is the source files concatenated with a "// ---- name" line before each: the file name for a
-// script in shell/ or page/, or the path under page/ for a vendored script (vendor/highlight.min.js). With the
-// document's text, a line of the page maps to a file and a line of it. The map stays empty when the text cannot
-// be fetched.
+// The page's script is the source files concatenated with a "// ---- path" line before each, the file's path in
+// the repository. With the document's text, a line of the page maps to a file and a line of it. The map stays
+// empty when the text cannot be fetched.
 let pageMap = null;
 async function loadPageMap() {
   if (pageMap !== null) return;
@@ -155,7 +154,7 @@ function sourceOf(line) {
   const s = line - pageMap.first + 1;
   let hit = null;
   for (const [start, name] of pageMap.marks) { if (start <= s) hit = [start, name]; else break; }
-  return hit ? `${hit[1] === 'frame.js' ? 'shell/' : 'page/'}${hit[1]}:${s - hit[0]}` : '';
+  return hit ? `${hit[1]}:${s - hit[0]}` : '';
 }
 function mapPageLines(text) {
   const page = location.origin + location.pathname;

@@ -1,16 +1,9 @@
 // Which files the page shows, in which order, and where the search hits are.
 
-// All the file's change blocks fold: imports, rename fallout, whitespace or moved code. A file renamed or moved
-// without changes also counts: git gives it 100% similarity. A changed binary file has no blocks either, but its
-// similarity is below 100, or it has none.
-function noiseOnly(f) {
-  return !f.generated && f.stats.substantive === 0 &&
-    (f.stats.raw > 0 || (f.similarity === 100 && !f.mode_changed));
-}
 function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 // The files the tree lists: the search leaves them all in place.
 function fileListed(f) {
-  return kindVisible(f) && (state.showNoiseOnly || !noiseOnly(f)) && (state.showGenerated || !f.generated);
+  return kindVisible(f) && (state.showNoiseOnly || !f.noise_only) && (state.showGenerated || !f.generated);
 }
 // While searching, the page shows the files with a hit in their view. A closed section counts its view too, so
 // closing a section keeps its file on the page.
@@ -94,13 +87,3 @@ function allHits() {
 // The position of the hit Enter last went to, or -1 when it is no longer among the hits.
 const hitPosition = (all) => state.hit ? all.findIndex(h => h.path === state.hit.path && h.key === state.hit.key) : -1;
 const firstHitKey = (f) => f && viewHits(f)[0] || null;
-// Wrap every occurrence of the query in one <mark>. The query is found in the plain text of the HTML fragment,
-// so a match can span several highlighter tokens but never starts or ends inside an entity such as &gt;.
-function markHtml(html, q) {
-  if (!q) return html;
-  const needle = caseFold(q);
-  const text = caseFold(html.split(/(<[^>]+>)/).filter((_, i) => i % 2 === 0).map(unesc).join(''));
-  const ranges = [];
-  for (let j = text.indexOf(needle); j >= 0; j = text.indexOf(needle, j + needle.length)) ranges.push([j, j + needle.length]);
-  return wrapRanges(html, ranges, '<mark>', '</mark>', true);
-}

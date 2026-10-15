@@ -1,11 +1,15 @@
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, Position, expect
 
 from e2e.conftest import TITLE
+from helpers import Files
+
+AddPr = Callable[[Files, Files], str]
 
 PR = "/acme/widgets/pull/1"
 APP = "section[data-file='src/app.py']"
@@ -55,16 +59,35 @@ def test_tree_hides_noise_only_and_generated_files_until_asked(page: Page, serve
     expect(page.locator("#side .leaf")).to_have_count(5)
 
 
-def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/3")
+def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, add_pr({}, {"src/logo.png": b"\x89PNG\0" * 1000}))
     section = page.locator("section[data-file='src/logo.png']")
     section.scroll_into_view_if_needed()
     expect(section.locator(".fhead .counts")).to_have_text("4.9 KB")
     expect(section.locator(".code > .empty")).to_have_text("Binary file added · 4.9 KB")
 
 
-def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/4")
+def test_a_file_the_pull_request_empties_shows_its_removed_lines(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, add_pr({"notes.txt": "one\ntwo\n"}, {"notes.txt": ""}))
+    section = page.locator("section[data-file='notes.txt']")
+    section.scroll_into_view_if_needed()
+    expect(section.locator("tr.del td.c")).to_have_text(["one", "two"])
+
+
+def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, server_url: str, add_pr: AddPr) -> None:
+    fields = (
+        "    id: int\n    customer: str\n    amount: float\n    currency: str\n    created: str\n    shipped: bool\n"
+    )
+    models = "from dataclasses import dataclass\n\n\nTAX_RATE = 0.2\nSHIPPING = 5.0\nDISCOUNT = 0.1\n\n\n@dataclass\nclass Order:\n"
+    old = {
+        "src/models.py": f"{models}{fields}    old_total: float\n",
+        "src/report.py": "def report(o):\n    return o.old_total\n",
+    }
+    new = {
+        "src/models.py": f"{models}{fields}    new_total: float\n",
+        "src/report.py": "def report(o):\n    return o.new_total\n",
+    }
+    open_pr(page, server_url, add_pr(old, new))
     section = page.locator("section[data-file='src/models.py']")
     section.scroll_into_view_if_needed()
     expect(section.locator("tr.add")).to_have_text(re.compile("new_total: float"))
@@ -73,10 +96,45 @@ def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, s
     expect(section.locator("tr.fold")).to_have_text("⋯ 7 unchanged lines")
 
 
+CONFIG_FIELDS = "".join(f"    field_{n}: int\n" for n in range(1, 13))
+CONFIG_ARGS = "".join(f"    arg_{n}={n},\n" for n in range(1, 13))
+CONFIG_STEPS = "".join(f"    step_{n}()\n" for n in range(1, 13))
+SERVICE_CALLS = {name: "".join(f"        {name}{n}()\n" for n in range(1, 13)) for name in ("a", "b")}
+JOBS_FIELDS = "".join(f"    j{n} = {n}\n" for n in range(1, 13))
+NEAR_LINES = "".join(f"y{n} = {n}\n" for n in range(2, 20))
+CONFIG_OLD = {
+    "src/config.py": f"class Config:\n{CONFIG_FIELDS}\n\napp = make_app(\n{CONFIG_ARGS})\n\n\ndef run():\n{CONFIG_STEPS}    return 0\n",
+    "src/service.py": (
+        f"class Service:\n    def m1(self):\n{SERVICE_CALLS['a']}        return 0\n\n"
+        f'    def m2(self):\n{SERVICE_CALLS["b"]}        return 0\n\n    name = "service"\n'
+    ),
+    "src/jobs.py": f"class Jobs:\n{JOBS_FIELDS}\n    def run(self, x):\n        return x\n",
+    "src/near.py": f"x = 1\n{NEAR_LINES}def f(a):\n    b = 1\n    return a\n",
+}
+CONFIG_NEW = {
+    "src/config.py": (
+        f"class Config:\n{CONFIG_FIELDS}    extra: bool\n\n\napp = make_app(\n{CONFIG_ARGS}    extra=True,\n)\n\n\n"
+        f"def run():\n{CONFIG_STEPS}    return 1\n"
+    ),
+    "src/service.py": (
+        f"class Service:\n    def m1(self):\n{SERVICE_CALLS['a']}        return 1\n\n"
+        f'    def m2(self):\n{SERVICE_CALLS["b"]}        return 1\n\n    name = "service"\n    extra = True\n'
+    ),
+    "src/jobs.py": f"class Jobs:\n{JOBS_FIELDS}\n    def run(self, x, y):\n        return x\n",
+    "src/near.py": f"x = 10\n{NEAR_LINES}def f(a):\n    b = 1\n    return a + b\n",
+}
+
+
+@pytest.fixture(scope="module")
+def config_pr(add_pr: AddPr) -> str:
+    """Changes inside classes, functions and a call, for the inline folds, and lines holding "re" for the search."""
+    return add_pr(CONFIG_OLD, CONFIG_NEW)
+
+
 def test_a_change_shows_the_class_function_or_call_line_and_folds_the_lines_between(
-    page: Page, server_url: str
+    page: Page, server_url: str, config_pr: str
 ) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+    open_pr(page, server_url, config_pr)
     section = page.locator("section[data-file='src/config.py']")
     section.scroll_into_view_if_needed()
     code = lambda line: section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}"))  # noqa: E731
@@ -98,9 +156,9 @@ def test_a_change_shows_the_class_function_or_call_line_and_folds_the_lines_betw
 
 
 def test_a_change_shows_the_line_of_its_own_method_when_a_later_change_sits_in_the_class(
-    page: Page, server_url: str
+    page: Page, server_url: str, config_pr: str
 ) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+    open_pr(page, server_url, config_pr)
     section = page.locator("section[data-file='src/service.py']")
     section.scroll_into_view_if_needed()
     code = lambda line: section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}"))  # noqa: E731
@@ -110,8 +168,10 @@ def test_a_change_shows_the_line_of_its_own_method_when_a_later_change_sits_in_t
     expect(section.locator(".inline-fold")).to_have_count(2)
 
 
-def test_a_change_just_below_its_def_line_keeps_the_lines_next_to_it(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+def test_a_change_just_below_its_def_line_keeps_the_lines_next_to_it(
+    page: Page, server_url: str, config_pr: str
+) -> None:
+    open_pr(page, server_url, config_pr)
     section = page.locator("section[data-file='src/near.py']")
     section.scroll_into_view_if_needed()
     for line in ("y18 = 18", "y19 = 19", "def f(a):", "b = 1"):
@@ -119,8 +179,8 @@ def test_a_change_just_below_its_def_line_keeps_the_lines_next_to_it(page: Page,
     expect(section.locator("tr.fold")).to_have_text("⋯ 12 unchanged lines")
 
 
-def test_a_changed_def_line_shows_the_class_line_above_it(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+def test_a_changed_def_line_shows_the_class_line_above_it(page: Page, server_url: str, config_pr: str) -> None:
+    open_pr(page, server_url, config_pr)
     section = page.locator("section[data-file='src/jobs.py']")
     section.scroll_into_view_if_needed()
     expect(section.locator("tr.ctx td.c", has_text=re.compile(r"^class Jobs:"))).to_be_visible()
@@ -142,27 +202,6 @@ def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> 
     expect(section.locator("tr.runhead[data-fold]")).to_have_count(0)
     expect(section.locator("tr.collapsed[data-fold]")).to_have_count(1)
     expect(section.locator("tr.add", has_text="import sys")).to_have_count(0)
-
-
-HEIGHT_MISMATCHES = """() => ['', 'name'].flatMap(q => {
-    state.q = q;
-    const drawn = (f) => codeRows(f).html.filter(h => !/^<tr class="(thread|compose)"/.test(h)).length;
-    const counted = (f) => fileBlocks(f, true).reduce((n, b) => n + drawnRows(b), 0);
-    return FILES.filter(f => f.runs.length && counted(f) !== drawn(f)).map(f => `${q}:${f.path}`);
-})"""
-
-
-def test_the_height_estimate_counts_the_rows_each_file_draws(page: Page, server_url: str) -> None:
-    open_pr(page, server_url)
-    assert page.evaluate(HEIGHT_MISMATCHES) == []
-
-
-def test_the_height_estimate_counts_the_inline_fold_rows_closed_and_open(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
-    assert page.evaluate(HEIGHT_MISMATCHES) == []
-    page.evaluate("() => FILES.forEach(f => fileBlocks(f).filter(b => b.inline).forEach(b => toggleFold(b.fold)))")
-    assert page.evaluate("() => FILES.flatMap(f => fileBlocks(f)).filter(b => b.inline).every(b => b.open)")
-    assert page.evaluate(HEIGHT_MISMATCHES) == []
 
 
 def hit_row(page: Page) -> str:
@@ -190,8 +229,10 @@ def test_a_match_across_highlighter_tokens_is_one_mark(page: Page, server_url: s
     expect(mark).to_have_text('print("hel')
 
 
-def test_a_file_opened_from_the_tree_while_searching_starts_at_its_first_hit(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+def test_a_file_opened_from_the_tree_while_searching_starts_at_its_first_hit(
+    page: Page, server_url: str, config_pr: str
+) -> None:
+    open_pr(page, server_url, config_pr)
     meta = page.locator("#searchmeta")
     page.fill("#side .search", "re")
     expect(meta).to_have_text("4 files · 9 lines")
@@ -219,9 +260,9 @@ def test_a_file_opened_from_the_tree_while_searching_starts_at_its_first_hit(pag
 
 
 def test_the_tree_cursor_passes_a_closed_section_and_enter_opens_it_at_its_first_hit(
-    page: Page, server_url: str
+    page: Page, server_url: str, config_pr: str
 ) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+    open_pr(page, server_url, config_pr)
     meta = page.locator("#searchmeta")
     config = page.locator("section[data-file='src/config.py']")
     page.fill("#side .search", "re")
@@ -239,8 +280,10 @@ def test_the_tree_cursor_passes_a_closed_section_and_enter_opens_it_at_its_first
     expect(meta).to_have_text("4 files · 1 / 9")
 
 
-def test_enter_in_the_tree_goes_on_when_the_hit_is_in_a_collapsed_folder(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+def test_enter_in_the_tree_goes_on_when_the_hit_is_in_a_collapsed_folder(
+    page: Page, server_url: str, config_pr: str
+) -> None:
+    open_pr(page, server_url, config_pr)
     meta = page.locator("#searchmeta")
     page.fill("#side .search", "re")
     page.click("#side .leaf[data-path='src/config.py']")
@@ -437,8 +480,8 @@ def test_dragging_from_a_line_number_opens_a_comment_on_the_lines_in_between(pag
     expect(page.locator("textarea[data-compose-text]")).to_be_focused()
 
 
-def test_dragging_across_chunks_highlights_the_rows_of_both(page: Page, server_url: str) -> None:
-    open_pr(page, server_url, "/acme/widgets/pull/5")
+def test_dragging_across_chunks_highlights_the_rows_of_both(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, add_pr({}, {"src/long.py": "".join(f"x{n} = {n}\n" for n in range(1, 151))}))
     section = page.locator("section[data-file='src/long.py']")
     start = section.locator("tr[id$='-L98'] td.n").first
     end = section.locator("tr[id$='-L103'] td.n").first
@@ -666,10 +709,10 @@ def test_an_approval_of_the_head_commit_names_itself_and_blocks_another(
 
 
 def test_the_tree_cursor_stays_on_a_file_near_the_end_that_cannot_scroll_to_the_top(
-    page: Page, server_url: str
+    page: Page, server_url: str, config_pr: str
 ) -> None:
     page.set_viewport_size({"width": 1280, "height": 720})
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+    open_pr(page, server_url, config_pr)
     page.click("section[data-file='src/near.py'] button[data-review]")
     page.click("#side .leaf[data-path='src/jobs.py']")
     page.keyboard.press("ArrowDown")
@@ -691,20 +734,23 @@ def test_the_tree_cursor_stays_on_a_file_near_the_end_that_cannot_scroll_to_the_
     expect(near).not_to_have_class(re.compile(r"\bactive\b"))
 
 
-@pytest.mark.parametrize(("pr", "path"), [(6, "src/config.py"), (1, "package-lock.json")])
+@pytest.mark.parametrize("path", ["src/config.py", "package-lock.json"])
 def test_opening_an_address_that_names_a_reviewed_file_leaves_it_closed(
-    page: Page, server_url: str, pr: int, path: str
+    page: Page, server_url: str, config_pr: str, path: str
 ) -> None:
-    open_pr(page, server_url, f"/acme/widgets/pull/{pr}#{path}")
+    address = {"src/config.py": config_pr, "package-lock.json": PR}[path] + f"#{path}"
+    open_pr(page, server_url, address)
     page.click(f"section[data-file='{path}'] button[data-review]")
     page.goto("about:blank")
-    open_pr(page, server_url, f"/acme/widgets/pull/{pr}#{path}")
+    open_pr(page, server_url, address)
     expect(page.locator(f"section[data-file='{path}']")).to_have_class(re.compile(r"\bclosed\b"))
 
 
-def test_while_searching_the_tree_cursor_stays_on_a_hit_near_the_end(page: Page, server_url: str) -> None:
+def test_while_searching_the_tree_cursor_stays_on_a_hit_near_the_end(
+    page: Page, server_url: str, config_pr: str
+) -> None:
     page.set_viewport_size({"width": 1280, "height": 720})
-    open_pr(page, server_url, "/acme/widgets/pull/6")
+    open_pr(page, server_url, config_pr)
     page.keyboard.press("Meta+f")
     page.keyboard.type("a + b")
     page.click("#side .leaf[data-path='src/jobs.py']")

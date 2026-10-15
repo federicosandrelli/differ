@@ -52,7 +52,7 @@ function hiddenNotice(n, what, toggle, showing) {
   return `<div class="notice">${showing ? `Showing ${files}` : `${files} hidden`} · <a href="#" ${toggle}="${showing ? '0' : '1'}">${showing ? 'hide' : 'show'}</a></div>`;
 }
 function renderList() {
-  const noiseOnlyCount = FILES.filter(f => kindVisible(f) && noiseOnly(f)).length;
+  const noiseOnlyCount = FILES.filter(f => kindVisible(f) && f.noise_only).length;
   const generatedCount = FILES.filter(f => kindVisible(f) && f.generated).length;
   return hiddenNotice(noiseOnlyCount, 'file with only noise', 'data-noiseonly', state.showNoiseOnly) +
     hiddenNotice(generatedCount, 'generated file', 'data-generated', state.showGenerated) + renderTree();
@@ -65,9 +65,11 @@ function updateSearchMeta() {
 }
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
+// The status GitHub reports now, once the comments load; until then the one the page was built with.
 function statusChip() {
-  if (!PR_STATUS) return '';
-  return `<span class="status st-${PR_STATUS}"><span class="pr-icon st-${PR_STATUS}" aria-hidden="true"></span>${PR_STATUS[0].toUpperCase() + PR_STATUS.slice(1)}</span>`;
+  const status = C.status || PR_STATUS;
+  if (!status) return '';
+  return `<span class="status st-${status}"><span class="pr-icon st-${status}" aria-hidden="true"></span>${status[0].toUpperCase() + status.slice(1)}</span>`;
 }
 // The button names the viewer's verdict on the head commit, and stays primary while the viewer has a review to give.
 const VERDICT = { APPROVED: ['Approved', 'approved'], CHANGES_REQUESTED: ['Changes requested', 'changes'] };

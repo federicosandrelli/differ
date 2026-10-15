@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Render a classified diff plus PR metadata as one HTML page.
+"""Render a classified diff plus PR metadata as one HTML page, and the theme every document shares.
 
-Usage: render.py <classified.json> <annotations.json> <out.html>
-       render.py --splash
+Usage: render.py --splash   writes the desktop app's first page, web/index.html
 
 The page's script is page/vendor/highlight.min.js, then shell/frame.js, then page/*.js in name order (hence the
 numeric prefixes), and its stylesheet page/page.css. Both are inlined, so a page works from disk as well as from
@@ -15,11 +14,13 @@ from __future__ import annotations
 import html
 import json
 import re
-import subprocess
 import sys
 import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
+
+import commands
+from github import Status
 
 ROOT = Path(__file__).resolve().parent
 PAGE_DIR = ROOT / "page"
@@ -206,7 +207,7 @@ def splash_html() -> str:
 
 
 # The icon of each pull request status, as the inner paths of a 24×24 stroked SVG, and the palette colour it takes.
-PR_ICONS = {
+PR_ICONS: dict[Status, tuple[str, str]] = {
     "open": (
         '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/>',
         "add-fg",
@@ -224,13 +225,6 @@ PR_ICONS = {
         "del-fg",
     ),
 }
-
-
-def pr_status(pr: dict) -> str:
-    """The pull request's status as a key of PR_ICONS: "draft" for an open draft, else its state in lower case.
-    Empty for a state without an icon."""
-    status = "draft" if pr.get("draft") and pr.get("state") == "OPEN" else (pr.get("state") or "").lower()
-    return status if status in PR_ICONS else ""
 
 
 def pr_icon(status: str) -> str:
@@ -318,18 +312,22 @@ __JS__</script>
 """
 
 
-def scripts() -> list[Path]:
-    return sorted(PAGE_DIR.glob("*.js"))
+TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
+STATUS = re.compile(rb'<meta name="pr-status" content="(\w*)">')
 
 
-def vendored() -> list[Path]:
-    """The third-party scripts a page inlines before its own."""
-    return [VENDOR_DIR / "highlight.min.js"]
+def read_head(page: bytes) -> tuple[str | None, str]:
+    """The pull request title and status a page from render_page names in its head: no title, or an empty status,
+    when it names none."""
+    head = page[:4096]
+    title, status = TITLE.search(head), STATUS.search(head)
+    return html.unescape(title[1].decode(errors="replace")) if title else None, status[1].decode() if status else ""
 
 
-def frame_script() -> str:
-    """The script that lets a page run inside the tabbed shell; the review page gets it with the other scripts."""
-    return (SHELL_DIR / "frame.js").read_text()
+def page_scripts() -> list[Path]:
+    """The scripts a review page inlines, in order: highlight.js, the page side of the shell, then page/*.js in name
+    order."""
+    return [VENDOR_DIR / "highlight.min.js", SHELL_DIR / "frame.js", *sorted(PAGE_DIR.glob("*.js"))]
 
 
 def sources() -> list[Path]:
@@ -339,22 +337,20 @@ def sources() -> list[Path]:
         PAGE_DIR / "page.css",
         SHELL_DIR / "theme.js",
         SHELL_DIR / "tooltip.js",
-        *vendored(),
-        SHELL_DIR / "frame.js",
-        *scripts(),
+        *page_scripts(),
     ]
 
 
 def app_info() -> dict:
-    """The commit of this repository the page was rendered from, for the bug report a page writes."""
+    """The commit of this repository the page was rendered from, for the bug report a page writes; unknown when
+    git can't tell."""
 
     def git(*args: str) -> str:
         try:
-            return subprocess.run(
-                ["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True
-            ).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
+            r = commands.call(["git", "-C", str(ROOT), *args], timeout=10)
+        except commands.CommandError:
             return ""
+        return "" if r.returncode else r.stdout.decode(errors="replace").strip()
 
     own = git("rev-parse", "--show-toplevel") == str(ROOT)
     return {
@@ -364,22 +360,16 @@ def app_info() -> dict:
     }
 
 
-def script_name(path: Path) -> str:
-    """The name on a script's marker line: the file name, or the path under page/ for a vendored script."""
-    return str(path.relative_to(PAGE_DIR)) if path.is_relative_to(VENDOR_DIR) else path.name
-
-
-def render_page(classified: dict, annotations: dict) -> str:
-    data = {**classified, "annotations": annotations, "app": app_info()}
+def render_page(classified: dict, pr: dict) -> str:
+    """The review page of a pull request: its classified diff, and the pull request as build.py describes it."""
+    data = {**classified, "pr": pr, "app": app_info()}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    title = f"#{annotations['pr']['number']} {annotations['pr']['title']}"
-    js = "\n".join(
-        f"// ---- {script_name(path)}\n{path.read_text()}" for path in [*vendored(), SHELL_DIR / "frame.js", *scripts()]
-    )
+    title = f"#{pr['number']} {pr['title']}"
+    js = "\n".join(f"// ---- {path.relative_to(ROOT)}\n{path.read_text()}" for path in page_scripts())
     return fill(
         TEMPLATE,
         TITLE=html.escape(title),
-        STATUS=pr_status(annotations["pr"]),
+        STATUS=pr["status"],
         THEME=theme_head(),
         CSS=(PAGE_DIR / "page.css").read_text(),
         JS=js,
@@ -388,14 +378,9 @@ def render_page(classified: dict, annotations: dict) -> str:
 
 
 def main() -> None:
-    if sys.argv[1:] == ["--splash"]:
-        (ROOT / "web" / "index.html").write_text(splash_html())
-        return
-    if len(sys.argv) != 4:
+    if sys.argv[1:] != ["--splash"]:
         sys.exit(__doc__)
-    html = render_page(json.loads(Path(sys.argv[1]).read_text()), json.loads(Path(sys.argv[2]).read_text()))
-    Path(sys.argv[3]).write_text(html)
-    print(f"wrote {sys.argv[3]} ({len(html) // 1024} KB)")
+    (ROOT / "web" / "index.html").write_text(splash_html())
 
 
 if __name__ == "__main__":

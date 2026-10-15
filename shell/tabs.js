@@ -115,6 +115,7 @@
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
     if (m.type === 'badge') { tab.badge = m.n; draw(); save(); }
+    if (m.type === 'status') { tab.status = m.status; draw(); save(); }
     if (m.type === 'draft') tab.draft = !!m.on;
     if (m.type === 'page') {
       tab.url = m.url; tab.title = m.title; tab.status = m.status || ''; tab.draft = false;

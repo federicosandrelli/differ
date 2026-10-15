@@ -1,9 +1,12 @@
-import subprocess
 from typing import Any
 
 import pytest
 
 import comments
+from comments import Verdict
+from github import PullRef
+
+REF = PullRef("acme", "widgets", 1)
 
 
 def comment(cid: str, state: str = "SUBMITTED", review: str | None = None, reply_to: str | None = None) -> dict:
@@ -68,7 +71,7 @@ def test_author_tolerates_missing_nodes() -> None:
     assert comments._author({"author": {"login": "x"}}) == "x"
 
 
-def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_reads_every_page_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, Any]] = []
 
     def fake_graphql(query: str, **variables: Any) -> dict:
@@ -81,6 +84,8 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                         "id": "PR1",
                         "headRefOid": "deadbeef",
                         "bodyHTML": "<p>hi</p>",
+                        "state": "MERGED",
+                        "isDraft": False,
                         "reviewThreads": {
                             "pageInfo": {"hasNextPage": True, "endCursor": "CUR"},
                             "nodes": [
@@ -88,18 +93,10 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                                 thread("T2", [comment("c2", "PENDING", review="R0")]),
                             ],
                         },
+                        "pending": {"nodes": [{"id": "R0", "author": {"login": "ann"}}]},
                         "reviews": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
                             "nodes": [
-                                {
-                                    "id": "R0",
-                                    "author": {"login": "ann"},
-                                    "state": "PENDING",
-                                    "body": "",
-                                    "bodyHTML": "",
-                                    "createdAt": "2026-10-01T00:00:00Z",
-                                    "submittedAt": None,
-                                    "url": "u0",
-                                },
                                 {
                                     "id": "R1",
                                     "author": {"login": "bob"},
@@ -110,13 +107,16 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                                     "submittedAt": "2026-10-02T00:00:00Z",
                                     "url": "u1",
                                 },
-                            ]
+                            ],
                         },
                         "verdicts": {"nodes": [review("R1", "APPROVED", author="bob")]},
-                        "comments": {"nodes": [comment("k1")]},
+                        "comments": {"pageInfo": {"hasNextPage": True, "endCursor": "K"}, "nodes": [comment("k1")]},
                     }
                 },
             }
+        if variables["after"] == "K":
+            more = {"comments": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": [comment("k2")]}}
+            return {"repository": {"pullRequest": more}}
         return {
             "repository": {
                 "pullRequest": {
@@ -129,9 +129,10 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
         }
 
     monkeypatch.setattr(comments, "graphql", fake_graphql)
-    result = comments.fetch("o", "r", 3)
-    assert [c.get("after") for c in calls] == [None, "CUR"]
+    result = comments.fetch(PullRef("o", "r", 3))
+    assert [c.get("after") for c in calls] == [None, "CUR", "K"]
     assert result["viewer"] == "ann" and result["pr_id"] == "PR1" and result["head"] == "deadbeef"
+    assert result["status"] == "merged"
     assert result["pending"] == {"id": "R0"}
     assert [t["id"] for t in result["threads"]] == ["T1", "T2", "T3"]
     assert result["threads"][1]["comments"][0]["pending"] is True
@@ -148,7 +149,7 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
         }
     ]
     assert result["verdict"] is None
-    assert [c["id"] for c in result["comments"]] == ["k1"]
+    assert [c["id"] for c in result["comments"]] == ["k1", "k2"]
 
 
 def test_request_changes_without_a_summary_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,17 +157,8 @@ def test_request_changes_without_a_summary_is_refused(monkeypatch: pytest.Monkey
         raise AssertionError("GitHub must not be called")
 
     monkeypatch.setattr(comments, "graphql", fake_graphql)
-    with pytest.raises(comments.CommentError, match="needs a summary"):
-        comments.submit("acme", "widgets", 1, event="REQUEST_CHANGES", body="  ")
-
-
-def test_graphql_explains_a_missing_gh(monkeypatch: pytest.MonkeyPatch) -> None:
-    def missing(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
-        raise FileNotFoundError(2, "No such file or directory", args[0])
-
-    monkeypatch.setattr(comments.subprocess, "run", missing)
-    with pytest.raises(comments.CommentError, match=r"The GitHub CLI \(gh\) is not installed or not on PATH"):
-        comments.graphql("query { viewer { login } }")
+    with pytest.raises(comments.ReviewRefused, match="needs a summary"):
+        comments.submit(REF, event="REQUEST_CHANGES", body="  ")
 
 
 def review(rid: str, state: str, author: str = "ann", commit: str = "c1") -> dict:
@@ -179,8 +171,8 @@ def test_verdict_is_the_viewers_latest_approval_or_change_request() -> None:
         review("R2", "CHANGES_REQUESTED", commit="c2"),
         review("R3", "APPROVED", author="bob", commit="c3"),
     ]
-    assert comments._verdict(reviews, "ann") == {"state": "CHANGES_REQUESTED", "commit": "c2"}
-    assert comments._verdict(reviews, "bob") == {"state": "APPROVED", "commit": "c3"}
+    assert comments._verdict(reviews, "ann") == Verdict("CHANGES_REQUESTED", "c2")
+    assert comments._verdict(reviews, "bob") == Verdict("APPROVED", "c3")
     assert comments._verdict(reviews, "cid") is None
 
 
@@ -192,7 +184,7 @@ def pending_review_reply(reviews: list[dict], head: str = "c1") -> dict:
     return {
         "viewer": {"login": "ann"},
         "repository": {
-            "pullRequest": {"id": "PR1", "headRefOid": head, "reviews": {"nodes": []}, "verdicts": {"nodes": reviews}}
+            "pullRequest": {"id": "PR1", "headRefOid": head, "pending": {"nodes": []}, "verdicts": {"nodes": reviews}}
         },
     }
 
@@ -202,20 +194,20 @@ def pending_review_reply(reviews: list[dict], head: str = "c1") -> dict:
     [("APPROVE", "APPROVED", "approved"), ("REQUEST_CHANGES", "CHANGES_REQUESTED", "requested changes on")],
 )
 def test_repeating_a_verdict_on_the_head_commit_is_refused(
-    monkeypatch: pytest.MonkeyPatch, event: str, state: str, message: str
+    monkeypatch: pytest.MonkeyPatch, event: comments.Event, state: str, message: str
 ) -> None:
     def fake_graphql(query: str, **variables: Any) -> dict:
         assert not query.lstrip().startswith("mutation"), "nothing may be posted"
         return pending_review_reply([review("R1", state, commit="c1")])
 
     monkeypatch.setattr(comments, "graphql", fake_graphql)
-    with pytest.raises(comments.CommentError, match=f"You {message} this commit already"):
-        comments.submit("acme", "widgets", 1, event=event, body="Again")
+    with pytest.raises(comments.ReviewRefused, match=f"You {message} this commit already"):
+        comments.submit(REF, event=event, body="Again")
 
 
 @pytest.mark.parametrize(("event", "head"), [("APPROVE", "c2"), ("REQUEST_CHANGES", "c1")])
 def test_a_verdict_on_an_older_commit_or_a_different_verdict_goes_out(
-    monkeypatch: pytest.MonkeyPatch, event: str, head: str
+    monkeypatch: pytest.MonkeyPatch, event: comments.Event, head: str
 ) -> None:
     posted: list[str] = []
 
@@ -226,5 +218,5 @@ def test_a_verdict_on_an_older_commit_or_a_different_verdict_goes_out(
         return pending_review_reply([review("R1", "APPROVED", commit="c1")], head=head)
 
     monkeypatch.setattr(comments, "graphql", fake_graphql)
-    comments.submit("acme", "widgets", 1, event=event, body="Again")
+    comments.submit(REF, event=event, body="Again")
     assert posted == [event]

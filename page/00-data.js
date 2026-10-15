@@ -1,6 +1,6 @@
 // The page's data, state and small shared helpers. Every other module reads from here.
 const D = JSON.parse(document.getElementById('data').textContent);
-const PR = D.annotations.pr;
+const PR = D.pr;
 const FILES = D.files;
 const BY_PATH = Object.fromEntries(FILES.map(f => [f.path, f]));
 const NOISE = ['import', 'rename', 'whitespace', 'moved'];

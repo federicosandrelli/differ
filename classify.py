@@ -1,53 +1,87 @@
-#!/usr/bin/env python3
-"""Parse a unified diff and classify every change run.
-
-Usage: classify.py <input dir> > classified.json
-
-The input directory holds diff.patch (git diff -M), names.txt (git diff -M --name-status),
-and old/ and new/ trees with the full content of every touched file,
-and an optional generated.txt listing the paths marked linguist-generated in .gitattributes.
-"""
+"""Parse the diff of a pull request and classify every change run."""
 
 from __future__ import annotations
 
 import ast
-import json
 import re
-import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal, TypedDict
 
 TOKEN = re.compile(r"[\w.]")
 IDENT = re.compile(r"^[\w.]+$")
 HAS_LETTER = re.compile(r"[A-Za-z]")
 
+RunClass = Literal["substantive", "import", "rename", "whitespace", "moved"]
+Side = Literal["old", "new"]
+# A rename: the name before and the name after.
+Pair = tuple[str, str]
+# A changed line: its number on its own side, and its text.
+Line = tuple[int, str]
+# A line of a hunk: its tag, its numbers on the old and new side, and its text.
+HunkLine = (
+    tuple[Literal[" "], int, int, str] | tuple[Literal["-"], int, None, str] | tuple[Literal["+"], None, int, str]
+)
+
+
+@dataclass(frozen=True)
+class Diff:
+    """What classify reads: the diff (`git diff-tree -p -M -U3` from the base to the head), the content of every changed
+    file at the base and at the head by path, on the sides where it exists, and the paths .gitattributes marks
+    linguist-generated."""
+
+    patch: str
+    old: dict[str, bytes]
+    new: dict[str, bytes]
+    generated: set[str]
+
+
+class Place(TypedDict):
+    """A line of a file: on the new side for added lines, on the old side for removed ones."""
+
+    path: str
+    line: int
+
 
 @dataclass
 class Run:
+    """A maximal block of changed lines of a hunk: the removed ones, then the added ones."""
+
     index: int
-    removed: list[tuple[int, str]]
-    added: list[tuple[int, str]]
-    cls: str = "substantive"
-    rename: tuple[str, str] | None = None
+    removed: list[Line]
+    added: list[Line]
+    cls: RunClass = "substantive"
+    rename: Pair | None = None
+    # Whether the run defines its rename's new name (a class, a def, an annotation or an assignment).
     origin: bool = False
+    # For a run with as many removed as added lines: whether each removed line becomes its added line by the renames.
     pair_rename: list[bool] = field(default_factory=list)
-    moved_to: dict | None = None
+    # Where a moved block went, or where it came from.
+    moved_to: Place | None = None
+
+    @property
+    def size(self) -> int:
+        return len(self.removed) + len(self.added)
+
+    @property
+    def noise(self) -> bool:
+        """Whether the page folds the run: anything but a substantive change, or the rename that defines the name."""
+        return self.cls != "substantive" and not (self.cls == "rename" and self.origin)
 
 
 @dataclass
 class Hunk:
     old_start: int
     new_start: int
-    header: str
-    lines: list[tuple[str, int | None, int | None, str]] = field(default_factory=list)
+    lines: list[HunkLine] = field(default_factory=list)
 
 
 @dataclass
 class FileDiff:
     old_path: str | None
     new_path: str | None
-    status: str
+    status: Literal["A", "M", "D", "R"]
     binary: bool = False
     similarity: int | None = None
     mode_changed: bool = False
@@ -59,49 +93,135 @@ class FileDiff:
         return self.new_path or self.old_path or ""
 
 
-def parse_patch(text: str) -> list[FileDiff]:
+class Symbol(TypedDict):
+    """A class, a function, or a call at module level that spans several lines, in a Python file. It starts on
+    `start` (at its first decorator), its body on `body`, and it ends on `end`."""
+
+    name: str
+    kind: Literal["class", "def", "call"]
+    start: int
+    body: int
+    end: int
+
+
+class Origin(TypedDict):
+    """Where a rename is defined."""
+
+    path: str
+    line: int
+    side: Side
+    text: str
+
+
+@dataclass(frozen=True)
+class ClassifiedFile:
+    """A changed file with its runs classified, and what the page shows of it besides the diff: its content on one
+    side, and the symbols and import lines of a Python file."""
+
+    diff: FileDiff
+    content: str
+    content_side: Side
+    symbols: list[Symbol]
+    import_lines: set[int]
+    old_import_lines: set[int]
+    generated: bool
+
+    @property
+    def noise_only(self) -> bool:
+        """Whether the page hides the file as noise: every run of it folds, or it is renamed or moved without a
+        change, which git reports as 100% similarity and no mode change. A generated file is hidden as generated,
+        and a changed binary file has no runs but has changed."""
+        fd = self.diff
+        if self.generated:
+            return False
+        if fd.runs:
+            return all(run.noise for run in fd.runs)
+        return fd.similarity == 100 and not fd.mode_changed
+
+
+C_ESCAPES = {
+    b"a": b"\a",
+    b"b": b"\b",
+    b"t": b"\t",
+    b"n": b"\n",
+    b"v": b"\v",
+    b"f": b"\f",
+    b"r": b"\r",
+    b'"': b'"',
+    b"\\": b"\\",
+}
+
+
+def unquoted(name: str) -> str:
+    """A path as git prints it: as it is, or between double quotes with C escapes when it holds a tab, a quote, a
+    backslash or a character outside ASCII, each byte of which git writes in octal."""
+    if not name.startswith('"'):
+        return name
+
+    def unescape(m: re.Match[bytes]) -> bytes:
+        code = m.group(1)
+        return bytes([int(code, 8)]) if code.isdigit() else C_ESCAPES[code]
+
+    return re.sub(rb"\\([0-7]{3}|.)", unescape, name[1:-1].encode()).decode(errors="replace")
+
+
+def parse_patch(patch: str) -> list[FileDiff]:
+    """The files of a diff that git printed, as git reads one: lines end at a newline only, and a file's
+    paths come from its `diff --git` line, or from its rename lines when it is renamed."""
     files: list[FileDiff] = []
     current: FileDiff | None = None
     hunk: Hunk | None = None
     old_no = new_no = 0
-    for raw in text.splitlines():
+    for raw in patch.split("\n"):
         if raw.startswith("diff --git "):
-            m = re.match(r"diff --git a/(.*) b/(.*)$", raw)
-            assert m
-            current = FileDiff(old_path=m.group(1), new_path=m.group(2), status="M")
+            # A file that keeps its name has it twice, so the first half of the line names it.
+            names = raw.removeprefix("diff --git ")
+            path = unquoted(names[: len(names) // 2])[2:]
+            current = FileDiff(old_path=path, new_path=path, status="M")
             files.append(current)
             hunk = None
             continue
         if current is None:
             continue
-        if hunk is None or raw.startswith(("---", "+++", "similarity", "rename", "new file", "deleted file", "index ")):
+        if raw.startswith("@@"):
+            m = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)", raw)
+            assert m
+            old_no, new_no = int(m.group(1)), int(m.group(2))
+            hunk = Hunk(old_start=old_no, new_start=new_no)
+            current.hunks.append(hunk)
+            continue
+        if hunk is None:
+            # The file's header, up to its first hunk.
             if raw.startswith("new file mode"):
-                current.status = "A"
-                current.old_path = None
+                deleted = files[-2] if len(files) > 1 else None
+                if deleted and deleted.status == "D" and deleted.old_path == current.new_path:
+                    # git prints a change of type, such as a file that becomes a symlink, as a deletion and a
+                    # creation of the path; they make one changed file.
+                    files.pop()
+                    current = deleted
+                    current.status, current.new_path, current.mode_changed = "M", current.old_path, True
+                else:
+                    current.status = "A"
+                    current.old_path = None
             elif raw.startswith("deleted file mode"):
                 current.status = "D"
                 current.new_path = None
             elif raw.startswith("similarity index"):
                 current.status = "R"
                 current.similarity = int(raw.removeprefix("similarity index ").rstrip("%"))
+            elif raw.startswith("rename from "):
+                current.old_path = unquoted(raw.removeprefix("rename from "))
+            elif raw.startswith("rename to "):
+                current.new_path = unquoted(raw.removeprefix("rename to "))
             elif raw.startswith("Binary files "):
                 current.binary = True
             elif raw.startswith("old mode"):
                 current.mode_changed = True
-            if not raw.startswith("@@"):
-                continue
-        if raw.startswith("@@"):
-            m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$", raw)
-            assert m
-            old_no, new_no = int(m.group(1)), int(m.group(3))
-            hunk = Hunk(old_start=old_no, new_start=new_no, header=m.group(5))
-            current.hunks.append(hunk)
             continue
         if raw.startswith("\\ No newline"):
             continue
-        assert hunk is not None
         tag, body = raw[:1], raw[1:]
-        if tag == " " or raw == "":
+        if tag == " ":
             hunk.lines.append((" ", old_no, new_no, body))
             old_no += 1
             new_no += 1
@@ -124,10 +244,14 @@ def build_runs(fd: FileDiff) -> None:
                 i += 1
                 continue
             j = i
-            removed, added = [], []
+            removed: list[Line] = []
+            added: list[Line] = []
             while j < len(lines) and lines[j][0] != " ":
-                tag, o, n, text = lines[j]
-                (removed if tag == "-" else added).append((o if tag == "-" else n, text))
+                line = lines[j]
+                if line[0] == "-":
+                    removed.append((line[1], line[3]))
+                else:
+                    added.append((line[2], line[3]))
                 j += 1
             fd.runs.append(Run(index=index, removed=removed, added=added))
             index += 1
@@ -143,64 +267,56 @@ def first_line(node: ast.stmt) -> int:
     return decorators[0].lineno if decorators else node.lineno
 
 
-def python_structure(source: str) -> tuple[set[int], list[dict]]:
+def last_line(node: ast.stmt) -> int:
+    return node.end_lineno or node.lineno
+
+
+def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
     """Return (import line numbers, symbols) for a Python source; both empty when it does not parse."""
     imports: set[int] = set()
-    symbols: list[dict] = []
+    symbols: list[Symbol] = []
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return imports, symbols
 
-    def visit(node, depth, parent_name):
+    def visit(node: ast.AST, module_level: bool) -> None:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.Import | ast.ImportFrom):
-                imports.update(range(child.lineno, (child.end_lineno or child.lineno) + 1))
+                imports.update(range(child.lineno, last_line(child) + 1))
             elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 kind = "class" if isinstance(child, ast.ClassDef) else "def"
-                start = first_line(child)
-                name = f"{parent_name}.{child.name}" if parent_name else child.name
                 symbols.append(
-                    {
-                        "name": name,
-                        "short": child.name,
-                        "kind": kind,
-                        "start": start,
-                        "body": first_line(child.body[0]),
-                        "end": child.end_lineno,
-                        "depth": depth,
-                    }
+                    Symbol(
+                        name=child.name,
+                        kind=kind,
+                        start=first_line(child),
+                        body=first_line(child.body[0]),
+                        end=last_line(child),
+                    )
                 )
-                visit(child, depth + 1, name)
+                visit(child, module_level=False)
             elif isinstance(child, ast.If | ast.Try | ast.With | ast.For | ast.While):
-                visit(child, depth, parent_name)
+                visit(child, module_level)
             elif (
-                not parent_name
+                module_level
                 and isinstance(child, ast.Expr | ast.Assign | ast.AnnAssign | ast.AugAssign)
                 and isinstance(child.value, ast.Call)
-                and child.end_lineno != child.lineno
+                and last_line(child) != child.lineno
             ):
-                callee = ast.unparse(child.value.func)
+                callee = ast.unparse(child.value.func).rsplit(".", 1)[-1]
                 symbols.append(
-                    {
-                        "name": callee,
-                        "short": callee.rsplit(".", 1)[-1],
-                        "kind": "call",
-                        "start": child.lineno,
-                        "body": child.lineno + 1,
-                        "end": child.end_lineno,
-                        "depth": depth,
-                    }
+                    Symbol(name=callee, kind="call", start=child.lineno, body=child.lineno + 1, end=last_line(child))
                 )
 
-    visit(tree, 0, "")
+    visit(tree, module_level=True)
     return imports, symbols
 
 
 # ---------------------------------------------------------------- renames
 
 
-def token_diff(old: str, new: str) -> tuple[str, str] | None:
+def token_diff(old: str, new: str) -> Pair | None:
     """The differing span of two lines, widened to token boundaries, or None when it is not identifier-like."""
     if old == new:
         return None
@@ -225,7 +341,7 @@ def token_diff(old: str, new: str) -> tuple[str, str] | None:
     return strip_common_segments(a, b)
 
 
-def strip_common_segments(a: str, b: str) -> tuple[str, str]:
+def strip_common_segments(a: str, b: str) -> Pair:
     """Drop the dotted segments two paths share at either end, keeping at least one segment on each side."""
     sa, sb = a.split("."), b.split(".")
     while len(sa) > 1 and len(sb) > 1 and sa[0] == sb[0]:
@@ -241,37 +357,25 @@ def module_path(path: str) -> str:
     return re.sub(r"\.py$", "", path).replace("/", ".")
 
 
-def collect_renames(files: list[FileDiff]) -> dict[tuple[str, str], dict]:
-    counts: Counter = Counter()
-    run_counts: Counter = Counter()
-    seeds: dict[tuple[str, str], str] = {}
+def collect_renames(files: list[FileDiff]) -> dict[Pair, str | None]:
+    """Every rename of the pull request, with the path of the renamed file it follows, if any. A rename is a name
+    that changes the same way in at least two runs, or the module or file name of a renamed file."""
+    runs: Counter[Pair] = Counter()
+    of_files: dict[Pair, str] = {}
     for fd in files:
         if fd.status == "R" and fd.old_path and fd.new_path:
-            seeds[(module_path(fd.old_path), module_path(fd.new_path))] = "file rename"
+            of_files[(module_path(fd.old_path), module_path(fd.new_path))] = fd.path
             ob, nb = Path(fd.old_path).stem, Path(fd.new_path).stem
             if ob != nb:
-                seeds[(ob, nb)] = "file rename"
+                of_files[(ob, nb)] = fd.path
         for run in fd.runs:
-            if len(run.removed) != len(run.added):
-                continue
-            seen: set[tuple[str, str]] = set()
-            for (_, o), (_, n) in zip(run.removed, run.added, strict=True):
-                pair = token_diff(o, n)
-                if pair:
-                    counts[pair] += 1
-                    seen.add(pair)
-            for pair in seen:
-                run_counts[pair] += 1
-    renames: dict[tuple[str, str], dict] = {}
-    for pair, c in counts.items():
-        if run_counts[pair] >= 2 or pair in seeds:
-            renames[pair] = {"from": pair[0], "to": pair[1], "count": c, "seed": seeds.get(pair)}
-    for pair, why in seeds.items():
-        renames.setdefault(pair, {"from": pair[0], "to": pair[1], "count": 0, "seed": why})
-    return renames
+            if len(run.removed) == len(run.added):
+                pairs = (token_diff(o, n) for (_, o), (_, n) in zip(run.removed, run.added, strict=True))
+                runs.update({pair for pair in pairs if pair})
+    return {pair: of_files.get(pair) for pair, n in runs.items() if n >= 2 or pair in of_files} | of_files
 
 
-def apply_renames(line: str, renames: list[tuple[str, str]]) -> str:
+def apply_renames(line: str, renames: list[Pair]) -> str:
     for a, b in renames:
         line = re.sub(r"(?<!\w)" + re.escape(a) + r"(?!\w)", b, line)
     return line
@@ -290,9 +394,11 @@ def is_definition(line: str, name: str) -> bool:
 # ---------------------------------------------------------------- classification
 
 
-def classify_run(
-    run: Run, old_imports: set[int], new_imports: set[int], renames: list[tuple[str, str]], rename_info: dict
-) -> None:
+def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames: list[Pair]) -> None:
+    """Classify the run, with the renames applied longest name first. A run link_moves linked is moved."""
+    if run.moved_to:
+        run.cls = "moved"
+        return
     removed = [t for _, t in run.removed]
     added = [t for _, t in run.added]
     changed = removed + added
@@ -312,10 +418,10 @@ def classify_run(
         if flags and all(flags):
             # A line that renames the name more than once differs in a span wider than one token, so the
             # rename is found by the names it holds instead.
-            pairs = Counter()
+            pairs: Counter[Pair] = Counter()
             for o, n in zip(removed, added, strict=True):
                 pair = token_diff(o, n)
-                if pair in rename_info:
+                if pair in renames:
                     pairs[pair] += 1
                 else:
                     pairs.update(p for p in renames if re.search(r"(?<!\w)" + re.escape(p[0]) + r"(?!\w)", o))
@@ -324,33 +430,31 @@ def classify_run(
             run.cls = "rename"
             run.origin = any(
                 is_definition(o, a) or is_definition(n, b)
-                for (a, b) in (list(pairs) or [])
+                for a, b in pairs
                 for o, n in zip(removed, added, strict=True)
             )
             return
     run.cls = "substantive"
 
 
-def detect_moves(files: list[FileDiff]) -> None:
-    def key(lines):
+def link_moves(files: list[FileDiff]) -> None:
+    """Link a run that only removes lines to a run that only adds the same lines elsewhere, ignoring indentation
+    and blank lines, when they hold at least 4 lines that are not blank: each run's moved_to names the other."""
+
+    def key(lines: list[Line]) -> tuple[str, ...]:
         return tuple(t.strip() for _, t in lines if t.strip())
 
-    added_index: dict[tuple, list[tuple[int, int]]] = defaultdict(list)
-    for fi, fd in enumerate(files):
-        for run in fd.runs:
-            if len(run.added) >= 4 and not run.removed:
-                added_index[key(run.added)].append((fi, run.index))
+    added: dict[tuple[str, ...], tuple[FileDiff, Run]] = {}
     for fd in files:
         for run in fd.runs:
-            if len(run.removed) >= 4 and not run.added:
-                k = key(run.removed)
-                if k in added_index:
-                    tfi, tri = added_index[k][0]
-                    target = files[tfi]
-                    run.cls = "moved"
-                    run.moved_to = {"path": target.path, "line": target.runs[tri].added[0][0]}
-                    target.runs[tri].cls = "moved"
-                    target.runs[tri].moved_to = {"path": fd.path, "line": run.removed[0][0]}
+            if not run.removed and len(key(run.added)) >= 4:
+                added.setdefault(key(run.added), (fd, run))
+    for fd in files:
+        for run in fd.runs:
+            if not run.added and (target := added.get(key(run.removed))):
+                target_file, target_run = target
+                run.moved_to = Place(path=target_file.path, line=target_run.added[0][0])
+                target_run.moved_to = Place(path=fd.path, line=run.removed[0][0])
 
 
 TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
@@ -364,7 +468,7 @@ TEST_NAME = re.compile(
 )
 
 
-def file_kind(path: str) -> str:
+def file_kind(path: str) -> Literal["docs", "test", "implementation"]:
     if path.startswith((".claude/", "docs/")) or path.endswith(".md"):
         return "docs"
     *dirs, name = path.split("/")
@@ -461,34 +565,29 @@ def language(path: str) -> str:
     return SPECIAL_FILES.get(name) or LANGUAGES.get(suffix, "text")
 
 
-def read_source(path: Path) -> str:
-    """The file as text, or empty for a missing or binary file."""
-    if not path.exists():
+def decoded(content: bytes | None) -> str:
+    """A file's content as text, or empty for a binary file or a file that is not there."""
+    if content is None or b"\0" in content[:8192]:
         return ""
-    data = path.read_bytes()
-    if b"\0" in data[:8192]:
-        return ""
-    return data.decode("utf-8", errors="replace")
+    return content.decode("utf-8", errors="replace")
 
 
-def binary_sizes(root: Path, fd: FileDiff) -> dict | None:
-    """A binary file's size in bytes on each side, None on a side without the exported file; None for a text file."""
+def binary_sizes(diff: Diff, fd: FileDiff) -> dict[Side, int | None] | None:
+    """A binary file's size in bytes on each side, None on a side without the file; None for a text file."""
     if not fd.binary:
         return None
-    sizes: dict[str, int | None] = {}
-    for side, path in (("old", fd.old_path), ("new", fd.new_path)):
-        target = root / side / path if path else None
-        sizes[side] = target.stat().st_size if target and target.is_file() else None
-    return sizes
+    old = diff.old.get(fd.old_path) if fd.old_path else None
+    new = diff.new.get(fd.new_path) if fd.new_path else None
+    return {"old": None if old is None else len(old), "new": None if new is None else len(new)}
 
 
-def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list[dict]:
-    """Classify every run and return one entry per file with its content, symbols and import lines."""
-    ordered = sorted(rename_info, key=lambda p: -len(p[0]))
-    entries = []
+def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | None]) -> list[ClassifiedFile]:
+    """Classify every run of every file."""
+    longest_first = sorted(renames, key=lambda p: -len(p[0]))
+    classified = []
     for fd in files:
-        old_src = read_source(root / "old" / fd.old_path) if fd.old_path else ""
-        new_src = read_source(root / "new" / fd.new_path) if fd.new_path else ""
+        old_src = decoded(diff.old.get(fd.old_path)) if fd.old_path else ""
+        new_src = decoded(diff.new.get(fd.new_path)) if fd.new_path else ""
         content, content_side = (new_src, "new") if fd.new_path else (old_src, "old")
         if fd.path.endswith(".py"):
             old_imports, _ = python_structure(old_src)
@@ -496,145 +595,115 @@ def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list
         else:
             old_imports, imports, symbols = set(), set(), []
         for run in fd.runs:
-            classify_run(run, old_imports, imports if content_side == "new" else old_imports, ordered, rename_info)
-        entries.append(
-            {
-                "fd": fd,
-                "symbols": symbols,
-                "content": content,
-                "content_side": content_side,
-                "binary": binary_sizes(root, fd),
-                "import_lines": imports,
-                "old_import_lines": old_imports,
-            }
-        )
-    return entries
+            classify_run(run, old_imports, imports, longest_first)
+        generated = is_generated(fd.path, content, diff.generated)
+        classified.append(ClassifiedFile(fd, content, content_side, symbols, imports, old_imports, generated))
+    return classified
 
 
-def find_origins(entries: list[dict], rename_info: dict) -> dict[tuple[str, str], dict | None]:
-    """Where each rename is defined: the first class, def, annotation or assignment of the new name,
-    with implementation files searched before tests."""
-    origins: dict[tuple[str, str], dict | None] = {pair: None for pair in rename_info}
-    for entry in sorted(entries, key=lambda e: file_kind(e["fd"].path) == "test"):
-        fd = entry["fd"]
-        if fd.status == "R":
-            for pair in rename_info:
-                if rename_info[pair]["seed"] and origins[pair] is None:
-                    origins[pair] = {"path": fd.path, "line": 1, "side": "new", "text": f"renamed from {fd.old_path}"}
+def find_origins(files: list[ClassifiedFile], renames: dict[Pair, str | None]) -> dict[Pair, Origin | None]:
+    """Where each rename is defined: the renamed file it follows, or the first class, def, annotation or assignment
+    of the new name, with implementation files searched before tests."""
+    origins: dict[Pair, Origin | None] = dict.fromkeys(renames)
+    for fd in sorted((f.diff for f in files), key=lambda fd: file_kind(fd.path) == "test"):
+        for pair, renamed_file in renames.items():
+            if renamed_file == fd.path and origins[pair] is None:
+                origins[pair] = Origin(path=fd.path, line=1, side="new", text=f"renamed from {fd.old_path}")
         for run in fd.runs:
             for (a, b), origin in origins.items():
                 if origin is not None:
                     continue
-                for no, text in run.added:
-                    if is_definition(text, b):
-                        origins[(a, b)] = {"path": fd.path, "line": no, "side": "new", "text": text.strip()}
+                for no, line in run.added:
+                    if is_definition(line, b):
+                        origins[(a, b)] = Origin(path=fd.path, line=no, side="new", text=line.strip())
                         break
                 else:
-                    for no, text in run.removed:
-                        if is_definition(text, a):
-                            origins[(a, b)] = {"path": fd.path, "line": no, "side": "old", "text": text.strip()}
+                    for no, line in run.removed:
+                        if is_definition(line, a):
+                            origins[(a, b)] = Origin(path=fd.path, line=no, side="old", text=line.strip())
                             break
     return origins
 
 
-def file_json(entry: dict, marked: set[str]) -> dict:
-    fd: FileDiff = entry["fd"]
-    by_class: Counter = Counter()
-    substantive = 0
-    runs_json = []
-    for run in fd.runs:
-        n = len(run.removed) + len(run.added)
-        by_class[run.cls] += n
-        if run.cls == "substantive" or (run.cls == "rename" and run.origin):
-            substantive += n
-        runs_json.append(
-            {
-                "index": run.index,
-                "class": run.cls,
-                "removed": [no for no, _ in run.removed],
-                "added": [no for no, _ in run.added],
-                "rename": list(run.rename) if run.rename else None,
-                "origin": run.origin,
-                "pair_rename": run.pair_rename,
-                "moved_to": run.moved_to,
-            }
-        )
-    hunks_json = [
-        {
-            "old_start": h.old_start,
-            "new_start": h.new_start,
-            "header": h.header,
-            "lines": [[t, o, n, x] for t, o, n, x in h.lines],
-        }
-        for h in fd.hunks
-    ]
+def file_json(f: ClassifiedFile, diff: Diff) -> dict:
+    """The file as the page reads it."""
+    fd = f.diff
     return {
         "path": fd.path,
         "old_path": fd.old_path,
         "new_path": fd.new_path,
         "status": fd.status,
-        "similarity": fd.similarity,
-        "mode_changed": fd.mode_changed,
         "kind": file_kind(fd.path),
-        "generated": is_generated(fd.path, entry["content"], marked),
+        "generated": f.generated,
+        "noise_only": f.noise_only,
         "lang": language(fd.path),
-        "content": entry["content"],
-        "content_side": entry["content_side"],
-        "binary": entry["binary"],
-        "hunks": hunks_json,
-        "runs": runs_json,
-        "symbols": entry["symbols"],
-        "import_lines": sorted(entry["import_lines"]),
-        "old_import_lines": sorted(entry["old_import_lines"]),
+        "content": f.content,
+        "content_side": f.content_side,
+        "binary": binary_sizes(diff, fd),
+        "hunks": [{"old_start": h.old_start, "new_start": h.new_start, "lines": h.lines} for h in fd.hunks],
+        "runs": [
+            {
+                "index": run.index,
+                "class": run.cls,
+                "removed": [no for no, _ in run.removed],
+                "added": [no for no, _ in run.added],
+                "rename": run.rename,
+                "origin": run.origin,
+                "pair_rename": run.pair_rename,
+                "noise": run.noise,
+                "moved_to": run.moved_to,
+            }
+            for run in fd.runs
+        ],
+        "symbols": f.symbols,
+        "import_lines": sorted(f.import_lines),
+        "old_import_lines": sorted(f.old_import_lines),
         "stats": {
-            "raw": sum(by_class.values()),
-            "substantive": substantive,
-            "by_class": dict(by_class),
-            "additions": sum(len(r.added) for r in fd.runs),
-            "deletions": sum(len(r.removed) for r in fd.runs),
+            "additions": sum(len(run.added) for run in fd.runs),
+            "deletions": sum(len(run.removed) for run in fd.runs),
         },
     }
 
 
-def renames_json(files: list[FileDiff], rename_info: dict, origins: dict) -> list[dict]:
+def renames_json(files: list[FileDiff], origins: dict[Pair, Origin | None]) -> list[dict]:
     """Every rename applied in at least one run, most used first."""
-    usage: dict[tuple[str, str], dict] = {pair: {"runs": 0, "files": set()} for pair in rename_info}
+    runs: Counter[Pair] = Counter()
+    paths: defaultdict[Pair, set[str]] = defaultdict(set)
     for fd in files:
         for run in fd.runs:
             if run.rename:
-                usage[run.rename]["runs"] += 1
-                usage[run.rename]["files"].add(fd.path)
+                runs[run.rename] += 1
+                paths[run.rename].add(fd.path)
     out = [
-        {**info, "runs": usage[pair]["runs"], "files": sorted(usage[pair]["files"]), "origin": origins[pair]}
-        for pair, info in rename_info.items()
-        if usage[pair]["runs"]
+        {
+            "from": a,
+            "to": b,
+            "runs": runs[(a, b)],
+            "files": sorted(paths[(a, b)]),
+            "origin": origin,
+        }
+        for (a, b), origin in origins.items()
+        if runs[(a, b)]
     ]
     return sorted(out, key=lambda r: -r["runs"])
 
 
-def classify(root: Path) -> dict:
-    """Classify the diff in the input directory: its files, the renames found across them, and the line totals by class."""
-    files = parse_patch((root / "diff.patch").read_text())
+def classify(diff: Diff) -> dict:
+    """The diff's files, the renames found across them, and the line totals by class of the files that aren't
+    generated, a run the page shows counting as substantive."""
+    files = parse_patch(diff.patch)
     for fd in files:
         build_runs(fd)
-    marked_file = root / "generated.txt"
-    marked = set(marked_file.read_text().split("\n")) - {""} if marked_file.exists() else set()
-    rename_info = collect_renames(files)
-    entries = classify_files(root, files, rename_info)
-    detect_moves(files)
-    origins = find_origins(entries, rename_info)
-    result_files = [file_json(entry, marked) for entry in entries]
-    totals: Counter = Counter()
-    for f in result_files:
-        totals.update(f["stats"]["by_class"])
-    return {"files": result_files, "renames": renames_json(files, rename_info, origins), "totals": dict(totals)}
-
-
-def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit(__doc__)
-    json.dump(classify(Path(sys.argv[1])), sys.stdout)
-
-
-if __name__ == "__main__":
-    main()
+    link_moves(files)
+    renames = collect_renames(files)
+    classified = classify_files(diff, files, renames)
+    totals: Counter[RunClass] = Counter()
+    for f in classified:
+        if not f.generated:
+            for run in f.diff.runs:
+                totals[run.cls if run.noise else "substantive"] += run.size
+    return {
+        "files": [file_json(f, diff) for f in classified],
+        "renames": renames_json(files, find_origins(classified, renames)),
+        "totals": dict(totals),
+    }

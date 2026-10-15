@@ -4,7 +4,14 @@ from pathlib import Path
 
 import render
 
-PR = {"number": 3, "title": "Fix <b>&</b> things", "url": "https://github.com/o/r/pull/3", "repo": "o/r", "head": "abc"}
+PR = {
+    "number": 3,
+    "title": "Fix <b>&</b> things",
+    "url": "https://github.com/o/r/pull/3",
+    "repo": "o/r",
+    "head": "abc",
+    "status": "open",
+}
 
 
 def test_fill_replaces_slots_in_one_pass() -> None:
@@ -17,24 +24,29 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
         "renames": [],
         "totals": {},
     }
-    html = render.render_page(classified, {"pr": PR})
+    html = render.render_page(classified, PR)
     assert "<title>#3 Fix &lt;b&gt;&amp;&lt;/b&gt; things</title>" in html
     payload = html.split('<script id="data" type="application/json">')[1].split("</script>")[0]
     assert "</" not in payload and "<\\/script>" in payload
     data = json.loads(payload)
     assert data["files"][0]["content"] == "<script></script>"
-    assert data["annotations"] == {"pr": PR}
+    assert data["pr"] == PR
     assert set(data["app"]) == {"commit", "dirty", "built"}
     markers = [line for line in html.splitlines() if line.startswith("// ---- ")]
-    assert markers[:2] == ["// ---- vendor/highlight.min.js", "// ---- frame.js"]
-    assert markers[2:] == [f"// ---- {p.name}" for p in render.scripts()]
-    assert markers[2:] == sorted(markers[2:])
+    assert markers[:2] == ["// ---- page/vendor/highlight.min.js", "// ---- shell/frame.js"]
+    assert markers[2:] == sorted(f"// ---- page/{p.name}" for p in render.PAGE_DIR.glob("*.js"))
     assert ':root[data-theme="light"]' in html
     assert (render.PAGE_DIR / "page.css").read_text() in html
 
 
+def test_read_head_reads_back_the_title_and_status_render_page_writes() -> None:
+    page = render.render_page({"files": [], "renames": [], "totals": {}}, PR | {"status": "merged"})
+    assert render.read_head(page.encode()) == ("Fix <b>&</b> things", "merged")
+    assert render.read_head(b"<html></html>") == (None, "")
+
+
 def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
-    html = render.render_page({"files": [], "renames": [], "totals": {}}, {"pr": PR})
+    html = render.render_page({"files": [], "renames": [], "totals": {}}, PR)
     assert "<script src=" not in html
     assert "<link " not in html
     assert (render.VENDOR_DIR / "highlight.min.js").read_text() in html
@@ -42,6 +54,7 @@ def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
 
 
 def test_sources_lists_every_file_a_page_inlines() -> None:
+    assert set(render.page_scripts()) <= set(render.sources())
     names = {p.name for p in render.sources()}
     assert {
         "render.py",

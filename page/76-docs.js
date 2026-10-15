@@ -32,14 +32,16 @@ differ folds lines in these cases:</p>
     rename counts when the same word changes the same way in at least two places in the pull request, or when it
     follows a renamed file. The change that renames the definition itself (the <code>class</code>,
     <code>def</code>, or assignment) stays open.</li>
-  <li><b>Moved code.</b> A block of 4 or more removed lines that appears again, unchanged, as a block of added lines
-    somewhere else in the pull request, in the same file or another one. The fold row names the other place.</li>
+  <li><b>Moved code.</b> A block of removed lines that appears again, unchanged, as a block of added lines
+    somewhere else in the pull request, in the same file or another one. The block needs 4 lines or more that are
+    not blank. The fold row names the other place.</li>
   <li><b>Several folds close together.</b> When folds of the same kind are separated only by a few unchanged lines,
     they fold into one row that says how many places it covers.</li>
 </ul>
 <p>Inside a real change, a line that only follows a rename appears pale, with a "rename" tag.</p>
-<p>A fold always stays open when it holds a comment thread or the comment you are writing. The buttons under the
-numbers in the overview show or hide each kind of noise in every file at once.</p>
+<p>A fold always stays open when it holds a comment thread or the comment you are writing. The numbers in the
+overview count the lines of every file but the generated ones, and the buttons under them show or hide each kind of
+noise in every file at once.</p>
 
 <h2>The class or function above a change</h2>
 <p>differ also shows the lines above each change, up to the start of the innermost class or function that holds it.
@@ -96,7 +98,8 @@ reviewed files on this computer only; GitHub does not see them.</p>
 
 <h2>Link to a file or a line</h2>
 <p>Add <code>#path/to/file</code> to the address of a page to open it at a file, or <code>#path/to/file:42</code> to
-open it at line 42 of that file. Add <code>?refresh=1</code> to build the page again from the start.</p>
+open it at line 42 of that file. Add <code>?refresh=1</code> to check GitHub for new commits at once and build the page again when
+there are some.</p>
 
 <h2>Report a bug</h2>
 <p>"Report a bug" turns your description into a prompt for Claude Code and copies it to the clipboard. The prompt

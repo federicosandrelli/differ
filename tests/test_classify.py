@@ -4,7 +4,7 @@ import pytest
 
 import classify
 from classify import FileDiff, Hunk, Run
-from helpers import make_work
+from helpers import make_diff
 
 OLD_APP = """import os
 
@@ -41,12 +41,12 @@ def run_of(removed: list[str], added: list[str], start: int = 1) -> Run:
 
 
 def test_parse_patch_reads_statuses_and_line_numbers(tmp_path: Path) -> None:
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={"keep.py": "a\nb\nc\n", "gone.txt": "bye\n", "before.py": "same\n"},
         new={"keep.py": "a\nB\nc\nd\n", "fresh.txt": "hi\n", "after.py": "same\n"},
     )
-    files = {fd.path: fd for fd in classify.parse_patch((work / "diff.patch").read_text())}
+    files = {fd.path: fd for fd in classify.parse_patch(diff.patch)}
     assert files["keep.py"].status == "M"
     assert files["gone.txt"].status == "D" and files["gone.txt"].new_path is None
     assert files["fresh.txt"].status == "A" and files["fresh.txt"].old_path is None
@@ -62,41 +62,99 @@ def test_parse_patch_reads_statuses_and_line_numbers(tmp_path: Path) -> None:
     ]
 
 
+def test_parse_patch_reads_changed_lines_that_look_like_file_headers(tmp_path: Path) -> None:
+    diff = make_diff(tmp_path, old={"a.yml": "x: 1\n---\n-- note\ny: 2\n"}, new={"a.yml": "x: 1\n++ added\ny: 2\n"})
+    ((hunk,),) = [fd.hunks for fd in classify.parse_patch(diff.patch)]
+    assert hunk.lines == [
+        (" ", 1, 1, "x: 1"),
+        ("-", 2, None, "---"),
+        ("-", 3, None, "-- note"),
+        ("+", None, 2, "++ added"),
+        (" ", 4, 3, "y: 2"),
+    ]
+
+
+def test_parse_patch_ends_lines_at_newlines_only(tmp_path: Path) -> None:
+    diff = make_diff(
+        tmp_path,
+        old={"a.py": "a = 1\nb = 2\n", "b.txt": "one\r\ntwo\r\n"},
+        new={"a.py": "a = 1\n\x0c\nb = 2\n", "b.txt": "one\r\nTWO\r\n"},
+    )
+    files = {fd.path: fd.hunks[0].lines for fd in classify.parse_patch(diff.patch)}
+    assert files["a.py"] == [(" ", 1, 1, "a = 1"), ("+", None, 2, "\x0c"), (" ", 2, 3, "b = 2")]
+    assert files["b.txt"] == [(" ", 1, 1, "one\r"), ("-", 2, None, "two\r"), ("+", None, 2, "TWO\r")]
+
+
+def test_read_diff_reads_the_paths_git_quotes(tmp_path: Path) -> None:
+    names = ["docs/café.md", 'say "hi".txt', "tab\there.txt", "back\\slash.txt", "Plan b/notes.md"]
+    diff = make_diff(
+        tmp_path,
+        old={**dict.fromkeys(names, "a\n"), "old é.py": "x = 1\n"},
+        new={
+            **dict.fromkeys(names, "b\n"),
+            "new é.py": "x = 1\n",
+            ".gitattributes": "gen/*.py linguist-generated\n",
+            "gen/schéma.py": "y = 2\n",
+        },
+    )
+    files = {fd.path: fd for fd in classify.parse_patch(diff.patch)}
+    assert set(files) == {*names, "new é.py", ".gitattributes", "gen/schéma.py"}
+    assert all(files[name].old_path == name and diff.old[name] == b"a\n" and diff.new[name] == b"b\n" for name in names)
+    assert files["new é.py"].old_path == "old é.py" and files["new é.py"].status == "R"
+    assert diff.generated == {"gen/schéma.py"}
+
+
+def test_read_diff_ignores_the_users_diff_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = {
+        "diff.noprefix": "true",
+        "diff.suppressBlankEmpty": "true",
+        "diff.external": "echo",
+        "color.ui": "always",
+    }
+    monkeypatch.setenv("GIT_CONFIG_COUNT", str(len(settings)))
+    for i, (key, value) in enumerate(settings.items()):
+        monkeypatch.setenv(f"GIT_CONFIG_KEY_{i}", key)
+        monkeypatch.setenv(f"GIT_CONFIG_VALUE_{i}", value)
+    diff = make_diff(tmp_path, old={"a.py": "a = 1\n\nb = 2\n"}, new={"a.py": "a = 1\n\nb = 3\n"})
+    ((hunk,),) = [fd.hunks for fd in classify.parse_patch(diff.patch)]
+    assert hunk.lines == [(" ", 1, 1, "a = 1"), (" ", 2, 2, ""), ("-", 3, None, "b = 2"), ("+", None, 3, "b = 3")]
+    assert diff.new == {"a.py": b"a = 1\n\nb = 3\n"}
+
+
 def test_parse_patch_keeps_a_binary_file_without_hunks(tmp_path: Path) -> None:
-    work = make_work(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
-    (fd,) = classify.parse_patch((work / "diff.patch").read_text())
+    diff = make_diff(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
+    (fd,) = classify.parse_patch(diff.patch)
     assert fd.path == "img.bin" and fd.hunks == [] and fd.binary
-    assert classify.read_source(work / "new" / "img.bin") == ""
+    assert classify.decoded(diff.new["img.bin"]) == ""
 
 
 def test_classify_gives_a_binary_file_its_size_on_each_side(tmp_path: Path) -> None:
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={"changed.png": b"\0" * 10, "gone.png": b"\0\1" * 10, "notes.txt": "a\n"},
         new={"changed.png": b"\0" * 30, "added.png": b"\0\2\3\4" * 10, "notes.txt": "b\n"},
     )
-    files = {f["path"]: f for f in classify.classify(work)["files"]}
+    files = {f["path"]: f for f in classify.classify(diff)["files"]}
     assert files["changed.png"]["binary"] == {"old": 10, "new": 30}
     assert files["gone.png"]["binary"] == {"old": 20, "new": None}
     assert files["added.png"]["binary"] == {"old": None, "new": 40}
     assert files["notes.txt"]["binary"] is None
 
 
-def test_binary_sizes_leaves_out_a_side_without_the_exported_file(tmp_path: Path) -> None:
-    (tmp_path / "new").mkdir()
-    (tmp_path / "new" / "a.png").write_bytes(b"\0" * 5)
+def test_binary_sizes_leaves_out_a_side_git_could_not_read() -> None:
+    diff = classify.Diff(patch="", old={}, new={"a.png": b"\0" * 5}, generated=set())
     fd = FileDiff(old_path="missing.png", new_path="a.png", status="M", binary=True)
-    assert classify.binary_sizes(tmp_path, fd) == {"old": None, "new": 5}
+    assert classify.binary_sizes(diff, fd) == {"old": None, "new": 5}
 
 
 def test_parse_patch_reads_the_similarity_of_a_rename(tmp_path: Path) -> None:
     blob = bytes(range(256)) * 4
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={"pkg/aio/same.py": "x = 1\n", "a.bin": blob, "b.bin": blob, "keep.py": "a\n"},
         new={"pkg/same.py": "x = 1\n", "c.bin": blob, "d.bin": blob[:-1] + b"\0", "keep.py": "b\n"},
     )
-    files = {fd.path: fd for fd in classify.parse_patch((work / "diff.patch").read_text())}
+    files = {fd.path: fd for fd in classify.parse_patch(diff.patch)}
     assert files["pkg/same.py"].similarity == 100 and files["pkg/same.py"].hunks == []
     assert files["c.bin"].similarity == 100
     changed = files["d.bin"]
@@ -115,13 +173,24 @@ def test_parse_patch_notes_a_mode_change() -> None:
     assert files["bin/same.sh"].similarity == 100 and not files["bin/same.sh"].mode_changed
 
 
+def test_parse_patch_makes_one_file_of_a_change_of_type() -> None:
+    patch = (
+        "diff --git a/run b/run\ndeleted file mode 100644\nindex 8b2fe54..0000000\n--- a/run\n+++ /dev/null\n"
+        "@@ -1 +0,0 @@\n-echo hi\n"
+        "diff --git a/run b/run\nnew file mode 120000\nindex 0000000..1de5659\n--- /dev/null\n+++ b/run\n"
+        "@@ -0,0 +1 @@\n+target\n\\ No newline at end of file\n"
+    )
+    (fd,) = classify.parse_patch(patch)
+    assert (fd.old_path, fd.new_path, fd.status, fd.mode_changed) == ("run", "run", "M", True)
+    assert [h.lines for h in fd.hunks] == [[("-", 1, None, "echo hi")], [("+", None, 1, "target")]]
+
+
 def test_build_runs_groups_changed_lines_between_context() -> None:
     fd = FileDiff(old_path="f", new_path="f", status="M")
     fd.hunks.append(
         Hunk(
             old_start=1,
             new_start=1,
-            header="",
             lines=[
                 (" ", 1, 1, "ctx"),
                 ("-", 2, None, "old"),
@@ -162,11 +231,11 @@ def f():
 """
     imports, symbols = classify.python_structure(source)
     assert imports == {1, 2, 3, 4, 5}
-    assert [(s["name"], s["kind"], s["start"], s["depth"]) for s in symbols] == [
-        ("C", "class", 8, 0),
-        ("C.m", "def", 9, 1),
-        ("f", "def", 13, 0),
-        ("f.inner", "def", 16, 1),
+    assert [(s["name"], s["kind"], s["start"]) for s in symbols] == [
+        ("C", "class", 8),
+        ("m", "def", 9),
+        ("f", "def", 13),
+        ("inner", "def", 16),
     ]
 
 
@@ -189,10 +258,10 @@ def f():
     )
 """
     _, symbols = classify.python_structure(source)
-    assert [(s["name"], s["short"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
-        ("Settings", "Settings", "call", 1, 2, 3),
-        ("app.run", "run", "call", 4, 5, 6),
-        ("f", "f", "def", 13, 14, 16),
+    assert [(s["name"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
+        ("Settings", "call", 1, 2, 3),
+        ("run", "call", 4, 5, 6),
+        ("f", "def", 13, 14, 16),
     ]
 
 
@@ -215,7 +284,7 @@ def test_python_structure_starts_a_class_body_at_the_decorator_of_its_first_meth
         return 1
 """
     _, symbols = classify.python_structure(source)
-    assert [(s["name"], s["start"], s["body"]) for s in symbols] == [("C", 1, 2), ("C.a", 2, 4)]
+    assert [(s["name"], s["start"], s["body"]) for s in symbols] == [("C", 1, 2), ("a", 2, 4)]
 
 
 def test_python_structure_is_empty_for_a_file_that_does_not_parse() -> None:
@@ -246,9 +315,22 @@ def test_collect_renames_needs_two_runs_or_a_file_rename() -> None:
     once.runs = [run_of(["y = lone()"], ["y = alone()"])]
     moved = FileDiff(old_path="pkg/before.py", new_path="pkg/after.py", status="R")
     renames = classify.collect_renames([twice, once, moved])
-    assert renames[("old", "new")] == {"from": "old", "to": "new", "count": 2, "seed": None}
-    assert ("lone", "alone") not in renames
-    assert renames[("before", "after")]["seed"] == "file rename"
+    assert renames == {
+        ("old", "new"): None,
+        ("pkg.before", "pkg.after"): "pkg/after.py",
+        ("before", "after"): "pkg/after.py",
+    }
+
+
+def test_a_rename_that_follows_a_renamed_file_has_that_file_as_its_origin(tmp_path: Path) -> None:
+    diff = make_diff(
+        tmp_path,
+        old={"a/one.py": "x = 1\n", "b/two.py": "y = 2\n", "f.py": "one.f()\n", "g.py": "two.g()\n"},
+        new={"a/uno.py": "x = 1\n", "b/dos.py": "y = 2\n", "f.py": "uno.f()\n", "g.py": "dos.g()\n"},
+    )
+    origins = {(r["from"], r["to"]): r["origin"] for r in classify.classify(diff)["renames"]}
+    assert origins[("one", "uno")] == {"path": "a/uno.py", "line": 1, "side": "new", "text": "renamed from a/one.py"}
+    assert origins[("two", "dos")] == {"path": "b/dos.py", "line": 1, "side": "new", "text": "renamed from b/two.py"}
 
 
 def test_apply_renames_respects_word_boundaries() -> None:
@@ -276,61 +358,72 @@ def test_is_definition(line: str, name: str, expected: bool) -> None:
 
 def test_classify_run_whitespace() -> None:
     run = run_of(["  x = 1", ""], ["x = 1", "   "])
-    classify.classify_run(run, set(), set(), [], {})
+    classify.classify_run(run, set(), set(), [])
     assert run.cls == "whitespace"
 
 
 def test_classify_run_import() -> None:
     run = run_of(["import os"], ["import os", "import sys"])
-    classify.classify_run(run, {1}, {1, 2}, [], {})
+    classify.classify_run(run, {1}, {1, 2}, [])
     assert run.cls == "import"
     other = run_of([], ["import sys"], start=2)
-    classify.classify_run(other, {1}, {1}, [], {})
+    classify.classify_run(other, {1}, {1}, [])
     assert other.cls == "substantive"
 
 
 def test_classify_run_rename_marks_the_definition_as_origin() -> None:
     renames = [("old", "new")]
-    info = {("old", "new"): {}}
     definition = run_of(["def old(x):"], ["def new(x):"])
-    classify.classify_run(definition, set(), set(), renames, info)
+    classify.classify_run(definition, set(), set(), renames)
     assert (definition.cls, definition.rename, definition.origin) == ("rename", ("old", "new"), True)
     use = run_of(["    return old(1)"], ["    return new(1)"])
-    classify.classify_run(use, set(), set(), renames, info)
+    classify.classify_run(use, set(), set(), renames)
     assert (use.cls, use.rename, use.origin, use.pair_rename) == ("rename", ("old", "new"), False, [True])
 
 
 def test_classify_run_names_a_rename_applied_twice_on_one_line() -> None:
     renames = [("old", "new")]
     run = run_of(["old(old)"], ["new(new)"])
-    classify.classify_run(run, set(), set(), renames, {("old", "new"): {}})
+    classify.classify_run(run, set(), set(), renames)
     assert (run.cls, run.rename) == ("rename", ("old", "new"))
 
 
 def test_classify_run_substantive() -> None:
     run = run_of(["return 1"], ["return 2"])
-    classify.classify_run(run, set(), set(), [("a", "b")], {})
+    classify.classify_run(run, set(), set(), [("a", "b")])
     assert run.cls == "substantive" and run.pair_rename == [False]
 
 
-def test_detect_moves_links_a_block_removed_here_and_added_there() -> None:
+def test_link_moves_links_a_block_removed_here_and_added_there() -> None:
     block = ["def f():", "    a = 1", "    b = 2", "    return a + b"]
     src = FileDiff(old_path="src.py", new_path="src.py", status="M")
     src.runs = [run_of(block, [], start=10)]
     dst = FileDiff(old_path="dst.py", new_path="dst.py", status="M")
     dst.runs = [run_of([], ["  " + line for line in block], start=20)]
-    classify.detect_moves([src, dst])
-    assert src.runs[0].cls == "moved" and src.runs[0].moved_to == {"path": "dst.py", "line": 20}
-    assert dst.runs[0].cls == "moved" and dst.runs[0].moved_to == {"path": "src.py", "line": 10}
+    classify.link_moves([src, dst])
+    assert src.runs[0].moved_to == {"path": "dst.py", "line": 20}
+    assert dst.runs[0].moved_to == {"path": "src.py", "line": 10}
+    classify.classify_run(src.runs[0], set(), set(), [])
+    assert src.runs[0].cls == "moved"
 
 
-def test_detect_moves_ignores_short_blocks() -> None:
+def test_link_moves_counts_only_lines_that_are_not_blank() -> None:
     src = FileDiff(old_path="src.py", new_path="src.py", status="M")
-    src.runs = [run_of(["a", "b", "c"], [])]
+    src.runs = [run_of(["a", "", "b", "", "c"], []), run_of(["", "", "", ""], [], start=20)]
     dst = FileDiff(old_path="dst.py", new_path="dst.py", status="M")
-    dst.runs = [run_of([], ["a", "b", "c"])]
-    classify.detect_moves([src, dst])
-    assert src.runs[0].cls == "substantive" and dst.runs[0].cls == "substantive"
+    dst.runs = [run_of([], ["a", "", "b", "", "c"]), run_of([], ["", "", "", ""], start=20)]
+    classify.link_moves([src, dst])
+    assert [r.moved_to for r in src.runs + dst.runs] == [None, None, None, None]
+
+
+def test_blank_lines_removed_here_and_added_there_are_whitespace(tmp_path: Path) -> None:
+    diff = make_diff(
+        tmp_path,
+        old={"a.py": "x = 1\n\n\n\n\ny = 2\n", "b.py": "p = 1\nq = 2\n"},
+        new={"a.py": "x = 1\ny = 2\n", "b.py": "p = 1\n\n\n\n\nq = 2\n"},
+    )
+    runs = [(f["path"], r["class"], r["moved_to"]) for f in classify.classify(diff)["files"] for r in f["runs"]]
+    assert runs == [("a.py", "whitespace", None), ("b.py", "whitespace", None)]
 
 
 # ---------------------------------------------------------------- files
@@ -420,8 +513,34 @@ def test_language(path: str, lang: str) -> None:
     assert classify.language(path) == lang
 
 
+def test_classify_hides_a_file_as_noise_only_when_none_of_its_changes_shows(tmp_path: Path) -> None:
+    blob = bytes(range(256)) * 4
+    diff = make_diff(
+        tmp_path,
+        old={"moved.py": "x = 1\n", "imports.py": "import os\n\nx = 1\n", "img.bin": blob, "real.py": "x = 1\n"},
+        new={
+            "pkg/moved.py": "x = 1\n",
+            "imports.py": "import os\nimport sys\n\nx = 1\n",
+            "img.bin": blob[:-1] + b"\0",
+            "real.py": "x = 2\n",
+            "package-lock.json": "{}\n",
+        },
+    )
+    files = {f["path"]: f["noise_only"] for f in classify.classify(diff)["files"]}
+    assert files == {
+        "pkg/moved.py": True,
+        "imports.py": True,
+        "img.bin": False,
+        "real.py": False,
+        "package-lock.json": False,
+    }
+
+    chmod = FileDiff(old_path="run.sh", new_path="bin/run.sh", status="R", similarity=100, mode_changed=True)
+    assert not classify.ClassifiedFile(chmod, "", "new", [], set(), set(), generated=False).noise_only
+
+
 def test_classify_a_small_pull_request(tmp_path: Path) -> None:
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={
             ".gitattributes": "gen.py linguist-generated=true\n",
@@ -442,18 +561,16 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
             "docs/notes.txt": "Widgets are small.\n",
         },
     )
-    result = classify.classify(work)
+    result = classify.classify(diff)
     files = {f["path"]: f for f in result["files"]}
 
-    assert [r["class"] for r in files["app.py"]["runs"]] == ["import", "rename", "rename"]
+    assert [(r["class"], r["noise"]) for r in files["app.py"]["runs"]] == [
+        ("import", True),
+        ("rename", False),
+        ("rename", True),
+    ]
     assert files["app.py"]["runs"][1]["origin"] is True
-    assert files["app.py"]["stats"] == {
-        "raw": 5,
-        "substantive": 2,
-        "by_class": {"import": 1, "rename": 4},
-        "additions": 3,
-        "deletions": 2,
-    }
+    assert files["app.py"]["stats"] == {"additions": 3, "deletions": 2}
     assert files["app.py"]["import_lines"] == [1, 2] and files["app.py"]["old_import_lines"] == [1]
     assert [s["name"] for s in files["app.py"]["symbols"]] == ["new_name", "main"]
 
@@ -463,13 +580,13 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     assert files["gone.txt"]["status"] == "D" and files["gone.txt"]["content_side"] == "old"
     assert files["gone.txt"]["content"] == "bye\n"
     assert files["README.md"]["status"] == "A" and files["README.md"]["kind"] == "docs"
-    assert files["docs/notes.txt"]["similarity"] == 100 and files["docs/notes.txt"]["stats"]["raw"] == 0
-    assert files["app.py"]["similarity"] is None and files["app.py"]["mode_changed"] is False
+    noise_only = {path for path, f in files.items() if f["noise_only"]}
+    assert noise_only == {"cli.py", "docs/notes.txt"}
 
     (rename,) = result["renames"]
     assert rename["from"] == "old_name" and rename["to"] == "new_name"
     assert rename["runs"] == 3 and rename["files"] == ["app.py", "cli.py"]
     assert rename["origin"] == {"path": "app.py", "line": 5, "side": "new", "text": "def new_name(x):"}
 
-    assert result["totals"] == {"import": 3, "rename": 6, "substantive": 6}
-    assert sum(result["totals"].values()) == sum(f["stats"]["raw"] for f in result["files"])
+    # gen.py and package-lock.json are generated, so their lines count in no total.
+    assert result["totals"] == {"import": 3, "rename": 4, "substantive": 4}
