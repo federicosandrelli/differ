@@ -3,7 +3,6 @@
 function countFiles(node) { let n = node.files.length; for (const c of node.dirs.values()) n += countFiles(c); return n; }
 const noHit = (f) => state.q && !viewHits(f).length;
 const allNoHit = (node) => node.files.every(noHit) && [...node.dirs.values()].every(allNoHit);
-function allFolders(node, acc) { for (const d of node.dirs.values()) { acc.push(d.full); allFolders(d, acc); } return acc; }
 // Background gradients paint the guide lines, so a row can span the full sidebar width.
 function guides(depth) {
   if (!depth) return '';
@@ -88,7 +87,6 @@ function renderSide() {
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>
       <button data-filter="implementation" class="${state.filter === 'implementation' ? 'on' : ''}">Implementation</button>
       <button data-filter="test" class="${state.filter === 'test' ? 'on' : ''}">Tests</button></span>
-      <span class="seg"><button data-tree="expand">Expand all</button><button data-tree="collapse">Collapse all</button></span>
       <span class="hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>o</kbd> top</span></div>
     <div class="searchbar">
       <input type="search" class="search" placeholder="Search" value="${esc(state.q)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">

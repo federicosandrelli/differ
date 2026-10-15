@@ -42,7 +42,7 @@ document.addEventListener('click', (e) => {
   const cell = API && e.target.closest('table.diff td.n.key');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-review],[data-fold],' + COMMENT_ATTRS);
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-review],[data-fold],' + COMMENT_ATTRS);
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
@@ -61,7 +61,6 @@ document.addEventListener('click', (e) => {
   if (d.filter) { e.preventDefault(); setFilter(d.filter); return; }
   if (d.generated !== undefined) { e.preventDefault(); state.showGenerated = d.generated === '1'; lsSet('dr:generated', state.showGenerated ? '1' : '0'); render(); return; }
   if (d.noiseonly !== undefined) { e.preventDefault(); state.showNoiseOnly = d.noiseonly === '1'; lsSet('dr:noise-only', state.showNoiseOnly ? '1' : '0'); render(); return; }
-  if (d.tree) { state.closed = new Set(d.tree === 'collapse' ? allFolders(buildTree(FILES.filter(fileListed)), []) : []); renderSide(); return; }
   if (d.folder !== undefined) { state.cursor = 'd:' + d.folder; document.querySelector('#side .list').focus({ preventScroll: true }); toggleFolder(d.folder); return; }
   if (d.show) { state.show[d.show] = !state.show[d.show]; render(); return; }
   if (d.fold) { toggleFold(d.fold); render(); return; }
