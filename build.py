@@ -5,6 +5,9 @@ Usage: build.py <owner>/<repo>#<number> | <pull request URL>
 
 Keeps its own bare clone of each repo, without file contents, in the cache; git fetches the files the diff
 needs. Diffs the head against the merge base, as GitHub does.
+
+For the server, also keeps the cache of built pages: serve decides which page to serve, and builds the page for a
+new head commit in the background.
 """
 
 from __future__ import annotations
@@ -96,7 +99,7 @@ def serve(ref: PullRef) -> Path | None:
 
     def check() -> None:
         try:
-            if head_moved(ref):
+            if needs_build(ref):
                 start(ref)
         except commands.CommandError as exc:
             sys.stderr.write(f"head check for {ref} failed: {exc}\n")
@@ -108,12 +111,12 @@ def serve(ref: PullRef) -> Path | None:
 def refresh(ref: PullRef) -> None:
     """Check the head commit now, and when the newest page was built from an older one, drop the old pages and
     build the page for the head, so the next visit waits for it. Raises CommandError when gh can't tell the head."""
-    if head_moved(ref):
+    if needs_build(ref):
         forget_pages(ref)
         start(ref)
 
 
-def head_moved(ref: PullRef) -> bool:
+def needs_build(ref: PullRef) -> bool:
     """Whether the head commit on GitHub has no current page. Raises CommandError when gh can't tell the head."""
     head = github.head_sha(ref)
     with lock:

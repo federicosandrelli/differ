@@ -121,7 +121,7 @@ def test_note_opened_keeps_the_old_list_when_a_write_dies(tmp_path: Path, monkey
     assert [p["number"] for p in recent.load()] == [1]
 
 
-def test_an_entry_saved_without_a_status_loads_with_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_entry_saved_without_a_status_loads_with_no_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     (tmp_path / "recent.json").write_text('[{"owner": "o", "repo": "r", "number": 1, "title": "T", "opened": 0}]')
     assert recent.load()[0]["status"] == ""

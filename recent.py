@@ -22,8 +22,8 @@ refreshing = threading.Lock()
 
 
 class Opened(TypedDict):
-    """A pull request in the list: the title and status it had when it was last opened or refreshed, and when it
-    was last opened, in seconds since the epoch."""
+    """A pull request in the list: the title of the page last served for it, its status (the page's when it joined
+    the list, then GitHub's as of the last refresh), and when it was last opened, in seconds since the epoch."""
 
     owner: str
     repo: str
@@ -72,7 +72,7 @@ def note_opened(ref: PullRef, page: bytes) -> None:
             status=saved["status"] if saved else status,
             opened=time.time(),
         )
-        save([entry, *(p for p in pages if p is not saved)][:KEPT])
+        save([entry, *(p for p in pages if ref_of(p) != ref)][:KEPT])
 
 
 def refresh_statuses() -> None:

@@ -3,6 +3,7 @@
 Terms the code uses. A name here is the name in the code.
 
 - **Pull request (PR).** What a page shows: one GitHub pull request, identified by `owner/repo#number` (a `PullRef` in `github.py`) and built per head commit.
+- **Status.** Where a PR stands on GitHub: `open`, `draft`, `merged` or `closed` (`github.Status`), shown as an icon in the tab, the sidebar and the start page. A page shows the status it was built with until its comments load, then the one `comments.fetch` reads from GitHub, since a merge or a close leaves the head commit, and so the cached page, as it was. The start page's list keeps its own status per PR in `recent.json`: the page's when the PR joins the list, then GitHub's each time the list is fetched (`refresh_statuses` in `recent.py`).
 - **Diff.** What `classify.py` reads (`classify.Diff`): the patch from the merge base to the head, the content of every changed file on each side, and the paths marked `linguist-generated`.
 - **File.** One changed file of the PR, with its hunks, runs and content on one side (`content_side`: the new file, or the old one for a deleted file). A binary file has no hunks; `binary` holds its size in bytes on each side.
 - **Hunk.** A unified-diff hunk from GitHub's diff of the PR, as lines `[tag, old, new, text]`.

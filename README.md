@@ -15,9 +15,9 @@ per pull request. The start page (`/home` on its own) has a search bar and the
 ten pull requests you opened last, newest first; the list is fetched again each
 time its tab comes to the front. Paste any PR URL or `owner/repo#123` to open
 another. Opening a pull request from the start page opens it in a tab, or
-brings its tab to the front when it has one; a tab shows the number of
-unresolved threads once the comments load, and the open tabs survive a
-relaunch. A page is built on first visit and cached by head commit. A later
+brings its tab to the front when it has one; once a page's comments load,
+its tab shows the number of unresolved threads and the pull request's status
+as GitHub reports it now, and the open tabs survive a relaunch. A page is built on first visit and cached by head commit. A later
 visit serves the newest built page at once and checks the head commit in the
 background: after a new push the next page is built while you read, and the
 page offers it in a notice once its comments load. Add `?refresh=1` to a page
