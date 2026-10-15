@@ -81,14 +81,20 @@ class Job:
 jobs: dict[PullRef, Job] = {}
 # When the head commit of each pull request was last read from GitHub.
 head_checked: dict[PullRef, float] = {}
+# The head commit of each pull request last read from GitHub.
+heads: dict[PullRef, str] = {}
 lock = threading.Lock()
 
 
 def serve(ref: PullRef) -> Path | None:
-    """The newest current page of the pull request, or None while its first page builds. A page that has none
-    starts building, and serving a page checks the head commit in the background, at most once every HEAD_TTL
-    seconds, to build the page for a new push while the reader reads the old one."""
-    page = latest_page(ref)
+    """The current page of the head commit last read from GitHub, else the newest current page of the pull
+    request, or None while its first page builds. A pull request without a page starts building, and serving a
+    page checks the head commit in the background, at most once every HEAD_TTL seconds, to build the page for a
+    new push while the reader reads the old one."""
+    with lock:
+        head = heads.get(ref)
+    own = page_path(ref, head) if head else None
+    page = own if own and page_current(own) else latest_page(ref)
     if not page:
         start(ref)
         return None
@@ -122,6 +128,7 @@ def needs_build(ref: PullRef) -> bool:
     head = github.head_sha(ref)
     with lock:
         head_checked[ref] = time.time()
+        heads[ref] = head
     return not page_current(page_path(ref, head))
 
 
