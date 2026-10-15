@@ -8,7 +8,8 @@ button:hover { background: var(--bg-hover); } button.on { background: var(--acce
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; padding: 3px 10px; } .seg button + button { border-left: 1px solid var(--border); }
 .seg button.on { background: var(--accent-bg); color: var(--accent); }
-.seg button .n { margin-left: 6px; font-family: var(--mono); color: var(--text-muted); } .seg button.on .n { color: inherit; }
+.seg button .count { margin-left: 6px; display: inline-block; font-size: 11px; line-height: 16px; min-width: 16px; padding: 0 5px; border-radius: 999px; text-align: center; background: var(--bg-inset); color: var(--text-secondary); }
+.seg button.on .count { background: var(--accent); color: var(--bg-canvas); }
 kbd { font: 11px var(--mono); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
 .hint { color: var(--text-muted); font-size: 12px; }
 /* A mark wraps a whole match, highlighter tokens and all, so the tokens take its colour. */

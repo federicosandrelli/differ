@@ -80,7 +80,7 @@ function reviewButton() {
 }
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length, tests = FILES.filter(f => f.kind === 'test').length;
-  const filterButton = (filter, label, n) => `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="n">${fmt(n)}</span></button>`;
+  const filterButton = (filter, label, n) => `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="count">${fmt(n)}</span></button>`;
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
     ${commentNotices()}${state.reviewPanel ? reviewPanelHtml() : ''}
