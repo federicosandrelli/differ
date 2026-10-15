@@ -56,11 +56,10 @@ def save(pages: list[Opened]) -> None:
     os.replace(tmp, PATH)
 
 
-def note_opened(ref: PullRef, page: bytes) -> None:
-    """Move the pull request to the top of the list, with the title of the page just served. A pull request new to
-    the list takes the status the page was built with; one already there keeps its status, which
+def note_opened(ref: PullRef, title: str | None, status: str) -> None:
+    """Move the pull request to the top of the list, with the title and status of the page just served (see
+    render.read_head). A pull request new to the list takes that status; one already there keeps its own, which
     refresh_statuses keeps up to date, since a merge or a close leaves the page as it was."""
-    title, status = render.read_head(page)
     with lock:
         pages = load()
         saved = next((p for p in pages if ref_of(p) == ref), None)

@@ -71,7 +71,7 @@ def test_author_tolerates_missing_nodes() -> None:
     assert comments._author({"author": {"login": "x"}}) == "x"
 
 
-def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_reads_every_page_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, Any]] = []
 
     def fake_graphql(query: str, **variables: Any) -> dict:
@@ -95,6 +95,7 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                         },
                         "pending": {"nodes": [{"id": "R0", "author": {"login": "ann"}}]},
                         "reviews": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
                             "nodes": [
                                 {
                                     "id": "R1",
@@ -106,13 +107,16 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                                     "submittedAt": "2026-10-02T00:00:00Z",
                                     "url": "u1",
                                 },
-                            ]
+                            ],
                         },
                         "verdicts": {"nodes": [review("R1", "APPROVED", author="bob")]},
-                        "comments": {"nodes": [comment("k1")]},
+                        "comments": {"pageInfo": {"hasNextPage": True, "endCursor": "K"}, "nodes": [comment("k1")]},
                     }
                 },
             }
+        if variables["after"] == "K":
+            more = {"comments": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": [comment("k2")]}}
+            return {"repository": {"pullRequest": more}}
         return {
             "repository": {
                 "pullRequest": {
@@ -126,7 +130,7 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(comments, "graphql", fake_graphql)
     result = comments.fetch(PullRef("o", "r", 3))
-    assert [c.get("after") for c in calls] == [None, "CUR"]
+    assert [c.get("after") for c in calls] == [None, "CUR", "K"]
     assert result["viewer"] == "ann" and result["pr_id"] == "PR1" and result["head"] == "deadbeef"
     assert result["status"] == "merged"
     assert result["pending"] == {"id": "R0"}
@@ -145,7 +149,7 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
         }
     ]
     assert result["verdict"] is None
-    assert [c["id"] for c in result["comments"]] == ["k1"]
+    assert [c["id"] for c in result["comments"]] == ["k1", "k2"]
 
 
 def test_request_changes_without_a_summary_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -39,6 +39,12 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     assert (render.PAGE_DIR / "page.css").read_text() in html
 
 
+def test_read_head_reads_back_the_title_and_status_render_page_writes() -> None:
+    page = render.render_page({"files": [], "renames": [], "totals": {}}, PR | {"status": "merged"})
+    assert render.read_head(page.encode()) == ("Fix <b>&</b> things", "merged")
+    assert render.read_head(b"<html></html>") == (None, "")
+
+
 def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
     html = render.render_page({"files": [], "renames": [], "totals": {}}, PR)
     assert "<script src=" not in html

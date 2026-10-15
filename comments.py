@@ -59,30 +59,31 @@ VERDICTS = "verdicts: reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED, D
 # however many reviews the pull request has.
 PENDING = "pending: reviews(first: 10, states: [PENDING]) { nodes { id author { login } } }"
 
+# The pull request's lists that fetch reads in full, a page of up to 100 items at a time, from $after on.
+PAGE = "%s(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }"
+LISTS = {
+    "reviewThreads": PAGE % ("reviewThreads", THREAD_FIELDS),
+    "reviews": PAGE % ("reviews", "id author { login } state body bodyHTML createdAt submittedAt url"),
+    "comments": PAGE % ("comments", "id author { login } body bodyHTML createdAt url"),
+}
+
 READ = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   viewer { login }
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
     id headRefOid bodyHTML state isDraft
-    reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }
-    reviews(first: 100) { nodes { id author { login } state body bodyHTML createdAt submittedAt url } }
     %s
     %s
-    comments(first: 100) { nodes { id author { login } body bodyHTML createdAt url } }
+    %s
   } }
 }
-""" % (THREAD_FIELDS, PENDING, VERDICTS)
+""" % ("\n    ".join(LISTS.values()), PENDING, VERDICTS)
 
-MORE_THREADS = (
-    """
+MORE = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
-  repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
-    reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }
-  } }
+  repository(owner: $owner, name: $repo) { pullRequest(number: $number) { %s } }
 }
 """
-    % THREAD_FIELDS
-)
 
 
 def _author(node: dict | None) -> str:
@@ -134,20 +135,25 @@ def _verdict(reviews: list[dict], viewer: str) -> Verdict | None:
     return Verdict(latest["state"], (latest["commit"] or {}).get("oid", ""))
 
 
+def _all(ref: PullRef, pr: dict, name: str) -> list[dict]:
+    """Every item of one of the LISTS: its first page, read with the pull request, then the pages after it."""
+    nodes, page = list(pr[name]["nodes"]), pr[name]["pageInfo"]
+    while page["hasNextPage"]:
+        more = graphql(MORE % LISTS[name], **asdict(ref), after=page["endCursor"])["repository"]["pullRequest"][name]
+        nodes.extend(more["nodes"])
+        page = more["pageInfo"]
+    return nodes
+
+
 def fetch(ref: PullRef) -> dict:
     """Every review thread, review and conversation comment of the pull request, plus the viewer's pending review
     and verdict, and the pull request's status now: a merge or a close does not move the head, so the page, built
     per head, learns them here."""
     data = graphql(READ, **asdict(ref), after=None)
     pr = data["repository"]["pullRequest"]
-    threads = list(pr["reviewThreads"]["nodes"])
-    page = pr["reviewThreads"]["pageInfo"]
-    while page["hasNextPage"]:
-        more = graphql(MORE_THREADS, **asdict(ref), after=page["endCursor"])["repository"]["pullRequest"][
-            "reviewThreads"
-        ]
-        threads.extend(more["nodes"])
-        page = more["pageInfo"]
+    threads = _all(ref, pr, "reviewThreads")
+    reviews = _all(ref, pr, "reviews")
+    comments = _all(ref, pr, "comments")
     viewer = data["viewer"]["login"]
     pending_id = _pending_id(pr, viewer)
     reviews = [
@@ -160,7 +166,7 @@ def fetch(ref: PullRef) -> dict:
             "created": r["submittedAt"] or r["createdAt"],
             "url": r["url"],
         }
-        for r in pr["reviews"]["nodes"]
+        for r in reviews
         if r["state"] != "PENDING"
     ]
     comments = [
@@ -172,7 +178,7 @@ def fetch(ref: PullRef) -> dict:
             "created": c["createdAt"],
             "url": c["url"],
         }
-        for c in pr["comments"]["nodes"]
+        for c in comments
     ]
     return {
         "viewer": viewer,

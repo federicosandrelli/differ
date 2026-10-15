@@ -587,7 +587,7 @@ def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | 
         else:
             old_imports, imports, symbols = set(), set(), []
         for run in fd.runs:
-            classify_run(run, old_imports, imports if content_side == "new" else old_imports, longest_first)
+            classify_run(run, old_imports, imports, longest_first)
         generated = is_generated(fd.path, content, diff.generated)
         classified.append(ClassifiedFile(fd, content, content_side, symbols, imports, old_imports, generated))
     return classified

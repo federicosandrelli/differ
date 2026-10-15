@@ -87,13 +87,13 @@ def graphql() -> None:
         "bodyHTML": "",
         "state": "OPEN",
         "isDraft": False,
-        "reviews": {"nodes": state["reviews"]},
+        "reviews": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": state["reviews"]},
         "pending": {"nodes": [r for r in state["reviews"] if r["state"] == "PENDING"]},
         "verdicts": {
             "nodes": [r for r in state["reviews"] if r["state"] in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")]
         },
         "reviewThreads": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": state["threads"]},
-        "comments": {"nodes": state["comments"]},
+        "comments": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": state["comments"]},
     }
     print(json.dumps({"data": {"viewer": {"login": "tester"}, "repository": {"pullRequest": pr}}}))
 

@@ -24,8 +24,8 @@ def test_note_opened_keeps_the_newest_ten(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     assert recent.load() == []
     for n in range(12):
-        recent.note_opened(PullRef("o", "r", n), f"<title>#{n} Title &amp; {n}</title>".encode())
-    recent.note_opened(PullRef("o", "r", 3), b"<html>no title</html>")
+        recent.note_opened(PullRef("o", "r", n), f"Title & {n}", "")
+    recent.note_opened(PullRef("o", "r", 3), None, "")
     pages = recent.load()
     assert [p["number"] for p in pages] == [3, 11, 10, 9, 8, 7, 6, 5, 4, 2]
     assert pages[0]["title"] == "o/r#3"
@@ -44,7 +44,7 @@ def test_note_opened_keeps_the_newest_ten(tmp_path: Path, monkeypatch: pytest.Mo
 def test_recent_items_escapes_titles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     assert "No pull requests opened yet" in recent.items_html()
-    recent.note_opened(PullRef("o", "r", 1), b"<title>#1 a &lt;b&gt;</title>")
+    recent.note_opened(PullRef("o", "r", 1), "a <b>", "")
     items = recent.items_html()
     assert 'href="/o/r/pull/1"' in items
     assert re.search(r'<span class="t">a &lt;b&gt;</span>', items)
@@ -53,7 +53,7 @@ def test_recent_items_escapes_titles(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_refresh_statuses_saves_the_statuses_github_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     for n in range(4):
-        recent.note_opened(PullRef("o", "r", n), b'<meta name="pr-status" content="open">')
+        recent.note_opened(PullRef("o", "r", n), None, "open")
     answer = {
         "data": {
             "p0": {"pullRequest": None},
@@ -79,7 +79,7 @@ def test_refresh_statuses_keeps_the_saved_statuses_when_gh_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
-    recent.note_opened(PullRef("o", "r", 1), b'<meta name="pr-status" content="merged">')
+    recent.note_opened(PullRef("o", "r", 1), None, "merged")
     before = (tmp_path / "recent.json").read_text()
     monkeypatch.setattr(
         commands.subprocess,
@@ -94,7 +94,7 @@ def test_refresh_statuses_skips_github_while_another_refresh_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
-    recent.note_opened(PullRef("o", "r", 1), b'<meta name="pr-status" content="open">')
+    recent.note_opened(PullRef("o", "r", 1), None, "open")
 
     def fail(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
         raise AssertionError("gh ran during another refresh")
@@ -107,7 +107,7 @@ def test_refresh_statuses_skips_github_while_another_refresh_runs(
 
 def test_note_opened_keeps_the_old_list_when_a_write_dies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
-    recent.note_opened(PullRef("o", "r", 1), b"<title>#1 First</title>")
+    recent.note_opened(PullRef("o", "r", 1), "First", "")
     before = (tmp_path / "recent.json").read_text()
 
     def die(self: Path, data: str, **kwargs: Any) -> int:
@@ -116,7 +116,7 @@ def test_note_opened_keeps_the_old_list_when_a_write_dies(tmp_path: Path, monkey
 
     monkeypatch.setattr(Path, "write_text", die)
     with pytest.raises(OSError):
-        recent.note_opened(PullRef("o", "r", 2), b"<title>#2 Second</title>")
+        recent.note_opened(PullRef("o", "r", 2), "Second", "")
     assert (tmp_path / "recent.json").read_text() == before
     assert [p["number"] for p in recent.load()] == [1]
 
@@ -130,9 +130,9 @@ def test_an_entry_saved_without_a_status_loads_with_no_status(tmp_path: Path, mo
 
 def test_opening_a_page_again_keeps_the_status_the_list_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
-    recent.note_opened(PullRef("o", "r", 1), b'<title>#1 T</title><meta name="pr-status" content="open">')
+    recent.note_opened(PullRef("o", "r", 1), "T", "open")
     pages = recent.load()
     pages[0]["status"] = "merged"
     recent.save(pages)
-    recent.note_opened(PullRef("o", "r", 1), b'<title>#1 T</title><meta name="pr-status" content="open">')
+    recent.note_opened(PullRef("o", "r", 1), "T", "open")
     assert [(p["number"], p["status"]) for p in recent.load()] == [(1, "merged")]

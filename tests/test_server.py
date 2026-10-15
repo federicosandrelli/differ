@@ -313,10 +313,13 @@ def test_a_reference_that_names_no_pull_request_answers_400() -> None:
         ("submit", {"event": "MERGE"}, "'MERGE' is not one of 'APPROVE', 'REQUEST_CHANGES', 'COMMENT'"),
         ("reply", {"thread": "T", "body": "b", "mode": "now"}, "'now' is not one of 'review', 'single'"),
         ("comment", {"path": "a.py", "body": "b", "line": 1, "side": "UP"}, "'UP' is not one of 'LEFT', 'RIGHT'"),
+        ("comment", {"path": "a.py", "body": "b", "line": None}, "None is not a line number"),
+        ("comment", {"path": "a.py", "body": "b", "line": 2, "start_line": "1"}, "'1' is not a line number"),
+        ("conversation", ["b"], "the request is not a JSON object"),
     ],
 )
 def test_a_request_field_outside_its_type_answers_400(
-    action: str, fields: dict, why: str, monkeypatch: pytest.MonkeyPatch
+    action: str, fields: object, why: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(server.comments, "graphql", lambda *args, **kwargs: pytest.fail("GitHub was called"))
     h = request("POST", f"/api/o/r/1/{action}", json.dumps(fields).encode())

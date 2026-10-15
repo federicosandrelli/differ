@@ -330,11 +330,6 @@ def page_scripts() -> list[Path]:
     return [VENDOR_DIR / "highlight.min.js", SHELL_DIR / "frame.js", *sorted(PAGE_DIR.glob("*.js"))]
 
 
-def frame_script() -> str:
-    """The script that lets a page run inside the tabbed shell; the review page gets it with the other scripts."""
-    return (SHELL_DIR / "frame.js").read_text()
-
-
 def sources() -> list[Path]:
     """Every file whose content ends up in a page, so a page older than any of them is rebuilt."""
     return [

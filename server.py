@@ -96,7 +96,7 @@ def shell(title: str, body: str) -> bytes:
         shell_file("document.html"),
         TITLE=html.escape(title),
         THEME=render.theme_head(),
-        FRAME=render.frame_script(),
+        FRAME=shell_file("frame.js"),
         BODY=body,
     ).encode()
 
@@ -190,7 +190,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.redirect(url.path)
                 if page := build.serve(ref):
                     body = page.read_bytes()
-                    recent.note_opened(ref, body)
+                    recent.note_opened(ref, *render.read_head(body))
                     return self.send(200, body)
                 return self.send(200, progress_page(ref))
             if (m := API.match(url.path)) and m["action"] == "comments":
@@ -257,15 +257,17 @@ class Handler(BaseHTTPRequestHandler):
         ref, action = PullRef.from_match(m), m["action"]
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError("the request is not a JSON object")
             if action == "comment":
                 start_side = body.get("start_side")
                 result = comments.add_thread(
                     ref,
                     path=body["path"],
                     body=body["body"],
-                    line=int(body["line"]),
+                    line=line_number(body["line"]),
                     side=one_of(body.get("side", "RIGHT"), comments.Side),
-                    start_line=body.get("start_line"),
+                    start_line=None if body.get("start_line") is None else line_number(body["start_line"]),
                     start_side=None if start_side is None else one_of(start_side, comments.Side),
                     mode=one_of(body.get("mode", "review"), comments.Mode),
                 )
@@ -302,6 +304,13 @@ def one_of(value: object, kind: object) -> Any:
     """The value of a request's field when the Literal type allows it; else a ValueError, which answers 400."""
     if value not in get_args(kind):
         raise ValueError(f"{value!r} is not one of {', '.join(map(repr, get_args(kind)))}")
+    return value
+
+
+def line_number(value: object) -> int:
+    """The line number a request's field names; else a ValueError, which answers 400."""
+    if type(value) is not int or value < 1:
+        raise ValueError(f"{value!r} is not a line number")
     return value
 
 
