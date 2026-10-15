@@ -148,7 +148,7 @@ function reviewPanelHtml() {
   return `<div class="form review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
     <div class="actions">${submitBtn('APPROVE', 'Approve')}${submitBtn('REQUEST_CHANGES', 'Request changes')}${btn('data-submit="COMMENT"', 'Comment')}
     <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
-    <div class="hint">${n ? `${plural(n, 'pending comment')} go out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
+    <div class="hint">${n ? `${plural(n, 'pending comment')} ${n === 1 ? 'goes' : 'go'} out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
 }
 const REVIEW_VERB = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', COMMENTED: 'commented', DISMISSED: 'review dismissed' };
 function conversationHtml() {

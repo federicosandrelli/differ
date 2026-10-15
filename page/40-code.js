@@ -54,7 +54,7 @@ function groupLabel(b) {
 function contextLabel(b, symStarts) {
   const syms = b.mid.map(r => symStarts.get(r.newNo)).filter(Boolean);
   const hint = syms.length ? ` · ${syms.slice(0, 4).map(s => esc(s.name)).join(', ')}${syms.length > 4 ? ', …' : ''}` : '';
-  return `${b.mid.length} unchanged lines${hint}`;
+  return `${plural(b.mid.length, 'unchanged line')}${hint}`;
 }
 
 // The number of columns a line takes with tabs expanded to the browser's default tab stops of 8.

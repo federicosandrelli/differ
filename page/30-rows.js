@@ -152,8 +152,9 @@ function enclosingBodies(f) {
 }
 
 // Context rows that show headLength rows at the start and tailLength rows at the end and fold the middle, unless
-// the reader opened it or the middle is shorter than minFold.
-function contextPart(f, rs, headLength, tailLength, register, { minFold = 1 } = {}) {
+// the reader opened it or the middle is shorter than minFold. A fold row is as tall as a line, so a fold hides
+// at least two lines.
+function contextPart(f, rs, headLength, tailLength, register, { minFold = 2 } = {}) {
   const head = rs.slice(0, headLength), tail = rs.slice(Math.max(headLength, rs.length - tailLength));
   const mid = rs.slice(head.length, rs.length - tail.length);
   if (mid.length < minFold) return { ctx: true, rows: rs, head: rs, mid: [], tail: [], fold: null, open: true };
