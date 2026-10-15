@@ -33,6 +33,12 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     assert (render.PAGE_DIR / "page.css").read_text() in html
 
 
+def test_theme_css_defaults_to_the_dark_palette_and_ignores_the_system_theme() -> None:
+    css = render.theme_css()
+    assert css.lstrip().startswith(":root { " + render.vars_block(render.PALETTES["dark"]))
+    assert "prefers-color-scheme" not in css
+
+
 def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
     html = render.render_page({"files": [], "renames": [], "totals": {}}, {"pr": PR})
     assert "<script src=" not in html

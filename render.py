@@ -175,10 +175,11 @@ def vars_block(p: dict) -> str:
 
 
 def theme_css() -> str:
+    """The colour tokens of every theme. The dark palette is the base, so a document is dark before the saved
+    theme applies and when no script runs; the other palettes apply through data-theme on the root."""
     light, sepia, dark = (vars_block(PALETTES[k]) for k in ("light", "sepia", "dark"))
     return f"""
-:root {{ {light} }}
-@media (prefers-color-scheme: dark) {{ :root:not([data-theme]) {{ {dark} }} }}
+:root {{ {dark} }}
 :root[data-theme="light"] {{ {light} }}
 :root[data-theme="sepia"] {{ {sepia} }}
 :root[data-theme="dark"] {{ {dark} }}
