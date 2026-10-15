@@ -7,9 +7,10 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   --exit-with-parent  exit once the parent process is gone
 
   /                                  the tabbed shell: the start page as a home tab, and a tab per open page
-  /home                              the start page: a search bar and the ten pull requests opened last
+  /home                              the start page: a search bar and the pull requests opened last, in
+                                     three sections of up to twenty: yours, other people's, and merged
   /recent                            the list of pull requests opened last, as an HTML fragment, with each
-                                     status fetched from GitHub
+                                     status and author fetched from GitHub
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
@@ -107,8 +108,8 @@ def tabs_page() -> bytes:
 
 
 def start_page() -> bytes:
-    """The start page, with the statuses saved last. Its list, with each status fetched from GitHub, is fetched
-    again when the page loads and each time its tab comes to the front."""
+    """The start page, with the statuses and authors saved last. Its list, with each status and author fetched
+    from GitHub, is fetched again when the page loads and each time its tab comes to the front."""
     return shell(
         "I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent.items_html())
     )
@@ -168,7 +169,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/home":
                 return self.send(200, start_page())
             if url.path == "/recent":
-                recent.refresh_statuses()
+                recent.refresh()
                 return self.send(200, recent.items_html().encode())
             if url.path == "/open" or STATUS.match(url.path) or PAGE.match(url.path):
                 if why := self.cross_site():

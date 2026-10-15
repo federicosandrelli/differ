@@ -144,30 +144,39 @@ def graphql(query: str, **variables: object) -> dict:
     return out["data"]
 
 
-def pr_statuses(refs: list[PullRef]) -> dict[PullRef, Status]:
-    """The status of each pull request on GitHub now, from one query. A pull request GitHub can't return is
-    missing, and every one is missing when gh fails."""
-    if not refs:
-        return {}
-    params, fields, variables = [], [], {}
+@dataclass(frozen=True)
+class Standing:
+    """Where a pull request stands on GitHub now: its status, and the login of its author."""
+
+    status: Status
+    author: str
+
+
+def pr_standings(refs: list[PullRef]) -> tuple[str, dict[PullRef, Standing]]:
+    """The viewer's login and the standing of each pull request on GitHub now, from one query. A pull request
+    GitHub can't return is missing; when gh fails, every one is missing and the login is empty."""
+    params, fields, variables = [], ["viewer { login }"], {}
     for i, ref in enumerate(refs):
         params.append(f"$o{i}: String!, $r{i}: String!, $n{i}: Int!")
         fields.append(
-            f"p{i}: repository(owner: $o{i}, name: $r{i}) {{ pullRequest(number: $n{i}) {{ state isDraft }} }}"
+            f"p{i}: repository(owner: $o{i}, name: $r{i}) "
+            f"{{ pullRequest(number: $n{i}) {{ state isDraft author {{ login }} }} }}"
         )
         variables |= {f"o{i}": ref.owner, f"r{i}": ref.repo, f"n{i}": ref.number}
+    signature = f"({', '.join(params)})" if params else ""
     try:
         # gh exits with 1 when GitHub can't resolve one repository, but still prints the data of the others.
-        _, _, out = ask(f"query({', '.join(params)}) {{ {' '.join(fields)} }}", variables, timeout=15)
+        _, _, out = ask(f"query{signature} {{ {' '.join(fields)} }}", variables, timeout=15)
     except commands.CommandError:
-        return {}
+        return "", {}
     data = out.get("data") or {}
-    statuses = {}
+    viewer = (data.get("viewer") or {}).get("login", "")
+    standings = {}
     for i, ref in enumerate(refs):
         pr = (data.get(f"p{i}") or {}).get("pullRequest")
         if pr and (status := status_of(pr["state"], pr["isDraft"])):
-            statuses[ref] = status
-    return statuses
+            standings[ref] = Standing(status, (pr.get("author") or {}).get("login", ""))
+    return viewer, standings
 
 
 def ask(query: str, variables: dict[str, object], timeout: float) -> tuple[int, str, dict]:

@@ -65,7 +65,7 @@ def test_the_home_page_serves_a_cross_site_get(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
     status, body = get("/home", "cross-site")
     assert status == 200
-    assert b"No pull requests opened yet" in body
+    assert body.count(b"None opened yet.") == 3
 
 
 def test_refused_accepts_a_loopback_origin_with_json() -> None:
