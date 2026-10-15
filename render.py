@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Render a classified diff plus PR metadata as one HTML page.
+"""Render a classified diff plus PR metadata as one HTML page, and the theme every document shares.
 
-Usage: render.py <classified.json> <annotations.json> <out.html>
-       render.py --splash
+Usage: render.py --splash   writes the desktop app's first page, web/index.html
 
 The page's script is page/vendor/highlight.min.js, then shell/frame.js, then page/*.js in name order (hence the
 numeric prefixes), and its stylesheet page/page.css. Both are inlined, so a page works from disk as well as from
@@ -395,14 +394,9 @@ def render_page(classified: dict, annotations: dict) -> str:
 
 
 def main() -> None:
-    if sys.argv[1:] == ["--splash"]:
-        (ROOT / "web" / "index.html").write_text(splash_html())
-        return
-    if len(sys.argv) != 4:
+    if sys.argv[1:] != ["--splash"]:
         sys.exit(__doc__)
-    html = render_page(json.loads(Path(sys.argv[1]).read_text()), json.loads(Path(sys.argv[2]).read_text()))
-    Path(sys.argv[3]).write_text(html)
-    print(f"wrote {sys.argv[3]} ({len(html) // 1024} KB)")
+    (ROOT / "web" / "index.html").write_text(splash_html())
 
 
 if __name__ == "__main__":

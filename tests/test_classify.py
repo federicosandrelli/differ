@@ -4,7 +4,7 @@ import pytest
 
 import classify
 from classify import FileDiff, Hunk, Run
-from helpers import make_work
+from helpers import make_diff
 
 OLD_APP = """import os
 
@@ -41,12 +41,12 @@ def run_of(removed: list[str], added: list[str], start: int = 1) -> Run:
 
 
 def test_parse_patch_reads_statuses_and_line_numbers(tmp_path: Path) -> None:
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={"keep.py": "a\nb\nc\n", "gone.txt": "bye\n", "before.py": "same\n"},
         new={"keep.py": "a\nB\nc\nd\n", "fresh.txt": "hi\n", "after.py": "same\n"},
     )
-    files = {fd.path: fd for fd in classify.parse_patch((work / "diff.patch").read_text())}
+    files = {fd.path: fd for fd in classify.parse_patch(diff.patch)}
     assert files["keep.py"].status == "M"
     assert files["gone.txt"].status == "D" and files["gone.txt"].new_path is None
     assert files["fresh.txt"].status == "A" and files["fresh.txt"].old_path is None
@@ -63,40 +63,39 @@ def test_parse_patch_reads_statuses_and_line_numbers(tmp_path: Path) -> None:
 
 
 def test_parse_patch_keeps_a_binary_file_without_hunks(tmp_path: Path) -> None:
-    work = make_work(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
-    (fd,) = classify.parse_patch((work / "diff.patch").read_text())
+    diff = make_diff(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
+    (fd,) = classify.parse_patch(diff.patch)
     assert fd.path == "img.bin" and fd.hunks == [] and fd.binary
-    assert classify.read_source(work / "new" / "img.bin") == ""
+    assert classify.text(diff.new["img.bin"]) == ""
 
 
 def test_classify_gives_a_binary_file_its_size_on_each_side(tmp_path: Path) -> None:
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={"changed.png": b"\0" * 10, "gone.png": b"\0\1" * 10, "notes.txt": "a\n"},
         new={"changed.png": b"\0" * 30, "added.png": b"\0\2\3\4" * 10, "notes.txt": "b\n"},
     )
-    files = {f["path"]: f for f in classify.classify(work)["files"]}
+    files = {f["path"]: f for f in classify.classify(diff)["files"]}
     assert files["changed.png"]["binary"] == {"old": 10, "new": 30}
     assert files["gone.png"]["binary"] == {"old": 20, "new": None}
     assert files["added.png"]["binary"] == {"old": None, "new": 40}
     assert files["notes.txt"]["binary"] is None
 
 
-def test_binary_sizes_leaves_out_a_side_without_the_exported_file(tmp_path: Path) -> None:
-    (tmp_path / "new").mkdir()
-    (tmp_path / "new" / "a.png").write_bytes(b"\0" * 5)
+def test_binary_sizes_leaves_out_a_side_git_could_not_read() -> None:
+    diff = classify.Diff(patch="", old={}, new={"a.png": b"\0" * 5}, generated=set())
     fd = FileDiff(old_path="missing.png", new_path="a.png", status="M", binary=True)
-    assert classify.binary_sizes(tmp_path, fd) == {"old": None, "new": 5}
+    assert classify.binary_sizes(diff, fd) == {"old": None, "new": 5}
 
 
 def test_parse_patch_reads_the_similarity_of_a_rename(tmp_path: Path) -> None:
     blob = bytes(range(256)) * 4
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={"pkg/aio/same.py": "x = 1\n", "a.bin": blob, "b.bin": blob, "keep.py": "a\n"},
         new={"pkg/same.py": "x = 1\n", "c.bin": blob, "d.bin": blob[:-1] + b"\0", "keep.py": "b\n"},
     )
-    files = {fd.path: fd for fd in classify.parse_patch((work / "diff.patch").read_text())}
+    files = {fd.path: fd for fd in classify.parse_patch(diff.patch)}
     assert files["pkg/same.py"].similarity == 100 and files["pkg/same.py"].hunks == []
     assert files["c.bin"].similarity == 100
     changed = files["d.bin"]
@@ -421,7 +420,7 @@ def test_language(path: str, lang: str) -> None:
 
 
 def test_classify_a_small_pull_request(tmp_path: Path) -> None:
-    work = make_work(
+    diff = make_diff(
         tmp_path,
         old={
             ".gitattributes": "gen.py linguist-generated=true\n",
@@ -442,7 +441,7 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
             "docs/notes.txt": "Widgets are small.\n",
         },
     )
-    result = classify.classify(work)
+    result = classify.classify(diff)
     files = {f["path"]: f for f in result["files"]}
 
     assert [r["class"] for r in files["app.py"]["runs"]] == ["import", "rename", "rename"]

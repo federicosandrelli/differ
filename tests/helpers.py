@@ -1,4 +1,4 @@
-"""Build the input the classifier reads from the before and after of a pull request, through a real git repo."""
+"""Build the diff the classifier reads from the before and after of a pull request, through a real git repo."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import build
+import classify
 
 Files = Mapping[str, str | bytes]
 
@@ -54,11 +55,7 @@ def make_repo(root: Path, old: Files, new: Files) -> tuple[Path, str, str]:
     return root, base, head
 
 
-def make_work(root: Path, old: Files, new: Files) -> Path:
-    """The work directory `classify.classify()` reads, exported from a repo holding `old` and `new`."""
+def make_diff(root: Path, old: Files, new: Files) -> classify.Diff:
+    """The diff `classify.classify()` reads, from a repo holding `old` and `new`."""
     repo, base, head = make_repo(root / "repo", old, new)
-    work = root / "work"
-    (work / "old").mkdir(parents=True)
-    (work / "new").mkdir()
-    build.export(repo, base, head, work, log=lambda line: None)
-    return work
+    return build.read_diff(repo, base, head, log=lambda line: None)

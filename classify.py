@@ -1,19 +1,9 @@
-#!/usr/bin/env python3
-"""Parse a unified diff and classify every change run.
-
-Usage: classify.py <input dir> > classified.json
-
-The input directory holds diff.patch (git diff -M), names.txt (git diff -M --name-status),
-and old/ and new/ trees with the full content of every touched file,
-and an optional generated.txt listing the paths marked linguist-generated in .gitattributes.
-"""
+"""Parse the diff of a pull request and classify every change run."""
 
 from __future__ import annotations
 
 import ast
-import json
 import re
-import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +11,18 @@ from pathlib import Path
 TOKEN = re.compile(r"[\w.]")
 IDENT = re.compile(r"^[\w.]+$")
 HAS_LETTER = re.compile(r"[A-Za-z]")
+
+
+@dataclass(frozen=True)
+class Diff:
+    """What classify reads: the diff (`git diff -M -U3` from the base to the head), the content of every changed
+    file at the base and at the head by path, on the sides where it exists, and the paths .gitattributes marks
+    linguist-generated."""
+
+    patch: str
+    old: dict[str, bytes]
+    new: dict[str, bytes]
+    generated: set[str]
 
 
 @dataclass
@@ -461,34 +463,29 @@ def language(path: str) -> str:
     return SPECIAL_FILES.get(name) or LANGUAGES.get(suffix, "text")
 
 
-def read_source(path: Path) -> str:
-    """The file as text, or empty for a missing or binary file."""
-    if not path.exists():
+def text(content: bytes | None) -> str:
+    """A file's content as text, or empty for a binary file or a file that is not there."""
+    if content is None or b"\0" in content[:8192]:
         return ""
-    data = path.read_bytes()
-    if b"\0" in data[:8192]:
-        return ""
-    return data.decode("utf-8", errors="replace")
+    return content.decode("utf-8", errors="replace")
 
 
-def binary_sizes(root: Path, fd: FileDiff) -> dict | None:
-    """A binary file's size in bytes on each side, None on a side without the exported file; None for a text file."""
+def binary_sizes(diff: Diff, fd: FileDiff) -> dict | None:
+    """A binary file's size in bytes on each side, None on a side without the file; None for a text file."""
     if not fd.binary:
         return None
-    sizes: dict[str, int | None] = {}
-    for side, path in (("old", fd.old_path), ("new", fd.new_path)):
-        target = root / side / path if path else None
-        sizes[side] = target.stat().st_size if target and target.is_file() else None
-    return sizes
+    old = diff.old.get(fd.old_path) if fd.old_path else None
+    new = diff.new.get(fd.new_path) if fd.new_path else None
+    return {"old": None if old is None else len(old), "new": None if new is None else len(new)}
 
 
-def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list[dict]:
+def classify_files(diff: Diff, files: list[FileDiff], rename_info: dict) -> list[dict]:
     """Classify every run and return one entry per file with its content, symbols and import lines."""
     ordered = sorted(rename_info, key=lambda p: -len(p[0]))
     entries = []
     for fd in files:
-        old_src = read_source(root / "old" / fd.old_path) if fd.old_path else ""
-        new_src = read_source(root / "new" / fd.new_path) if fd.new_path else ""
+        old_src = text(diff.old.get(fd.old_path)) if fd.old_path else ""
+        new_src = text(diff.new.get(fd.new_path)) if fd.new_path else ""
         content, content_side = (new_src, "new") if fd.new_path else (old_src, "old")
         if fd.path.endswith(".py"):
             old_imports, _ = python_structure(old_src)
@@ -503,7 +500,7 @@ def classify_files(root: Path, files: list[FileDiff], rename_info: dict) -> list
                 "symbols": symbols,
                 "content": content,
                 "content_side": content_side,
-                "binary": binary_sizes(root, fd),
+                "binary": binary_sizes(diff, fd),
                 "import_lines": imports,
                 "old_import_lines": old_imports,
             }
@@ -612,29 +609,17 @@ def renames_json(files: list[FileDiff], rename_info: dict, origins: dict) -> lis
     return sorted(out, key=lambda r: -r["runs"])
 
 
-def classify(root: Path) -> dict:
-    """Classify the diff in the input directory: its files, the renames found across them, and the line totals by class."""
-    files = parse_patch((root / "diff.patch").read_text())
+def classify(diff: Diff) -> dict:
+    """The diff's files, the renames found across them, and the line totals by class."""
+    files = parse_patch(diff.patch)
     for fd in files:
         build_runs(fd)
-    marked_file = root / "generated.txt"
-    marked = set(marked_file.read_text().split("\n")) - {""} if marked_file.exists() else set()
     rename_info = collect_renames(files)
-    entries = classify_files(root, files, rename_info)
+    entries = classify_files(diff, files, rename_info)
     detect_moves(files)
     origins = find_origins(entries, rename_info)
-    result_files = [file_json(entry, marked) for entry in entries]
+    result_files = [file_json(entry, diff.generated) for entry in entries]
     totals: Counter = Counter()
     for f in result_files:
         totals.update(f["stats"]["by_class"])
     return {"files": result_files, "renames": renames_json(files, rename_info, origins), "totals": dict(totals)}
-
-
-def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit(__doc__)
-    json.dump(classify(Path(sys.argv[1])), sys.stdout)
-
-
-if __name__ == "__main__":
-    main()

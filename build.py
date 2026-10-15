@@ -9,7 +9,6 @@ needs. Diffs the head against the merge base, as GitHub does.
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sys
@@ -71,24 +70,18 @@ def mtime(path: Path) -> float:
 
 
 def prune(ref: PullRef) -> None:
-    """Delete the work directory of the pull request and all of its pages but the newest PAGES_KEPT."""
-    shutil.rmtree(work_dir(ref), ignore_errors=True)
+    """Delete all of the pull request's pages but the newest PAGES_KEPT."""
     pages = sorted(pages_dir(ref).glob("*.html"), key=mtime)
     for page in pages[:-PAGES_KEPT]:
         page.unlink(missing_ok=True)
 
 
 def prune_all() -> None:
-    """Delete every work directory and the pages older than PAGE_MAX_AGE. The bare clones in repos/ stay."""
-    shutil.rmtree(CACHE / "work", ignore_errors=True)
+    """Delete the pages older than PAGE_MAX_AGE. The bare clones in repos/ stay."""
     cutoff = time.time() - PAGE_MAX_AGE
     for page in (CACHE / "pages").glob("*/*/*/*.html"):
         if mtime(page) < cutoff:
             page.unlink(missing_ok=True)
-
-
-def work_dir(ref: PullRef) -> Path:
-    return CACHE / "work" / ref.owner / ref.repo / str(ref.number)
 
 
 def ensure_repo(ref: PullRef, log: Log) -> Path:
@@ -115,21 +108,21 @@ def fetch(repo_dir: Path, number: int, base: str, head: str, log: Log) -> None:
         git(repo_dir, "fetch", "--quiet", "--no-tags", "origin", head, timeout=commands.LONG_TIMEOUT)
 
 
-def read_blobs(repo_dir: Path, specs: list[str]) -> dict[str, bytes]:
-    """The content of every `<commit>:<path>` spec, read in one git process; missing specs are left out."""
-    out = git(repo_dir, "cat-file", "--batch", "--buffer", input="".join(s + "\n" for s in specs).encode())
-    blobs: dict[str, bytes] = {}
+def read_files(repo_dir: Path, commit: str, paths: list[str]) -> dict[str, bytes]:
+    """The content of each path at the commit, read in one git process; a path git can't find there is left out."""
+    out = git(repo_dir, "cat-file", "--batch", "--buffer", input="".join(f"{commit}:{p}\n" for p in paths).encode())
+    files: dict[str, bytes] = {}
     pos = 0
-    for spec in specs:
+    for path in paths:
         end = out.index(b"\n", pos)
         header = out[pos:end].decode(errors="replace").split(" ")
         pos = end + 1
         if header[-1] == "missing":
             continue
         size = int(header[2])
-        blobs[spec] = out[pos : pos + size]
+        files[path] = out[pos : pos + size]
         pos += size + 1
-    return blobs
+    return files
 
 
 def changed_paths(names: str) -> list[tuple[str | None, str | None]]:
@@ -151,33 +144,25 @@ def changed_paths(names: str) -> list[tuple[str | None, str | None]]:
     return pairs
 
 
-def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
+def read_diff(repo_dir: Path, base: str, head: str, log: Log) -> classify.Diff:
     log("Computing the diff")
-    (out / "diff.patch").write_bytes(git(repo_dir, "diff", "-M", "-U3", base, head))
-    names = git(repo_dir, "diff", "-M", "--name-status", base, head).decode(errors="replace")
-    (out / "names.txt").write_text(names)
-    pairs = changed_paths(names)
+    patch = git(repo_dir, "diff", "-M", "-U3", base, head).decode(errors="replace")
+    pairs = changed_paths(git(repo_dir, "diff", "-M", "--name-status", base, head).decode(errors="replace"))
     log(f"Reading {len(pairs)} changed files")
-    wanted = [
-        (side, path) for old, new in pairs for side, sha, path in (("old", base, old), ("new", head, new)) if path
-    ]
-    blobs = read_blobs(repo_dir, [f"{base if side == 'old' else head}:{path}" for side, path in wanted])
-    for side, path in wanted:
-        target = out / side / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(blobs.get(f"{base if side == 'old' else head}:{path}", b""))
+    old = read_files(repo_dir, base, [old for old, _ in pairs if old])
+    new = read_files(repo_dir, head, [new for _, new in pairs if new])
     paths = "".join(path + "\n" for old, new in pairs if (path := new or old))
     # A git older than 2.40 has no --source and fails here, so it marks no file; lock files and generator headers
     # still mark theirs.
     attrs = commands.call(
         ["git", "-C", str(repo_dir), "check-attr", f"--source={head}", "--stdin", "linguist-generated"], paths.encode()
     )
-    generated = [
+    generated = {
         line.rsplit(": ", 2)[0]
         for line in attrs.stdout.decode(errors="replace").splitlines()
         if line.rsplit(": ", 1)[-1] in ("set", "true")
-    ]
-    (out / "generated.txt").write_text("".join(path + "\n" for path in generated))
+    }
+    return classify.Diff(patch, old, new, generated)
 
 
 def build(ref: PullRef, log: Log = print) -> Path:
@@ -191,12 +176,7 @@ def build(ref: PullRef, log: Log = print) -> Path:
     repo_dir = ensure_repo(ref, log)
     fetch(repo_dir, ref.number, pr.base, pr.head, log)
     merge_base = git(repo_dir, "merge-base", pr.base, pr.head).decode().strip()
-
-    work = work_dir(ref) / pr.head[:12]
-    shutil.rmtree(work, ignore_errors=True)
-    (work / "old").mkdir(parents=True)
-    (work / "new").mkdir(parents=True)
-    export(repo_dir, merge_base, pr.head, work, log)
+    diff = read_diff(repo_dir, merge_base, pr.head, log)
 
     annotations = {
         "pr": {
@@ -216,11 +196,8 @@ def build(ref: PullRef, log: Log = print) -> Path:
             "status": pr.status,
         }
     }
-    (work / "annotations.json").write_text(json.dumps(annotations, indent=2, ensure_ascii=False) + "\n")
-
     log("Classifying changes")
-    classified = classify.classify(work)
-    (work / "classified.json").write_text(json.dumps(classified, ensure_ascii=False))
+    classified = classify.classify(diff)
     log("Rendering the page")
     html = render.render_page(classified, annotations)
     target.parent.mkdir(parents=True, exist_ok=True)

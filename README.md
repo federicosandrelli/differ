@@ -181,16 +181,16 @@ request that changes `src-tauri/`, `web/`, `package.json`,
    diff needs.
 3. Fetches the PR's head and base commits and diffs the head against their
    merge base, which is what GitHub shows.
-4. Writes the diff, the old and new content of every changed file, and the PR
-   metadata to `~/.cache/diff-review/work/`.
-5. Runs `classify.py` and `render.py` and writes the page to
+4. Reads the old and new content of every changed file, and hands them with
+   the diff to `classify.py`, then the result and the PR metadata to
+   `render.py`.
+5. Writes the page to
    `~/.cache/diff-review/pages/<owner>/<repo>/<number>/<head>.html`.
 
 `DIFF_REVIEW_CACHE` moves the cache. The cache prunes itself: after a build,
-`build.py` deletes the pull request's `work/` directory and keeps only its two
-newest pages, so the page for the previous head commit stays while the new one
-builds. When `server.py` starts, it deletes every `work/` directory and the
-pages older than 30 days. The bare clones in `repos/` stay: they are what makes
+`build.py` keeps only the pull request's two newest pages, so the page for the
+previous head commit stays while the new one builds. When `server.py` starts,
+it deletes the pages older than 30 days. The bare clones in `repos/` stay: they are what makes
 the second build of a repository fast, and `git fetch` keeps them small.
 
 ## Pieces
