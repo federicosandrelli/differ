@@ -1,3 +1,4 @@
+import json
 import subprocess
 from typing import Any
 
@@ -109,9 +110,36 @@ def test_status_of_a_pull_request(state: str, draft: bool, status: str | None) -
     assert github.status_of(state, draft) == status
 
 
-def test_pr_statuses_leaves_out_a_state_without_a_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    answer = b'{"data": {"p0": {"pullRequest": {"state": "ARCHIVED", "isDraft": false}}, "p1": {"pullRequest": {"state": "MERGED", "isDraft": false}}}}'
+def test_pr_standings_leaves_out_a_state_without_a_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    answer = (
+        b'{"data": {"viewer": {"login": "me"}, "p0": {"pullRequest": {"state": "ARCHIVED", "isDraft": false}}, '
+        b'"p1": {"pullRequest": {"state": "MERGED", "isDraft": false, "author": {"login": "ann"}}}}}'
+    )
     monkeypatch.setattr(
         commands.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 0, answer, b"")
     )
-    assert github.pr_statuses([PullRef("o", "r", 1), PullRef("o", "r", 2)]) == {PullRef("o", "r", 2): "merged"}
+    assert github.pr_standings([PullRef("o", "r", 1), PullRef("o", "r", 2)]) == (
+        "me",
+        {PullRef("o", "r", 2): github.Standing("merged", "ann")},
+    )
+
+
+def test_pr_standings_asks_for_the_viewer_alone_with_no_pull_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent = {}
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        sent.update(json.loads(kwargs["input"]))
+        return subprocess.CompletedProcess(args, 0, b'{"data": {"viewer": {"login": "me"}}}', b"")
+
+    monkeypatch.setattr(commands.subprocess, "run", fake_run)
+    assert github.pr_standings([]) == ("me", {})
+    assert sent["query"] == "query { viewer { login } }"
+
+
+def test_pr_standings_returns_nothing_when_gh_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        commands.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 1, b"", b"gh: not logged in"),
+    )
+    assert github.pr_standings([PullRef("o", "r", 1)]) == ("", {})

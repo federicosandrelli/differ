@@ -12,8 +12,9 @@ python3 server.py            # http://localhost:8765/
 
 The page at `/` is a tabbed shell: a home tab with the start page, and one tab
 per pull request. The start page (`/home` on its own) has a search bar and the
-ten pull requests you opened last, newest first; the list is fetched again each
-time its tab comes to the front. Paste any PR URL or `owner/repo#123` to open
+pull requests you opened last, newest first, in three sections: yours, other
+people's, and the merged ones (yours and others'). Each section keeps up to
+twenty; the list is fetched again each time its tab comes to the front. Paste any PR URL or `owner/repo#123` to open
 another. Opening a pull request from the start page opens it in a tab, or
 brings its tab to the front when it has one; once a page's comments load,
 its tab shows the number of unresolved threads and the pull request's status
@@ -248,7 +249,8 @@ the second build of a repository fast, and `git fetch` keeps them small.
   `commands.py` runs `gh` and `git` with a time limit and says how a command
   failed.
 - `recent.py` keeps the start page's list of the pull requests opened last,
-  in `recent.json` in the cache.
+  with the status and author of each and the viewer's login, in `recent.json`
+  in the cache.
 
 Keys in the page: arrow keys in the tree, Cmd+F search (it starts from the
 selected text) and Enter for the next hit, `o` back to the top.

@@ -297,6 +297,7 @@ TEMPLATE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
 <meta name="pr-status" content="__STATUS__">
+<meta name="pr-author" content="__AUTHOR__">
 __THEME__
 <style>
 __CSS__</style>
@@ -314,14 +315,19 @@ __JS__</script>
 
 TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
 STATUS = re.compile(rb'<meta name="pr-status" content="(\w*)">')
+AUTHOR = re.compile(rb'<meta name="pr-author" content="([^"]*)">')
 
 
-def read_head(page: bytes) -> tuple[str | None, str]:
-    """The pull request title and status a page from render_page names in its head: no title, or an empty status,
-    when it names none."""
+def read_head(page: bytes) -> tuple[str | None, str, str]:
+    """The pull request title, status and author a page from render_page names in its head: no title, an empty
+    status or an empty author, when it names none."""
     head = page[:4096]
-    title, status = TITLE.search(head), STATUS.search(head)
-    return html.unescape(title[1].decode(errors="replace")) if title else None, status[1].decode() if status else ""
+    title, status, author = TITLE.search(head), STATUS.search(head), AUTHOR.search(head)
+    return (
+        html.unescape(title[1].decode(errors="replace")) if title else None,
+        status[1].decode() if status else "",
+        html.unescape(author[1].decode(errors="replace")) if author else "",
+    )
 
 
 def page_scripts() -> list[Path]:
@@ -370,6 +376,7 @@ def render_page(classified: dict, pr: dict) -> str:
         TEMPLATE,
         TITLE=html.escape(title),
         STATUS=pr["status"],
+        AUTHOR=html.escape(pr["author"]),
         THEME=theme_head(),
         CSS=(PAGE_DIR / "page.css").read_text(),
         JS=js,
