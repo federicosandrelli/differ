@@ -152,7 +152,8 @@ uv run pytest
 `pytest -m "not e2e"` runs the unit tests alone. The end-to-end tests under
 `tests/e2e/` start `server.py` against a local fixture repo and a fake `gh`,
 and drive the pages in Chromium through Playwright; they need
-`uv run playwright install chromium` once.
+`uv run playwright install chromium` once. A test that needs files of its own
+opens a pull request of them with the `add_pr` fixture.
 
 ESLint checks the scripts under `page/` and `shell/`. `eslint.config.js`
 reads the names each file declares at the top level, since `render.py`

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import socket
@@ -9,12 +10,12 @@ import subprocess
 import sys
 import time
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
-from helpers import commit_tree, git, make_repo
+from helpers import Files, commit_tree, git, make_repo
 
 E2E = Path(__file__).resolve().parent
 ROOT = E2E.parent.parent
@@ -37,47 +38,6 @@ NEW = {
     "notes/notes.txt": "Widgets are small.\n",
 }
 TITLE = "Rename old_name to new_name"
-LONG = {"src/long.py": "".join(f"x{n} = {n}\n" for n in range(1, 151))}
-
-MODEL_FIELDS = (
-    "    id: int\n    customer: str\n    amount: float\n    currency: str\n    created: str\n    shipped: bool\n"
-)
-MODELS_OLD = {
-    "src/models.py": f"from dataclasses import dataclass\n\n\nTAX_RATE = 0.2\nSHIPPING = 5.0\nDISCOUNT = 0.1\n\n\n@dataclass\nclass Order:\n{MODEL_FIELDS}    old_total: float\n",
-    "src/report.py": "def report(order):\n    return order.old_total\n",
-}
-MODELS_NEW = {
-    "src/models.py": f"from dataclasses import dataclass\n\n\nTAX_RATE = 0.2\nSHIPPING = 5.0\nDISCOUNT = 0.1\n\n\n@dataclass\nclass Order:\n{MODEL_FIELDS}    new_total: float\n",
-    "src/report.py": "def report(order):\n    return order.new_total\n",
-}
-
-CONFIG_FIELDS = "".join(f"    field_{n}: int\n" for n in range(1, 13))
-CONFIG_ARGS = "".join(f"    arg_{n}={n},\n" for n in range(1, 13))
-CONFIG_STEPS = "".join(f"    step_{n}()\n" for n in range(1, 13))
-SERVICE_CALLS = {name: "".join(f"        {name}{n}()\n" for n in range(1, 13)) for name in ("a", "b")}
-JOBS_FIELDS = "".join(f"    j{n} = {n}\n" for n in range(1, 13))
-NEAR_LINES = "".join(f"y{n} = {n}\n" for n in range(2, 20))
-CONFIG_OLD = {
-    "src/config.py": f"class Config:\n{CONFIG_FIELDS}\n\napp = make_app(\n{CONFIG_ARGS})\n\n\ndef run():\n{CONFIG_STEPS}    return 0\n",
-    "src/service.py": (
-        f"class Service:\n    def m1(self):\n{SERVICE_CALLS['a']}        return 0\n\n"
-        f'    def m2(self):\n{SERVICE_CALLS["b"]}        return 0\n\n    name = "service"\n'
-    ),
-    "src/jobs.py": f"class Jobs:\n{JOBS_FIELDS}\n    def run(self, x):\n        return x\n",
-    "src/near.py": f"x = 1\n{NEAR_LINES}def f(a):\n    b = 1\n    return a\n",
-}
-CONFIG_NEW = {
-    "src/config.py": (
-        f"class Config:\n{CONFIG_FIELDS}    extra: bool\n\n\napp = make_app(\n{CONFIG_ARGS}    extra=True,\n)\n\n\n"
-        f"def run():\n{CONFIG_STEPS}    return 1\n"
-    ),
-    "src/service.py": (
-        f"class Service:\n    def m1(self):\n{SERVICE_CALLS['a']}        return 1\n\n"
-        f'    def m2(self):\n{SERVICE_CALLS["b"]}        return 1\n\n    name = "service"\n    extra = True\n'
-    ),
-    "src/jobs.py": f"class Jobs:\n{JOBS_FIELDS}\n    def run(self, x, y):\n        return x\n",
-    "src/near.py": f"x = 10\n{NEAR_LINES}def f(a):\n    b = 1\n    return a + b\n",
-}
 
 
 def pr_meta(number: int, base: str, head: str) -> dict:
@@ -165,25 +125,29 @@ def gh_state(tmp_path_factory: pytest.TempPathFactory) -> Path:
     state = root / "state"
     state.mkdir()
     (state / "repo.txt").write_text(str(repo))
-    with_logo = commit_tree(repo, {**NEW, "src/logo.png": b"\x89PNG\0" * 1000}, "logo")
-    models_base = commit_tree(repo, {**NEW, **MODELS_OLD}, "models base")
-    models_head = commit_tree(repo, {**NEW, **MODELS_NEW}, "models head")
-    with_long = commit_tree(repo, {**NEW, **LONG}, "long")
-    config_base = commit_tree(repo, {**NEW, **CONFIG_OLD}, "config base")
-    config_head = commit_tree(repo, {**NEW, **CONFIG_NEW}, "config head")
-    for number, pr_base, pr_head in (
-        (1, base, head),
-        (2, base, head),
-        (3, base, with_logo),
-        (4, models_base, models_head),
-        (5, head, with_long),
-        (6, config_base, config_head),
-    ):
-        git(repo, "update-ref", f"refs/pull/{number}/head", pr_head)
-        (state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, pr_base, pr_head)))
+    for number in (1, 2):
+        git(repo, "update-ref", f"refs/pull/{number}/head", head)
+        (state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, base, head)))
     (state / "comments.json").write_text(json.dumps(comments_state(head)))
     (state / "mutations.log").write_text("")
     return state
+
+
+@pytest.fixture(scope="session")
+def add_pr(gh_state: Path) -> Callable[[Files, Files], str]:
+    """A function that opens another pull request on the fixture repo, from the files `old` to the files `new`, and
+    returns the path of its page."""
+    repo = Path((gh_state / "repo.txt").read_text())
+    numbers = itertools.count(3)
+
+    def add(old: Files, new: Files) -> str:
+        number = next(numbers)
+        base, head = commit_tree(repo, old, f"#{number} base"), commit_tree(repo, new, f"#{number} head")
+        git(repo, "update-ref", f"refs/pull/{number}/head", head)
+        (gh_state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, base, head)))
+        return f"/acme/widgets/pull/{number}"
+
+    return add
 
 
 def free_port() -> int:
