@@ -97,8 +97,7 @@ and it runs on Apple Silicon. Friends install it from the cask in
 [federicosandrelli/homebrew-tap](https://github.com/federicosandrelli/homebrew-tap):
 
 ```sh
-brew tap federicosandrelli/tap
-brew install differ
+brew install --cask federicosandrelli/tap/differ
 ```
 
 The cask removes the `com.apple.quarantine` attribute after the install, so
