@@ -215,7 +215,10 @@ def read_files(repo_dir: Path, commit: str, paths: list[str]) -> dict[str, bytes
 
 def read_diff(repo_dir: Path, base: str, head: str, log: Log) -> classify.Diff:
     log("Computing the diff")
-    patch = git(repo_dir, "diff", "-M", "-U3", base, head).decode(errors="replace")
+    # diff-tree, unlike git diff, ignores the user's settings that change how a diff prints (an external diff tool,
+    # colour, prefixes), except the one that drops the space of a blank unchanged line.
+    patch = git(repo_dir, "-c", "diff.suppressBlankEmpty=false", "diff-tree", "-p", "-M", "-U3", base, head)
+    patch = patch.decode(errors="replace")
     files = classify.parse_patch(patch)
     log(f"Reading {len(files)} changed files")
     old = read_files(repo_dir, base, [f.old_path for f in files if f.old_path])

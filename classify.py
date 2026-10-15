@@ -27,7 +27,7 @@ HunkLine = (
 
 @dataclass(frozen=True)
 class Diff:
-    """What classify reads: the diff (`git diff -M -U3` from the base to the head), the content of every changed
+    """What classify reads: the diff (`git diff-tree -p -M -U3` from the base to the head), the content of every changed
     file at the base and at the head by path, on the sides where it exists, and the paths .gitattributes marks
     linguist-generated."""
 
@@ -166,7 +166,7 @@ def unquoted(name: str) -> str:
 
 
 def parse_patch(patch: str) -> list[FileDiff]:
-    """The files of a diff that `git diff` printed, as git reads one: lines end at a newline only, and a file's
+    """The files of a diff that git printed, as git reads one: lines end at a newline only, and a file's
     paths come from its `diff --git` line, or from its rename lines when it is renamed."""
     files: list[FileDiff] = []
     current: FileDiff | None = None
@@ -193,8 +193,16 @@ def parse_patch(patch: str) -> list[FileDiff]:
         if hunk is None:
             # The file's header, up to its first hunk.
             if raw.startswith("new file mode"):
-                current.status = "A"
-                current.old_path = None
+                deleted = files[-2] if len(files) > 1 else None
+                if deleted and deleted.status == "D" and deleted.old_path == current.new_path:
+                    # git prints a change of type, such as a file that becomes a symlink, as a deletion and a
+                    # creation of the path; they make one changed file.
+                    files.pop()
+                    current = deleted
+                    current.status, current.new_path, current.mode_changed = "M", current.old_path, True
+                else:
+                    current.status = "A"
+                    current.old_path = None
             elif raw.startswith("deleted file mode"):
                 current.status = "D"
                 current.new_path = None

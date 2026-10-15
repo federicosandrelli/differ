@@ -104,6 +104,23 @@ def test_read_diff_reads_the_paths_git_quotes(tmp_path: Path) -> None:
     assert diff.generated == {"gen/schéma.py"}
 
 
+def test_read_diff_ignores_the_users_diff_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = {
+        "diff.noprefix": "true",
+        "diff.suppressBlankEmpty": "true",
+        "diff.external": "echo",
+        "color.ui": "always",
+    }
+    monkeypatch.setenv("GIT_CONFIG_COUNT", str(len(settings)))
+    for i, (key, value) in enumerate(settings.items()):
+        monkeypatch.setenv(f"GIT_CONFIG_KEY_{i}", key)
+        monkeypatch.setenv(f"GIT_CONFIG_VALUE_{i}", value)
+    diff = make_diff(tmp_path, old={"a.py": "a = 1\n\nb = 2\n"}, new={"a.py": "a = 1\n\nb = 3\n"})
+    ((hunk,),) = [fd.hunks for fd in classify.parse_patch(diff.patch)]
+    assert hunk.lines == [(" ", 1, 1, "a = 1"), (" ", 2, 2, ""), ("-", 3, None, "b = 2"), ("+", None, 3, "b = 3")]
+    assert diff.new == {"a.py": b"a = 1\n\nb = 3\n"}
+
+
 def test_parse_patch_keeps_a_binary_file_without_hunks(tmp_path: Path) -> None:
     diff = make_diff(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
     (fd,) = classify.parse_patch(diff.patch)
@@ -154,6 +171,18 @@ def test_parse_patch_notes_a_mode_change() -> None:
     files = {fd.path: fd for fd in classify.parse_patch(patch)}
     assert files["bin/run.sh"].similarity == 100 and files["bin/run.sh"].mode_changed
     assert files["bin/same.sh"].similarity == 100 and not files["bin/same.sh"].mode_changed
+
+
+def test_parse_patch_makes_one_file_of_a_change_of_type() -> None:
+    patch = (
+        "diff --git a/run b/run\ndeleted file mode 100644\nindex 8b2fe54..0000000\n--- a/run\n+++ /dev/null\n"
+        "@@ -1 +0,0 @@\n-echo hi\n"
+        "diff --git a/run b/run\nnew file mode 120000\nindex 0000000..1de5659\n--- /dev/null\n+++ b/run\n"
+        "@@ -0,0 +1 @@\n+target\n\\ No newline at end of file\n"
+    )
+    (fd,) = classify.parse_patch(patch)
+    assert (fd.old_path, fd.new_path, fd.status, fd.mode_changed) == ("run", "run", "M", True)
+    assert [h.lines for h in fd.hunks] == [[("-", 1, None, "echo hi")], [("+", None, 1, "target")]]
 
 
 def test_build_runs_groups_changed_lines_between_context() -> None:
