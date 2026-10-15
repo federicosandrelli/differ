@@ -54,6 +54,10 @@ THREAD_FIELDS = """
 # The approvals, change requests and dismissed reviews, newest last, that _verdict reads.
 VERDICTS = "verdicts: reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) { nodes { author { login } state commit { oid } } }"
 
+# The viewer's pending review, which GitHub shows only to its author. It is asked for by state, so it is found
+# however many reviews the pull request has.
+PENDING = "pending: reviews(first: 10, states: [PENDING]) { nodes { id author { login } } }"
+
 READ = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   viewer { login }
@@ -62,10 +66,11 @@ query($owner: String!, $repo: String!, $number: Int!, $after: String) {
     reviewThreads(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }
     reviews(first: 100) { nodes { id author { login } state body bodyHTML createdAt submittedAt url } }
     %s
+    %s
     comments(first: 100) { nodes { id author { login } body bodyHTML createdAt url } }
   } }
 }
-""" % (THREAD_FIELDS, VERDICTS)
+""" % (THREAD_FIELDS, PENDING, VERDICTS)
 
 MORE_THREADS = (
     """
@@ -142,7 +147,7 @@ def fetch(ref: PullRef) -> dict:
         threads.extend(more["nodes"])
         page = more["pageInfo"]
     viewer = data["viewer"]["login"]
-    pending = next((r for r in pr["reviews"]["nodes"] if r["state"] == "PENDING" and _author(r) == viewer), None)
+    pending_id = _pending_id(pr, viewer)
     reviews = [
         {
             "id": r["id"],
@@ -167,13 +172,12 @@ def fetch(ref: PullRef) -> dict:
         }
         for c in pr["comments"]["nodes"]
     ]
-    pending_id = pending["id"] if pending else None
     return {
         "viewer": viewer,
         "pr_id": pr["id"],
         "head": pr["headRefOid"],
         "body_html": pr.get("bodyHTML") or "",
-        "pending": {"id": pending_id} if pending else None,
+        "pending": {"id": pending_id} if pending_id else None,
         "verdict": asdict(verdict) if (verdict := _verdict(pr["verdicts"]["nodes"], viewer)) else None,
         "threads": [th for t in threads if (th := _thread(t, pending_id))],
         "reviews": reviews,
@@ -187,17 +191,21 @@ def _target(ref: PullRef) -> Target:
 query($owner: String!, $repo: String!, $number: Int!) {
   viewer { login }
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) {
-    id headRefOid reviews(first: 10, states: [PENDING]) { nodes { id author { login } } }
+    id headRefOid
+    %s
     %s
   } }
 }"""
-        % VERDICTS,
+        % (PENDING, VERDICTS),
         **asdict(ref),
     )
     pr = data["repository"]["pullRequest"]
     viewer = data["viewer"]["login"]
-    pending = next((r["id"] for r in pr["reviews"]["nodes"] if _author(r) == viewer), None)
-    return Target(pr["id"], pr["headRefOid"], pending, _verdict(pr["verdicts"]["nodes"], viewer))
+    return Target(pr["id"], pr["headRefOid"], _pending_id(pr, viewer), _verdict(pr["verdicts"]["nodes"], viewer))
+
+
+def _pending_id(pr: dict, viewer: str) -> str | None:
+    return next((r["id"] for r in pr["pending"]["nodes"] if _author(r) == viewer), None)
 
 
 def add_thread(

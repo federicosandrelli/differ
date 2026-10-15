@@ -13,8 +13,6 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-STATE = Path(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].startswith("/") else None
-
 
 def state_dir() -> Path:
     import os
@@ -83,12 +81,12 @@ def graphql() -> None:
             data = {"addPullRequestReview": {"pullRequestReview": {"id": "R_new"}}}
         print(json.dumps({"data": data}))
         return
-    pending_only = "states: [PENDING]" in query
     pr = {
         "id": "PR_1",
         "headRefOid": state["head"],
         "bodyHTML": "",
-        "reviews": {"nodes": [r for r in state["reviews"] if not pending_only or r["state"] == "PENDING"]},
+        "reviews": {"nodes": state["reviews"]},
+        "pending": {"nodes": [r for r in state["reviews"] if r["state"] == "PENDING"]},
         "verdicts": {
             "nodes": [r for r in state["reviews"] if r["state"] in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")]
         },

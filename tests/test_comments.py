@@ -91,18 +91,9 @@ def test_fetch_pages_threads_and_shapes_reviews(monkeypatch: pytest.MonkeyPatch)
                                 thread("T2", [comment("c2", "PENDING", review="R0")]),
                             ],
                         },
+                        "pending": {"nodes": [{"id": "R0", "author": {"login": "ann"}}]},
                         "reviews": {
                             "nodes": [
-                                {
-                                    "id": "R0",
-                                    "author": {"login": "ann"},
-                                    "state": "PENDING",
-                                    "body": "",
-                                    "bodyHTML": "",
-                                    "createdAt": "2026-10-01T00:00:00Z",
-                                    "submittedAt": None,
-                                    "url": "u0",
-                                },
                                 {
                                     "id": "R1",
                                     "author": {"login": "bob"},
@@ -186,7 +177,7 @@ def pending_review_reply(reviews: list[dict], head: str = "c1") -> dict:
     return {
         "viewer": {"login": "ann"},
         "repository": {
-            "pullRequest": {"id": "PR1", "headRefOid": head, "reviews": {"nodes": []}, "verdicts": {"nodes": reviews}}
+            "pullRequest": {"id": "PR1", "headRefOid": head, "pending": {"nodes": []}, "verdicts": {"nodes": reviews}}
         },
     }
 

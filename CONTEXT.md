@@ -3,9 +3,11 @@
 Terms the code uses. A name here is the name in the code.
 
 - **Pull request (PR).** What a page shows: one GitHub pull request, identified by `owner/repo#number` (a `PullRef` in `github.py`) and built per head commit.
+- **Diff.** What `classify.py` reads (`classify.Diff`): the patch from the merge base to the head, the content of every changed file on each side, and the paths marked `linguist-generated`.
 - **File.** One changed file of the PR, with its hunks, runs and content on one side (`content_side`: the new file, or the old one for a deleted file). A binary file has no hunks; `binary` holds its size in bytes on each side.
 - **Hunk.** A unified-diff hunk from GitHub's diff of the PR, as lines `[tag, old, new, text]`.
-- **Run.** A maximal block of changed hunk lines (removed then added) with a class: `substantive`, or the noise classes `import`, `rename`, `whitespace`, `moved`.
+- **Run.** A maximal block of changed hunk lines (removed then added) with a class: `substantive`, or the noise classes `import`, `rename`, `whitespace`, `moved`. `noise` says whether the page folds it: a run of a noise class does, except the rename run that defines the new name.
+- **Rename.** A name that changes the same way in at least two runs, or the module or file name of a renamed file. Its **origin** (`classify.Origin`) is where it is defined: the renamed file, or the first class, def, annotation or assignment of the new name.
 - **Row.** One line of the diff table: a removed line (`del`), an added line (`add`) or an unchanged one (`ctx`).
 - **Row key.** The address of a row on its own side: `O<old line>` for a removed line, `L<new line>` for the rest. Defined in `page/25-address.js`; threads, search hits, deep links and element ids all name rows by key.
 - **File view.** The rows of one file grouped into blocks with every fold decided (`fileBlocks` in `page/30-rows.js`). The diff table draws the view; `reveal(file, key)` opens whatever hides a row; `toggleFold(id)` answers a click on a fold row.

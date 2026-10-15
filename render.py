@@ -14,12 +14,12 @@ from __future__ import annotations
 import html
 import json
 import re
-import subprocess
 import sys
 import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
 
+import commands
 from github import Status
 
 ROOT = Path(__file__).resolve().parent
@@ -324,13 +324,10 @@ def read_head(page: bytes) -> tuple[str | None, str]:
     return html.unescape(title[1].decode(errors="replace")) if title else None, status[1].decode() if status else ""
 
 
-def scripts() -> list[Path]:
-    return sorted(PAGE_DIR.glob("*.js"))
-
-
-def vendored() -> list[Path]:
-    """The third-party scripts a page inlines before its own."""
-    return [VENDOR_DIR / "highlight.min.js"]
+def page_scripts() -> list[Path]:
+    """The scripts a review page inlines, in order: highlight.js, the page side of the shell, then page/*.js in name
+    order."""
+    return [VENDOR_DIR / "highlight.min.js", SHELL_DIR / "frame.js", *sorted(PAGE_DIR.glob("*.js"))]
 
 
 def frame_script() -> str:
@@ -345,22 +342,20 @@ def sources() -> list[Path]:
         PAGE_DIR / "page.css",
         SHELL_DIR / "theme.js",
         SHELL_DIR / "tooltip.js",
-        *vendored(),
-        SHELL_DIR / "frame.js",
-        *scripts(),
+        *page_scripts(),
     ]
 
 
 def app_info() -> dict:
-    """The commit of this repository the page was rendered from, for the bug report a page writes."""
+    """The commit of this repository the page was rendered from, for the bug report a page writes; unknown when
+    git can't tell."""
 
     def git(*args: str) -> str:
         try:
-            return subprocess.run(
-                ["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True
-            ).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
+            r = commands.call(["git", "-C", str(ROOT), *args], timeout=10)
+        except commands.CommandError:
             return ""
+        return "" if r.returncode else r.stdout.decode(errors="replace").strip()
 
     own = git("rev-parse", "--show-toplevel") == str(ROOT)
     return {
@@ -370,19 +365,12 @@ def app_info() -> dict:
     }
 
 
-def script_name(path: Path) -> str:
-    """The name on a script's marker line: the file name, or the path under page/ for a vendored script."""
-    return str(path.relative_to(PAGE_DIR)) if path.is_relative_to(VENDOR_DIR) else path.name
-
-
 def render_page(classified: dict, pr: dict) -> str:
     """The review page of a pull request: its classified diff, and the pull request as build.py describes it."""
     data = {**classified, "pr": pr, "app": app_info()}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{pr['number']} {pr['title']}"
-    js = "\n".join(
-        f"// ---- {script_name(path)}\n{path.read_text()}" for path in [*vendored(), SHELL_DIR / "frame.js", *scripts()]
-    )
+    js = "\n".join(f"// ---- {path.relative_to(ROOT)}\n{path.read_text()}" for path in page_scripts())
     return fill(
         TEMPLATE,
         TITLE=html.escape(title),

@@ -97,7 +97,8 @@ reviewed files on this computer only; GitHub does not see them.</p>
 
 <h2>Link to a file or a line</h2>
 <p>Add <code>#path/to/file</code> to the address of a page to open it at a file, or <code>#path/to/file:42</code> to
-open it at line 42 of that file. Add <code>?refresh=1</code> to build the page again from the start.</p>
+open it at line 42 of that file. Add <code>?refresh=1</code> to check GitHub for new commits at once and build the page again when
+there are some.</p>
 
 <h2>Report a bug</h2>
 <p>"Report a bug" turns your description into a prompt for Claude Code and copies it to the clipboard. The prompt

@@ -21,7 +21,8 @@ relaunch. A page is built on first visit and cached by head commit. A later
 visit serves the newest built page at once and checks the head commit in the
 background: after a new push the next page is built while you read, and the
 page offers it in a notice once its comments load. Add `?refresh=1` to a page
-URL to rebuild it anyway.
+URL to check the head commit at once and build the page for it if the one
+served is older.
 
 To build one page without the server:
 
