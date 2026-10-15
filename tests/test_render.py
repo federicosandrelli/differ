@@ -4,7 +4,14 @@ from pathlib import Path
 
 import render
 
-PR = {"number": 3, "title": "Fix <b>&</b> things", "url": "https://github.com/o/r/pull/3", "repo": "o/r", "head": "abc"}
+PR = {
+    "number": 3,
+    "title": "Fix <b>&</b> things",
+    "url": "https://github.com/o/r/pull/3",
+    "repo": "o/r",
+    "head": "abc",
+    "status": "open",
+}
 
 
 def test_fill_replaces_slots_in_one_pass() -> None:

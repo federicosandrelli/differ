@@ -238,7 +238,11 @@ the second build of a repository fast, and `git fetch` keeps them small.
   wraps the start, progress and error pages (`start.html`, `progress.html`,
   `error.html`).
 - `comments.py` reads and writes review threads, reviews and conversation
-  comments through GitHub's GraphQL API (`gh api graphql`).
+  comments through GitHub's GraphQL API.
+- `github.py` is the one place that talks to GitHub: every `gh` command the
+  app runs, and `PullRef`, the name of a pull request (`owner/repo#123`).
+  `commands.py` runs `gh` and `git` with a time limit and says how a command
+  failed.
 
 Keys in the page: arrow keys in the tree, Cmd+F search (it starts from the
 selected text) and Enter for the next hit, `o` back to the top.

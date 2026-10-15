@@ -31,7 +31,6 @@ import json
 import os
 import re
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -42,20 +41,20 @@ from typing import TextIO
 from urllib.parse import parse_qs, urlparse
 
 import build
+import commands
 import comments
+import github
 import render
+from github import SLUG, PullRef
 
-PAGE = re.compile(rf"^/({build.OWNER})/({build.REPO})/pull/(\d+)/?$")
-STATUS = re.compile(rf"^/status/({build.OWNER})/({build.REPO})/(\d+)$")
-API = re.compile(rf"^/api/({build.OWNER})/({build.REPO})/(\d+)/(\w+)$")
+PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
+STATUS = re.compile(rf"^/status/{SLUG}/(?P<number>\d+)$")
+API = re.compile(rf"^/api/{SLUG}/(?P<number>\d+)/(?P<action>\w+)$")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
-TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
-PR_STATUS = re.compile(rb'<meta name="pr-status" content="(\w*)">')
 HEAD_TTL = 20
 RECENT = build.CACHE / "recent.json"
 RECENT_MAX = 10
 GH_TTL = 60
-GH_TIMEOUT = 10
 LOG_MAX = 5 * 1024 * 1024
 
 
@@ -66,58 +65,53 @@ class Job:
         self.error = ""
 
 
-jobs: dict[tuple[str, str, int], Job] = {}
-heads: dict[tuple[str, str, int], tuple[float, str]] = {}
+jobs: dict[PullRef, Job] = {}
+heads: dict[PullRef, tuple[float, str]] = {}
 gh_checked: tuple[float, str | None] = (0.0, None)
 lock = threading.Lock()
 refreshing = threading.Lock()
 
 
-def page_key(m: re.Match) -> tuple[str, str, int]:
-    """The owner, repo and number a route names, with owner and repo lowercased as build.parse_ref does."""
-    return m.group(1).lower(), m.group(2).lower(), int(m.group(3))
-
-
-def head_checked_recently(key: tuple[str, str, int]) -> bool:
+def head_checked_recently(ref: PullRef) -> bool:
     with lock:
-        cached = heads.get(key)
+        cached = heads.get(ref)
     return bool(cached) and time.time() - cached[0] < HEAD_TTL
 
 
-def current_head(key: tuple[str, str, int]) -> str:
-    sha = build.head_sha(*key)
+def current_head(ref: PullRef) -> str:
+    sha = github.head_sha(ref)
     with lock:
-        heads[key] = (time.time(), sha)
+        heads[ref] = (time.time(), sha)
     return sha
 
 
-def rebuild_if_moved(key: tuple[str, str, int]) -> None:
+def rebuild_if_moved(ref: PullRef) -> None:
     """Build the page for the head commit in the background when the one served was built from an older one."""
-    if head_checked_recently(key):
+    if head_checked_recently(ref):
         return
     with lock:
-        heads[key] = (time.time(), "")
+        heads[ref] = (time.time(), "")
 
     def work() -> None:
         try:
-            if not build.page_current(build.page_path(*key, current_head(key))):
-                start_job(key)
-        except build.BuildError as exc:
-            sys.stderr.write(f"head check for {key} failed: {exc}\n")
+            if not build.page_current(build.page_path(ref, current_head(ref))):
+                start_job(ref)
+        except commands.CommandError as exc:
+            sys.stderr.write(f"head check for {ref} failed: {exc}\n")
 
     threading.Thread(target=work, daemon=True).start()
 
 
-def start_job(key: tuple[str, str, int]) -> Job:
+def start_job(ref: PullRef) -> Job:
     with lock:
-        job = jobs.get(key)
+        job = jobs.get(ref)
         if job and job.state == "building":
             return job
-        job = jobs[key] = Job()
+        job = jobs[ref] = Job()
 
     def work() -> None:
         try:
-            build.build(f"{key[0]}/{key[1]}#{key[2]}", log=lambda line: job.log.append(line))
+            build.build(ref, log=job.log.append)
             job.state = "done"
         except Exception as exc:
             job.error = str(exc)
@@ -136,21 +130,21 @@ def recent_pages() -> list[dict]:
         return []
 
 
-def note_opened(key: tuple[str, str, int], page: bytes) -> None:
+def entry_ref(entry: dict) -> PullRef:
+    return PullRef(entry["owner"], entry["repo"], entry["number"])
+
+
+def note_opened(ref: PullRef, page: bytes) -> None:
     """Move the pull request to the top of the recently opened list, with the title and status of the page just
     served."""
-    owner, repo, number = key
-    m = TITLE.search(page[:4096])
-    title = html.unescape(m.group(1).decode(errors="replace")) if m else f"{owner}/{repo}#{number}"
-    s = PR_STATUS.search(page[:4096])
-    status = s.group(1).decode() if s else ""
+    title, status = render.read_head(page)
     with lock:
-        rest = [p for p in recent_pages() if (p["owner"], p["repo"], p["number"]) != key]
+        rest = [p for p in recent_pages() if entry_ref(p) != ref]
         entry = {
-            "owner": owner,
-            "repo": repo,
-            "number": number,
-            "title": title,
+            "owner": ref.owner,
+            "repo": ref.repo,
+            "number": ref.number,
+            "title": title or str(ref),
             "status": status,
             "opened": time.time(),
         }
@@ -172,29 +166,14 @@ def refresh_statuses() -> None:
     if not refreshing.acquire(blocking=False):
         return
     try:
-        live = build.pr_statuses([(p["owner"], p["repo"], p["number"]) for p in recent_pages()])
+        live = github.pr_statuses([entry_ref(p) for p in recent_pages()])
         with lock:
             pages = recent_pages()
-            updated = [
-                p | {"status": live.get((p["owner"], p["repo"], p["number"]), p.get("status", ""))} for p in pages
-            ]
+            updated = [p | {"status": live.get(entry_ref(p), p.get("status", ""))} for p in pages]
             if updated != pages:
                 save_recent(updated)
     finally:
         refreshing.release()
-
-
-def check_gh() -> str | None:
-    """Why gh cannot reach GitHub now, or None when `gh auth status` succeeds."""
-    try:
-        r = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=GH_TIMEOUT)
-    except FileNotFoundError:
-        return "The GitHub CLI (gh) is not installed."
-    except subprocess.TimeoutExpired:
-        return f"`gh auth status` gave no answer in {GH_TIMEOUT} seconds."
-    if r.returncode != 0:
-        return "The GitHub CLI (gh) is not signed in."
-    return None
 
 
 def gh_problem() -> str | None:
@@ -205,7 +184,7 @@ def gh_problem() -> str | None:
         checked, problem = gh_checked
     if time.time() - checked < GH_TTL:
         return problem
-    problem = check_gh()
+    problem = github.auth_problem()
     with lock:
         gh_checked = (time.time(), problem)
     return problem
@@ -251,10 +230,10 @@ def tabs_page() -> bytes:
 
 
 def pr_item(p: dict) -> str:
-    ref = f"{p['owner']}/{p['repo']}#{p['number']}"
+    ref = entry_ref(p)
     return (
-        f'<a class="item" href="/{p["owner"]}/{p["repo"]}/pull/{p["number"]}"><span class="t">{render.pr_icon(p.get("status", ""))}{html.escape(p["title"])}</span>'
-        f'<span class="w">{html.escape(ago(p["opened"]))}</span><span class="m">{html.escape(ref)}</span></a>'
+        f'<a class="item" href="{ref.path}"><span class="t">{render.pr_icon(p.get("status", ""))}{html.escape(p["title"])}</span>'
+        f'<span class="w">{html.escape(ago(p["opened"]))}</span><span class="m">{html.escape(str(ref))}</span></a>'
     )
 
 
@@ -268,14 +247,12 @@ def start_page() -> bytes:
     return shell("I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent_items()))
 
 
-def progress_page(key: tuple[str, str, int]) -> bytes:
-    owner, repo, number = key
-    ref = f"{owner}/{repo}#{number}"
+def progress_page(ref: PullRef) -> bytes:
     body = render.fill(
         shell_file("progress.html"),
-        REF=html.escape(ref),
-        STATUS=f"/status/{owner}/{repo}/{number}",
-        RETRY=f"/{owner}/{repo}/pull/{number}?refresh=1",
+        REF=html.escape(str(ref)),
+        STATUS=f"/status/{ref.slug}/{ref.number}",
+        RETRY=f"{ref.path}?refresh=1",
     )
     return shell(f"Building {ref}", body)
 
@@ -330,11 +307,13 @@ class Handler(BaseHTTPRequestHandler):
                 if why := self.cross_site():
                     return self.send(403, error_page(f"Forbidden: {why}"))
             if url.path == "/open":
-                owner, repo, number = build.parse_ref((query.get("pr") or [""])[0])
-                return self.redirect(f"/{owner}/{repo}/pull/{number}")
+                try:
+                    return self.redirect(PullRef.parse((query.get("pr") or [""])[0]).path)
+                except ValueError as exc:
+                    return self.send(400, error_page(str(exc)))
             if m := STATUS.match(url.path):
                 with lock:
-                    job = jobs.get(page_key(m))
+                    job = jobs.get(PullRef.from_match(m))
                 data = (
                     {"state": job.state, "log": job.log, "error": job.error}
                     if job
@@ -344,31 +323,36 @@ class Handler(BaseHTTPRequestHandler):
             if m := PAGE.match(url.path):
                 if url.path != url.path.lower():
                     return self.redirect(url.path.lower() + (f"?{url.query}" if url.query else ""))
-                key = page_key(m)
+                ref = PullRef.from_match(m)
                 if "refresh" in query:
-                    if not build.page_current(build.page_path(*key, current_head(key))):
-                        build.forget_pages(*key)
-                        start_job(key)
+                    if not build.page_current(build.page_path(ref, current_head(ref))):
+                        build.forget_pages(ref)
+                        start_job(ref)
                     return self.redirect(url.path)
-                if page := build.latest_page(*key):
-                    rebuild_if_moved(key)
+                if page := build.latest_page(ref):
+                    rebuild_if_moved(ref)
                     body = page.read_bytes()
-                    note_opened(key, body)
+                    note_opened(ref, body)
                     return self.send(200, body)
-                start_job(key)
-                return self.send(200, progress_page(key))
-            if (m := API.match(url.path)) and m.group(4) == "comments":
-                return self.send_json(comments.fetch(*page_key(m)))
+                start_job(ref)
+                return self.send(200, progress_page(ref))
+            if (m := API.match(url.path)) and m["action"] == "comments":
+                return self.send_json(comments.fetch(PullRef.from_match(m)))
             return self.send(404, error_page(f"No page at {url.path}"))
-        except build.BuildError as exc:
-            return self.send(400, error_page(str(exc)))
-        except comments.CommentError as exc:
-            return self.send_json({"error": str(exc)}, 502)
+        except commands.CommandError as exc:
+            return self.send_message(502, str(exc), as_json=API.match(url.path) is not None)
         except Exception as exc:
             return self.send_failure(exc, as_json=API.match(url.path) is not None)
 
     def send_json(self, data: dict, code: int = 200) -> None:
         self.send(code, json.dumps(data).encode(), "application/json")
+
+    def send_message(self, code: int, message: str, as_json: bool) -> None:
+        """Answer with a message for the reader: as JSON to the page's API calls, else as the error page."""
+        if as_json:
+            self.send_json({"error": message}, code)
+        else:
+            self.send(code, error_page(message))
 
     def cross_site(self) -> str | None:
         """Why this GET is refused, or None: a page on another site must not start a clone or a build with the
@@ -385,12 +369,8 @@ class Handler(BaseHTTPRequestHandler):
         """Answer 500 for an error no route expected, with its traceback on stderr. A client that has already
         gone away gets no answer."""
         traceback.print_exc(file=sys.stderr)
-        message = f"Unexpected error: {type(exc).__name__}: {exc}"
         try:
-            if as_json:
-                self.send_json({"error": message}, 500)
-            else:
-                self.send(500, error_page(message))
+            self.send_message(500, f"Unexpected error: {type(exc).__name__}: {exc}", as_json)
         except OSError:
             pass
 
@@ -417,14 +397,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, error_page(f"No page at {self.path}"))
         if why := self.refused():
             return self.send_json({"error": f"Forbidden: {why}"}, 403)
-        (owner, repo, number), action = page_key(m), m.group(4)
+        ref, action = PullRef.from_match(m), m["action"]
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             if action == "comment":
                 result = comments.add_thread(
-                    owner,
-                    repo,
-                    number,
+                    ref,
                     path=body["path"],
                     body=body["body"],
                     line=int(body["line"]),
@@ -435,24 +413,28 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif action == "reply":
                 result = comments.reply(
-                    owner, repo, number, thread_id=body["thread"], body=body["body"], mode=body.get("mode", "review")
+                    ref, thread_id=body["thread"], body=body["body"], mode=body.get("mode", "review")
                 )
             elif action == "resolve":
                 result = comments.resolve(body["thread"], bool(body.get("resolved", True)))
             elif action == "delete":
                 result = comments.delete_comment(body["comment"])
             elif action == "submit":
-                result = comments.submit(owner, repo, number, event=body["event"], body=body.get("body", ""))
+                if body["event"] not in comments.EVENTS:
+                    raise ValueError(f"Unknown review event {body['event']!r}")
+                result = comments.submit(ref, event=body["event"], body=body.get("body", ""))
             elif action == "discard":
-                result = comments.discard(owner, repo, number)
+                result = comments.discard(ref)
             elif action == "conversation":
-                result = comments.add_conversation_comment(owner, repo, number, body=body["body"])
+                result = comments.add_conversation_comment(ref, body=body["body"])
             else:
                 return self.send_json({"error": f"Unknown action {action}"}, 404)
             return self.send_json(result)
-        except (KeyError, ValueError, json.JSONDecodeError) as exc:
+        except (KeyError, ValueError) as exc:
             return self.send_json({"error": f"Bad request: {exc}"}, 400)
-        except comments.CommentError as exc:
+        except comments.ReviewRefused as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        except commands.CommandError as exc:
             return self.send_json({"error": str(exc)}, 502)
         except Exception as exc:
             return self.send_failure(exc, as_json=True)

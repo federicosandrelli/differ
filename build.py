@@ -11,116 +11,36 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
-import subprocess
 import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 import classify
+import commands
+import github
 import render
+from github import PullRef
 
 ROOT = Path(__file__).resolve().parent
 CACHE = Path(os.environ.get("DIFF_REVIEW_CACHE", Path.home() / ".cache" / "diff-review"))
-OWNER = r"[A-Za-z0-9][A-Za-z0-9-]*"
-REPO = r"(?!-)(?!\.+(?![\w.-]))[\w.-]+"
-PR_REF = re.compile(rf"(?:https?://github\.com/)?(?<![\w.-])({OWNER})/({REPO})(?:/pull/|/pulls/|#)(\d+)")
 PAGES_KEPT = 2
 PAGE_MAX_AGE = 30 * 86400
 
 Log = Callable[[str], None]
-TIMEOUT = 120
-CLONE_TIMEOUT = 600
-GH_MISSING = "The GitHub CLI (gh) is not installed or not on PATH"
 
 
-class BuildError(Exception):
-    pass
+def git(repo_dir: Path, *args: str, input: bytes | None = None, timeout: float = commands.TIMEOUT) -> bytes:
+    return commands.run(["git", "-C", str(repo_dir), *args], input, timeout)
 
 
-def parse_ref(text: str) -> tuple[str, str, int]:
-    """GitHub matches owner and repo names case-insensitively, so they are lowercased and one PR has one cache path."""
-    m = PR_REF.search(text.strip())
-    if not m:
-        raise BuildError(f"Not a pull request reference: {text!r}. Use owner/repo#123 or a pull request URL.")
-    return m.group(1).lower(), m.group(2).lower(), int(m.group(3))
+def pages_dir(ref: PullRef) -> Path:
+    return CACHE / "pages" / ref.owner / ref.repo / str(ref.number)
 
 
-def spawn(
-    args: list[str], input: bytes | str | None = None, text: bool = False, timeout: float = TIMEOUT
-) -> subprocess.CompletedProcess:
-    """Run the command and wait at most `timeout` seconds for it. A command that is not installed or does not
-    finish in time raises a BuildError that names it."""
-    try:
-        return subprocess.run(args, capture_output=True, input=input, text=text, timeout=timeout)
-    except FileNotFoundError:
-        raise BuildError(GH_MISSING if args[0] == "gh" else f"{args[0]} is not installed or not on PATH") from None
-    except subprocess.TimeoutExpired:
-        raise BuildError(f"`{' '.join(args[:4])}` did not finish within {timeout:g} seconds") from None
-
-
-def run_bytes(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT) -> bytes:
-    r = spawn(args, input=input, timeout=timeout)
-    if r.returncode:
-        err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
-        raise BuildError(f"`{' '.join(args[:4])}` failed: {err[:600]}")
-    return r.stdout
-
-
-def run(args: list[str], timeout: float = TIMEOUT) -> str:
-    return run_bytes(args, timeout=timeout).decode(errors="replace")
-
-
-def pr_metadata(owner: str, repo: str, number: int) -> dict:
-    fields = "number,title,body,author,url,baseRefOid,headRefOid,baseRefName,headRefName,commits,state,isDraft"
-    return json.loads(run(["gh", "pr", "view", str(number), "--repo", f"{owner}/{repo}", "--json", fields]))
-
-
-def pr_statuses(keys: list[tuple[str, str, int]]) -> dict[tuple[str, str, int], str]:
-    """The status of each pull request on GitHub now, as a key of render.PR_ICONS, by owner, repo and number,
-    from one query. A pull request GitHub can't return is missing, and every one is missing when gh fails."""
-    if not keys:
-        return {}
-    params, fields, variables = [], [], {}
-    for i, (owner, repo, number) in enumerate(keys):
-        params.append(f"$o{i}: String!, $r{i}: String!, $n{i}: Int!")
-        fields.append(
-            f"p{i}: repository(owner: $o{i}, name: $r{i}) {{ pullRequest(number: $n{i}) {{ state isDraft }} }}"
-        )
-        variables |= {f"o{i}": owner, f"r{i}": repo, f"n{i}": number}
-    query = f"query({', '.join(params)}) {{ {' '.join(fields)} }}"
-    # gh exits with 1 when GitHub can't resolve one repository, but still prints the data of the others.
-    try:
-        r = subprocess.run(
-            ["gh", "api", "graphql", "--input", "-"],
-            input=json.dumps({"query": query, "variables": variables}),
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        out = json.loads(r.stdout)
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        return {}
-    data = out.get("data") if isinstance(out, dict) else None
-    statuses = {}
-    for i, key in enumerate(keys):
-        repo = data.get(f"p{i}") if isinstance(data, dict) else None
-        pr = repo.get("pullRequest") if isinstance(repo, dict) else None
-        if isinstance(pr, dict):
-            statuses[key] = render.pr_status({"state": pr.get("state"), "draft": pr.get("isDraft")})
-    return statuses
-
-
-def head_sha(owner: str, repo: str, number: int) -> str:
-    return run(
-        ["gh", "pr", "view", str(number), "--repo", f"{owner}/{repo}", "--json", "headRefOid", "--jq", ".headRefOid"]
-    ).strip()
-
-
-def page_path(owner: str, repo: str, number: int, head: str) -> Path:
-    return CACHE / "pages" / owner / repo / str(number) / f"{head[:12]}.html"
+def page_path(ref: PullRef, head: str) -> Path:
+    return pages_dir(ref) / f"{head[:12]}.html"
 
 
 def sources() -> list[Path]:
@@ -132,14 +52,14 @@ def page_current(page: Path) -> bool:
     return page.exists() and page.stat().st_mtime >= max(src.stat().st_mtime for src in sources())
 
 
-def latest_page(owner: str, repo: str, number: int) -> Path | None:
+def latest_page(ref: PullRef) -> Path | None:
     """The newest current page built for the pull request, whatever head commit it was built from."""
-    pages = sorted(page_path(owner, repo, number, "x").parent.glob("*.html"), key=lambda p: p.stat().st_mtime)
+    pages = sorted(pages_dir(ref).glob("*.html"), key=lambda p: p.stat().st_mtime)
     return next((p for p in reversed(pages) if page_current(p)), None)
 
 
-def forget_pages(owner: str, repo: str, number: int) -> None:
-    shutil.rmtree(page_path(owner, repo, number, "x").parent, ignore_errors=True)
+def forget_pages(ref: PullRef) -> None:
+    shutil.rmtree(pages_dir(ref), ignore_errors=True)
 
 
 def mtime(path: Path) -> float:
@@ -150,10 +70,10 @@ def mtime(path: Path) -> float:
         return 0.0
 
 
-def prune(owner: str, repo: str, number: int) -> None:
+def prune(ref: PullRef) -> None:
     """Delete the work directory of the pull request and all of its pages but the newest PAGES_KEPT."""
-    shutil.rmtree(CACHE / "work" / owner / repo / str(number), ignore_errors=True)
-    pages = sorted(page_path(owner, repo, number, "x").parent.glob("*.html"), key=mtime)
+    shutil.rmtree(work_dir(ref), ignore_errors=True)
+    pages = sorted(pages_dir(ref).glob("*.html"), key=mtime)
     for page in pages[:-PAGES_KEPT]:
         page.unlink(missing_ok=True)
 
@@ -167,39 +87,37 @@ def prune_all() -> None:
             page.unlink(missing_ok=True)
 
 
-def ensure_repo(owner: str, repo: str, log: Log) -> Path:
-    mirror = CACHE / "repos" / owner / f"{repo}.git"
+def work_dir(ref: PullRef) -> Path:
+    return CACHE / "work" / ref.owner / ref.repo / str(ref.number)
+
+
+def ensure_repo(ref: PullRef, log: Log) -> Path:
+    mirror = CACHE / "repos" / ref.owner / f"{ref.repo}.git"
     if not mirror.exists():
-        log(f"Cloning {owner}/{repo} without file contents (first time for this repo)")
+        log(f"Cloning {ref.slug} without file contents (first time for this repo)")
         mirror.parent.mkdir(parents=True, exist_ok=True)
-        run(
-            ["gh", "repo", "clone", f"{owner}/{repo}", str(mirror), "--", "--bare", "--filter=blob:none", "--quiet"],
-            timeout=CLONE_TIMEOUT,
-        )
+        github.clone(ref, mirror)
     else:
-        log(f"Using the cached clone of {owner}/{repo}")
+        log(f"Using the cached clone of {ref.slug}")
     return mirror
 
 
 def has_commit(repo_dir: Path, sha: str) -> bool:
-    return spawn(["git", "-C", str(repo_dir), "cat-file", "-e", f"{sha}^{{commit}}"]).returncode == 0
+    return commands.call(["git", "-C", str(repo_dir), "cat-file", "-e", f"{sha}^{{commit}}"]).returncode == 0
 
 
 def fetch(repo_dir: Path, number: int, base: str, head: str, log: Log) -> None:
     if has_commit(repo_dir, base) and has_commit(repo_dir, head):
         return
     log("Fetching the pull request's commits")
-    git = ["git", "-C", str(repo_dir)]
-    run(git + ["fetch", "--quiet", "--no-tags", "origin", f"pull/{number}/head", base], timeout=CLONE_TIMEOUT)
+    git(repo_dir, "fetch", "--quiet", "--no-tags", "origin", f"pull/{number}/head", base, timeout=commands.LONG_TIMEOUT)
     if not has_commit(repo_dir, head):
-        run(git + ["fetch", "--quiet", "--no-tags", "origin", head], timeout=CLONE_TIMEOUT)
+        git(repo_dir, "fetch", "--quiet", "--no-tags", "origin", head, timeout=commands.LONG_TIMEOUT)
 
 
 def read_blobs(repo_dir: Path, specs: list[str]) -> dict[str, bytes]:
     """The content of every `<commit>:<path>` spec, read in one git process; missing specs are left out."""
-    out = run_bytes(
-        ["git", "-C", str(repo_dir), "cat-file", "--batch", "--buffer"], input="".join(s + "\n" for s in specs).encode()
-    )
+    out = git(repo_dir, "cat-file", "--batch", "--buffer", input="".join(s + "\n" for s in specs).encode())
     blobs: dict[str, bytes] = {}
     pos = 0
     for spec in specs:
@@ -234,10 +152,9 @@ def changed_paths(names: str) -> list[tuple[str | None, str | None]]:
 
 
 def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
-    git = ["git", "-C", str(repo_dir)]
     log("Computing the diff")
-    (out / "diff.patch").write_bytes(run_bytes(git + ["diff", "-M", "-U3", base, head]))
-    names = run(git + ["diff", "-M", "--name-status", base, head])
+    (out / "diff.patch").write_bytes(git(repo_dir, "diff", "-M", "-U3", base, head))
+    names = git(repo_dir, "diff", "-M", "--name-status", base, head).decode(errors="replace")
     (out / "names.txt").write_text(names)
     pairs = changed_paths(names)
     log(f"Reading {len(pairs)} changed files")
@@ -250,48 +167,53 @@ def export(repo_dir: Path, base: str, head: str, out: Path, log: Log) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blobs.get(f"{base if side == 'old' else head}:{path}", b""))
     paths = "".join(path + "\n" for old, new in pairs if (path := new or old))
-    attrs = spawn(git + ["check-attr", f"--source={head}", "--stdin", "linguist-generated"], input=paths, text=True)
+    # A git older than 2.40 has no --source and fails here, so it marks no file; lock files and generator headers
+    # still mark theirs.
+    attrs = commands.call(
+        ["git", "-C", str(repo_dir), "check-attr", f"--source={head}", "--stdin", "linguist-generated"], paths.encode()
+    )
     generated = [
-        line.rsplit(": ", 2)[0] for line in attrs.stdout.splitlines() if line.rsplit(": ", 1)[-1] in ("set", "true")
+        line.rsplit(": ", 2)[0]
+        for line in attrs.stdout.decode(errors="replace").splitlines()
+        if line.rsplit(": ", 1)[-1] in ("set", "true")
     ]
     (out / "generated.txt").write_text("".join(path + "\n" for path in generated))
 
 
-def build(ref: str, log: Log = print) -> Path:
-    owner, repo, number = parse_ref(ref)
-    log(f"Reading {owner}/{repo}#{number} from GitHub")
-    meta = pr_metadata(owner, repo, number)
-    head = meta["headRefOid"]
-    target = page_path(owner, repo, number, head)
+def build(ref: PullRef, log: Log = print) -> Path:
+    log(f"Reading {ref} from GitHub")
+    pr = github.pull_request(ref)
+    target = page_path(ref, pr.head)
     if page_current(target):
         log("Already built for this head commit")
         return target
 
-    repo_dir = ensure_repo(owner, repo, log)
-    fetch(repo_dir, number, meta["baseRefOid"], head, log)
-    merge_base = run(["git", "-C", str(repo_dir), "merge-base", meta["baseRefOid"], head]).strip()
+    repo_dir = ensure_repo(ref, log)
+    fetch(repo_dir, ref.number, pr.base, pr.head, log)
+    merge_base = git(repo_dir, "merge-base", pr.base, pr.head).decode().strip()
 
-    work = CACHE / "work" / owner / repo / str(number) / head[:12]
+    work = work_dir(ref) / pr.head[:12]
     shutil.rmtree(work, ignore_errors=True)
     (work / "old").mkdir(parents=True)
     (work / "new").mkdir(parents=True)
-    export(repo_dir, merge_base, head, work, log)
+    export(repo_dir, merge_base, pr.head, work, log)
 
     annotations = {
         "pr": {
-            "number": number,
-            "title": meta["title"],
-            "url": meta["url"],
-            "repo": f"{owner}/{repo}",
+            "number": ref.number,
+            "title": pr.title,
+            "url": pr.url,
+            "repo": ref.slug,
             "base": merge_base,
-            "head": head,
-            "author": (meta.get("author") or {}).get("login", ""),
-            "commits": len(meta.get("commits") or []),
-            "body": meta.get("body") or "",
-            "base_ref": meta.get("baseRefName"),
-            "head_ref": meta.get("headRefName"),
-            "state": meta.get("state"),
-            "draft": meta.get("isDraft", False),
+            "head": pr.head,
+            "author": pr.author,
+            "commits": pr.commits,
+            "body": pr.body,
+            "base_ref": pr.base_ref,
+            "head_ref": pr.head_ref,
+            "state": pr.state,
+            "draft": pr.draft,
+            "status": pr.status,
         }
     }
     (work / "annotations.json").write_text(json.dumps(annotations, indent=2, ensure_ascii=False) + "\n")
@@ -303,7 +225,7 @@ def build(ref: str, log: Log = print) -> Path:
     html = render.render_page(classified, annotations)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(html)
-    prune(owner, repo, number)
+    prune(ref)
     log("Done")
     return target
 
@@ -312,8 +234,8 @@ def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     try:
-        print(build(sys.argv[1]))
-    except BuildError as exc:
+        print(build(PullRef.parse(sys.argv[1])))
+    except (ValueError, commands.CommandError) as exc:
         sys.exit(str(exc))
 
 

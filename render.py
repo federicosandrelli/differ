@@ -21,6 +21,8 @@ import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
 
+from github import Status
+
 ROOT = Path(__file__).resolve().parent
 PAGE_DIR = ROOT / "page"
 VENDOR_DIR = PAGE_DIR / "vendor"
@@ -206,7 +208,7 @@ def splash_html() -> str:
 
 
 # The icon of each pull request status, as the inner paths of a 24×24 stroked SVG, and the palette colour it takes.
-PR_ICONS = {
+PR_ICONS: dict[Status, tuple[str, str]] = {
     "open": (
         '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/>',
         "add-fg",
@@ -224,13 +226,6 @@ PR_ICONS = {
         "del-fg",
     ),
 }
-
-
-def pr_status(pr: dict) -> str:
-    """The pull request's status as a key of PR_ICONS: "draft" for an open draft, else its state in lower case.
-    Empty for a state without an icon."""
-    status = "draft" if pr.get("draft") and pr.get("state") == "OPEN" else (pr.get("state") or "").lower()
-    return status if status in PR_ICONS else ""
 
 
 def pr_icon(status: str) -> str:
@@ -318,6 +313,18 @@ __JS__</script>
 """
 
 
+TITLE = re.compile(rb"<title>#\d+ (.*?)</title>", re.S)
+STATUS = re.compile(rb'<meta name="pr-status" content="(\w*)">')
+
+
+def read_head(page: bytes) -> tuple[str | None, str]:
+    """The pull request title and status a page from render_page names in its head: no title, or an empty status,
+    when it names none."""
+    head = page[:4096]
+    title, status = TITLE.search(head), STATUS.search(head)
+    return html.unescape(title[1].decode(errors="replace")) if title else None, status[1].decode() if status else ""
+
+
 def scripts() -> list[Path]:
     return sorted(PAGE_DIR.glob("*.js"))
 
@@ -379,7 +386,7 @@ def render_page(classified: dict, annotations: dict) -> str:
     return fill(
         TEMPLATE,
         TITLE=html.escape(title),
-        STATUS=pr_status(annotations["pr"]),
+        STATUS=annotations["pr"]["status"],
         THEME=theme_head(),
         CSS=(PAGE_DIR / "page.css").read_text(),
         JS=js,

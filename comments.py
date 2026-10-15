@@ -11,38 +11,21 @@ is one (and starts one otherwise), or is posted at once as a review of its own, 
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
+from dataclasses import asdict, dataclass
+from typing import Literal
 
-import build
+from github import PullRef, graphql
+
+Side = Literal["LEFT", "RIGHT"]
+Event = Literal["APPROVE", "REQUEST_CHANGES", "COMMENT"]
+EVENTS: tuple[Event, ...] = ("APPROVE", "REQUEST_CHANGES", "COMMENT")
+# "review" adds a comment to the viewer's pending review, starting one when needed; "single" posts it at once.
+Mode = Literal["review", "single"]
 
 
-class CommentError(Exception):
-    pass
-
-
-def graphql(query: str, **variables) -> dict:
-    try:
-        r = subprocess.run(
-            ["gh", "api", "graphql", "--input", "-"],
-            input=json.dumps({"query": query, "variables": variables}),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-    except FileNotFoundError:
-        raise CommentError(build.GH_MISSING) from None
-    except subprocess.TimeoutExpired:
-        raise CommentError("`gh api graphql` did not finish within 60 seconds") from None
-    try:
-        out = json.loads(r.stdout) if r.stdout.strip() else {}
-    except json.JSONDecodeError:
-        out = {}
-    errors = out.get("errors") or []
-    if r.returncode or errors:
-        detail = "; ".join(e.get("message", "") for e in errors) or r.stderr.strip() or f"gh exited with {r.returncode}"
-        raise CommentError(detail[:600])
-    return out.get("data") or {}
+class ReviewRefused(Exception):
+    """GitHub would take the review, but the page must not send it."""
 
 
 THREAD_FIELDS = """
@@ -118,27 +101,36 @@ def _thread(t: dict, pending_review: str | None) -> dict | None:
     }
 
 
-def _verdict(reviews: list[dict], viewer: str) -> dict | None:
+VerdictState = Literal["APPROVED", "CHANGES_REQUESTED"]
+
+
+@dataclass(frozen=True)
+class Verdict:
+    state: VerdictState
+    commit: str
+
+
+def _verdict(reviews: list[dict], viewer: str) -> Verdict | None:
     """The viewer's verdict on the pull request: the state of their latest approval or change request and the commit
     it reviewed. None when they gave neither, or when GitHub dismissed the latest one. Takes the approvals, change
     requests and dismissed reviews, oldest first."""
     latest = next((r for r in reversed(reviews) if _author(r) == viewer), None)
     if not latest or latest["state"] == "DISMISSED":
         return None
-    return {"state": latest["state"], "commit": (latest.get("commit") or {}).get("oid", "")}
+    return Verdict(latest["state"], (latest["commit"] or {}).get("oid", ""))
 
 
-def fetch(owner: str, repo: str, number: int) -> dict:
+def fetch(ref: PullRef) -> dict:
     """Every review thread, review and conversation comment of the pull request, plus the viewer's pending review
     and verdict."""
-    data = graphql(READ, owner=owner, repo=repo, number=number, after=None)
+    data = graphql(READ, **asdict(ref), after=None)
     pr = data["repository"]["pullRequest"]
     threads = list(pr["reviewThreads"]["nodes"])
     page = pr["reviewThreads"]["pageInfo"]
     while page["hasNextPage"]:
-        more = graphql(MORE_THREADS, owner=owner, repo=repo, number=number, after=page["endCursor"])["repository"][
-            "pullRequest"
-        ]["reviewThreads"]
+        more = graphql(MORE_THREADS, **asdict(ref), after=page["endCursor"])["repository"]["pullRequest"][
+            "reviewThreads"
+        ]
         threads.extend(more["nodes"])
         page = more["pageInfo"]
     viewer = data["viewer"]["login"]
@@ -174,16 +166,25 @@ def fetch(owner: str, repo: str, number: int) -> dict:
         "head": pr["headRefOid"],
         "body_html": pr.get("bodyHTML") or "",
         "pending": {"id": pending_id} if pending else None,
-        "verdict": _verdict(pr["verdicts"]["nodes"], viewer),
+        "verdict": asdict(verdict) if (verdict := _verdict(pr["verdicts"]["nodes"], viewer)) else None,
         "threads": [th for t in threads if (th := _thread(t, pending_id))],
         "reviews": reviews,
         "comments": comments,
     }
 
 
-def _pending_review(owner: str, repo: str, number: int) -> tuple[str, str, str | None, dict | None]:
-    """The pull request's node id and head commit, the id of the viewer's pending review if there is one, and the
-    viewer's verdict."""
+@dataclass(frozen=True)
+class Target:
+    """What a write to the pull request needs: its node id and head commit, the id of the viewer's pending review
+    if there is one, and the viewer's verdict."""
+
+    pr_id: str
+    head: str
+    pending: str | None
+    verdict: Verdict | None
+
+
+def _target(ref: PullRef) -> Target:
     data = graphql(
         """
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -194,32 +195,27 @@ query($owner: String!, $repo: String!, $number: Int!) {
   } }
 }"""
         % VERDICTS,
-        owner=owner,
-        repo=repo,
-        number=number,
+        **asdict(ref),
     )
     pr = data["repository"]["pullRequest"]
     viewer = data["viewer"]["login"]
     pending = next((r["id"] for r in pr["reviews"]["nodes"] if _author(r) == viewer), None)
-    return pr["id"], pr["headRefOid"], pending, _verdict(pr["verdicts"]["nodes"], viewer)
+    return Target(pr["id"], pr["headRefOid"], pending, _verdict(pr["verdicts"]["nodes"], viewer))
 
 
 def add_thread(
-    owner: str,
-    repo: str,
-    number: int,
+    ref: PullRef,
     *,
     path: str,
     body: str,
     line: int,
-    side: str,
+    side: Side,
     start_line: int | None = None,
-    start_side: str | None = None,
-    mode: str = "review",
+    start_side: Side | None = None,
+    mode: Mode = "review",
 ) -> dict:
-    """Comment on a line or a range of lines. mode "review" adds to the pending review (starting one when needed);
-    mode "single" posts the comment at once."""
-    pr_id, head, pending, _ = _pending_review(owner, repo, number)
+    """Comment on a line or a range of lines."""
+    target = _target(ref)
     thread = {"path": path, "body": body, "line": line, "side": side}
     if start_line is not None and start_line != line:
         thread.update(startLine=start_line, startSide=start_side or side)
@@ -229,19 +225,19 @@ def add_thread(
 mutation($pr: ID!, $oid: GitObjectID!, $threads: [DraftPullRequestReviewThread]) {
   addPullRequestReview(input: {pullRequestId: $pr, commitOID: $oid, event: COMMENT, threads: $threads}) { pullRequestReview { id } }
 }""",
-            pr=pr_id,
-            oid=head,
+            pr=target.pr_id,
+            oid=target.head,
             threads=[thread],
         )
         return {"posted": True}
-    if pending:
+    if target.pending:
         graphql(
             """
 mutation($review: ID!, $path: String!, $body: String!, $line: Int!, $side: DiffSide!, $startLine: Int, $startSide: DiffSide) {
   addPullRequestReviewThread(input: {pullRequestReviewId: $review, path: $path, body: $body, line: $line, side: $side,
                                      startLine: $startLine, startSide: $startSide}) { thread { id } }
 }""",
-            review=pending,
+            review=target.pending,
             path=path,
             body=body,
             line=line,
@@ -249,22 +245,22 @@ mutation($review: ID!, $path: String!, $body: String!, $line: Int!, $side: DiffS
             startLine=thread.get("startLine"),
             startSide=thread.get("startSide"),
         )
-        return {"pending": pending}
+        return {"pending": target.pending}
     data = graphql(
         """
 mutation($pr: ID!, $oid: GitObjectID!, $threads: [DraftPullRequestReviewThread]) {
   addPullRequestReview(input: {pullRequestId: $pr, commitOID: $oid, threads: $threads}) { pullRequestReview { id } }
 }""",
-        pr=pr_id,
-        oid=head,
+        pr=target.pr_id,
+        oid=target.head,
         threads=[thread],
     )
     return {"pending": data["addPullRequestReview"]["pullRequestReview"]["id"]}
 
 
-def reply(owner: str, repo: str, number: int, *, thread_id: str, body: str, mode: str = "review") -> dict:
+def reply(ref: PullRef, *, thread_id: str, body: str, mode: Mode = "review") -> dict:
     """Reply in a thread, into the pending review when there is one and mode is "review", else posted at once."""
-    pending = _pending_review(owner, repo, number)[2] if mode == "review" else None
+    pending = _target(ref).pending if mode == "review" else None
     graphql(
         """
 mutation($thread: ID!, $body: String!, $review: ID) {
@@ -293,50 +289,48 @@ def delete_comment(comment_id: str) -> dict:
 
 # The verdict each review event gives, and why the event is refused when the viewer gave that verdict on the head
 # commit already.
-REPEATS = {
+REPEATS: dict[Event, tuple[VerdictState, str]] = {
     "APPROVE": ("APPROVED", "You approved this commit already."),
     "REQUEST_CHANGES": ("CHANGES_REQUESTED", "You requested changes on this commit already."),
 }
 
 
-def submit(owner: str, repo: str, number: int, *, event: str, body: str = "") -> dict:
-    """Submit the pending review, or a review without inline comments, as APPROVE, REQUEST_CHANGES or COMMENT."""
-    if event not in ("APPROVE", "REQUEST_CHANGES", "COMMENT"):
-        raise CommentError(f"Unknown review event {event!r}")
+def submit(ref: PullRef, *, event: Event, body: str = "") -> dict:
+    """Submit the pending review, or a review without inline comments."""
     if event == "REQUEST_CHANGES" and not body.strip():
-        raise CommentError("Requesting changes needs a summary.")
-    pr_id, head, pending, verdict = _pending_review(owner, repo, number)
+        raise ReviewRefused("Requesting changes needs a summary.")
+    target = _target(ref)
     repeat = REPEATS.get(event)
-    if repeat and verdict == {"state": repeat[0], "commit": head}:
-        raise CommentError(repeat[1])
-    if pending:
+    if repeat and target.verdict == Verdict(repeat[0], target.head):
+        raise ReviewRefused(repeat[1])
+    if target.pending:
         graphql(
             """
 mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
   submitPullRequestReview(input: {pullRequestReviewId: $review, event: $event, body: $body}) { pullRequestReview { id state } }
 }""",
-            review=pending,
+            review=target.pending,
             event=event,
             body=body,
         )
     else:
         if event == "COMMENT" and not body.strip():
-            raise CommentError("A review without inline comments needs a summary.")
+            raise ReviewRefused("A review without inline comments needs a summary.")
         graphql(
             """
 mutation($pr: ID!, $oid: GitObjectID!, $event: PullRequestReviewEvent!, $body: String) {
   addPullRequestReview(input: {pullRequestId: $pr, commitOID: $oid, event: $event, body: $body}) { pullRequestReview { id state } }
 }""",
-            pr=pr_id,
-            oid=head,
+            pr=target.pr_id,
+            oid=target.head,
             event=event,
             body=body,
         )
     return {"submitted": event}
 
 
-def discard(owner: str, repo: str, number: int) -> dict:
-    pending = _pending_review(owner, repo, number)[2]
+def discard(ref: PullRef) -> dict:
+    pending = _target(ref).pending
     if pending:
         graphql(
             "mutation($id: ID!) { deletePullRequestReview(input: {pullRequestReviewId: $id}) { pullRequestReview { id } } }",
@@ -345,8 +339,8 @@ def discard(owner: str, repo: str, number: int) -> dict:
     return {"discarded": bool(pending)}
 
 
-def add_conversation_comment(owner: str, repo: str, number: int, *, body: str) -> dict:
-    pr_id = _pending_review(owner, repo, number)[0]
+def add_conversation_comment(ref: PullRef, *, body: str) -> dict:
+    pr_id = _target(ref).pr_id
     graphql(
         "mutation($pr: ID!, $body: String!) { addComment(input: {subjectId: $pr, body: $body}) { commentEdge { node { id } } } }",
         pr=pr_id,
@@ -358,8 +352,7 @@ def add_conversation_comment(owner: str, repo: str, number: int, *, body: str) -
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
-    owner, repo, number = build.parse_ref(sys.argv[1])
-    print(json.dumps(fetch(owner, repo, number), indent=2, ensure_ascii=False))
+    print(json.dumps(fetch(PullRef.parse(sys.argv[1])), indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":

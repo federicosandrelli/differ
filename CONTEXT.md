@@ -2,7 +2,7 @@
 
 Terms the code uses. A name here is the name in the code.
 
-- **Pull request (PR).** What a page shows: one GitHub pull request, identified by `owner/repo#number` and built per head commit.
+- **Pull request (PR).** What a page shows: one GitHub pull request, identified by `owner/repo#number` (a `PullRef` in `github.py`) and built per head commit.
 - **File.** One changed file of the PR, with its hunks, runs and content on one side (`content_side`: the new file, or the old one for a deleted file). A binary file has no hunks; `binary` holds its size in bytes on each side.
 - **Hunk.** A unified-diff hunk from GitHub's diff of the PR, as lines `[tag, old, new, text]`.
 - **Run.** A maximal block of changed hunk lines (removed then added) with a class: `substantive`, or the noise classes `import`, `rename`, `whitespace`, `moved`.
