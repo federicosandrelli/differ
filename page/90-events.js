@@ -58,7 +58,7 @@ document.addEventListener('click', (e) => {
     go(d.path, key);
     return;
   }
-  if (d.filter) { setFilter(d.filter); return; }
+  if (d.filter) { e.preventDefault(); setFilter(d.filter); return; }
   if (d.generated !== undefined) { e.preventDefault(); state.showGenerated = d.generated === '1'; lsSet('dr:generated', state.showGenerated ? '1' : '0'); render(); return; }
   if (d.noiseonly !== undefined) { e.preventDefault(); state.showNoiseOnly = d.noiseonly === '1'; lsSet('dr:noise-only', state.showNoiseOnly ? '1' : '0'); render(); return; }
   if (d.tree) { state.closed = new Set(d.tree === 'collapse' ? allFolders(buildTree(FILES.filter(fileListed)), []) : []); renderSide(); return; }

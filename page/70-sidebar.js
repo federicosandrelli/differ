@@ -52,6 +52,7 @@ function hiddenNotice(n, what, toggle, showing) {
   return `<div class="notice">${showing ? `Showing ${files}` : `${files} hidden`} · <a href="#" ${toggle}="${showing ? '0' : '1'}">${showing ? 'hide' : 'show'}</a></div>`;
 }
 function renderList() {
+  if (!FILES.some(kindVisible)) return `<div class="notice">No ${state.filter} files · <a href="#" data-filter="all">show all</a></div>`;
   const noiseOnlyCount = FILES.filter(f => kindVisible(f) && f.noise_only).length;
   const generatedCount = FILES.filter(f => kindVisible(f) && f.generated).length;
   return hiddenNotice(noiseOnlyCount, 'file with only noise', 'data-noiseonly', state.showNoiseOnly) +
@@ -81,7 +82,7 @@ function reviewButton() {
 function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
-    <div class="meta">${statusChip()}<span>${FILES.length} files · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
+    <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
     ${commentNotices()}${state.reviewPanel ? reviewPanelHtml() : ''}
     <div class="controls"><span class="seg">
       <button data-filter="all" class="${state.filter === 'all' ? 'on' : ''}">All</button>

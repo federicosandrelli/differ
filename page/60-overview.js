@@ -51,7 +51,7 @@ function overviewHtml() {
   const impl = FILES.filter(f => f.kind === 'implementation'), tests = FILES.filter(f => f.kind === 'test');
   const reviewed = FILES.filter(isReviewed).length;
   return `<h1>${esc(PR.title)}</h1>
-    <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a> · ${esc(PR.author)} · ${PR.commits} commits · <span class="mono">${PR.base.slice(0, 8)}…${PR.head.slice(0, 8)}</span></div>
+    <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a> · ${esc(PR.author)} · ${plural(PR.commits, 'commit')} · <span class="mono">${PR.base.slice(0, 8)}…${PR.head.slice(0, 8)}</span></div>
     <div class="prbody">${bodyHtml({ body: PR.body || '', html: C.body_html })}</div>
     <div class="stats">
       <div class="stat"><b>${fmt(sub)}</b><span>lines to read</span></div>
