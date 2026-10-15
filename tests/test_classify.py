@@ -335,24 +335,35 @@ def test_classify_run_substantive() -> None:
     assert run.cls == "substantive" and run.pair_rename == [False]
 
 
-def test_detect_moves_links_a_block_removed_here_and_added_there() -> None:
+def test_link_moves_links_a_block_removed_here_and_added_there() -> None:
     block = ["def f():", "    a = 1", "    b = 2", "    return a + b"]
     src = FileDiff(old_path="src.py", new_path="src.py", status="M")
     src.runs = [run_of(block, [], start=10)]
     dst = FileDiff(old_path="dst.py", new_path="dst.py", status="M")
     dst.runs = [run_of([], ["  " + line for line in block], start=20)]
-    classify.detect_moves([src, dst])
-    assert src.runs[0].cls == "moved" and src.runs[0].moved_to == Place("dst.py", 20)
-    assert dst.runs[0].cls == "moved" and dst.runs[0].moved_to == Place("src.py", 10)
+    classify.link_moves([src, dst])
+    assert src.runs[0].moved_to == Place("dst.py", 20) and dst.runs[0].moved_to == Place("src.py", 10)
+    classify.classify_run(src.runs[0], set(), set(), [])
+    assert src.runs[0].cls == "moved"
 
 
-def test_detect_moves_ignores_short_blocks() -> None:
+def test_link_moves_counts_only_lines_that_are_not_blank() -> None:
     src = FileDiff(old_path="src.py", new_path="src.py", status="M")
-    src.runs = [run_of(["a", "b", "c"], [])]
+    src.runs = [run_of(["a", "", "b", "", "c"], []), run_of(["", "", "", ""], [], start=20)]
     dst = FileDiff(old_path="dst.py", new_path="dst.py", status="M")
-    dst.runs = [run_of([], ["a", "b", "c"])]
-    classify.detect_moves([src, dst])
-    assert src.runs[0].cls == "substantive" and dst.runs[0].cls == "substantive"
+    dst.runs = [run_of([], ["a", "", "b", "", "c"]), run_of([], ["", "", "", ""], start=20)]
+    classify.link_moves([src, dst])
+    assert [r.moved_to for r in src.runs + dst.runs] == [None, None, None, None]
+
+
+def test_blank_lines_removed_here_and_added_there_are_whitespace(tmp_path: Path) -> None:
+    diff = make_diff(
+        tmp_path,
+        old={"a.py": "x = 1\n\n\n\n\ny = 2\n", "b.py": "p = 1\nq = 2\n"},
+        new={"a.py": "x = 1\ny = 2\n", "b.py": "p = 1\n\n\n\n\nq = 2\n"},
+    )
+    runs = [(f["path"], r["class"], r["moved_to"]) for f in classify.classify(diff)["files"] for r in f["runs"]]
+    assert runs == [("a.py", "whitespace", None), ("b.py", "whitespace", None)]
 
 
 # ---------------------------------------------------------------- files
@@ -467,7 +478,11 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     result = classify.classify(diff)
     files = {f["path"]: f for f in result["files"]}
 
-    assert [r["class"] for r in files["app.py"]["runs"]] == ["import", "rename", "rename"]
+    assert [(r["class"], r["noise"]) for r in files["app.py"]["runs"]] == [
+        ("import", True),
+        ("rename", False),
+        ("rename", True),
+    ]
     assert files["app.py"]["runs"][1]["origin"] is True
     assert files["app.py"]["stats"] == {"raw": 5, "substantive": 2, "additions": 3, "deletions": 2}
     assert files["app.py"]["import_lines"] == [1, 2] and files["app.py"]["old_import_lines"] == [1]
@@ -487,5 +502,5 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     assert rename["runs"] == 3 and rename["files"] == ["app.py", "cli.py"]
     assert rename["origin"] == {"path": "app.py", "line": 5, "side": "new", "text": "def new_name(x):"}
 
-    assert result["totals"] == {"import": 3, "rename": 6, "substantive": 6}
+    assert result["totals"] == {"import": 3, "rename": 4, "substantive": 8}
     assert sum(result["totals"].values()) == sum(f["stats"]["raw"] for f in result["files"])

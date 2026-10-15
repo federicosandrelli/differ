@@ -32,8 +32,9 @@ differ folds lines in these cases:</p>
     rename counts when the same word changes the same way in at least two places in the pull request, or when it
     follows a renamed file. The change that renames the definition itself (the <code>class</code>,
     <code>def</code>, or assignment) stays open.</li>
-  <li><b>Moved code.</b> A block of 4 or more removed lines that appears again, unchanged, as a block of added lines
-    somewhere else in the pull request, in the same file or another one. The fold row names the other place.</li>
+  <li><b>Moved code.</b> A block of removed lines that appears again, unchanged, as a block of added lines
+    somewhere else in the pull request, in the same file or another one. The block needs 4 lines or more that are
+    not blank. The fold row names the other place.</li>
   <li><b>Several folds close together.</b> When folds of the same kind are separated only by a few unchanged lines,
     they fold into one row that says how many places it covers.</li>
 </ul>

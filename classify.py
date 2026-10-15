@@ -334,7 +334,10 @@ def is_definition(line: str, name: str) -> bool:
 
 
 def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames: list[Pair]) -> None:
-    """Classify the run, with the renames applied longest name first."""
+    """Classify the run, with the renames applied longest name first. A run link_moves linked is moved."""
+    if run.moved_to:
+        run.cls = "moved"
+        return
     removed = [t for _, t in run.removed]
     added = [t for _, t in run.added]
     changed = removed + added
@@ -373,29 +376,24 @@ def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames
     run.cls = "substantive"
 
 
-def detect_moves(files: list[FileDiff]) -> None:
-    """Mark as moved a block of at least 4 removed lines that comes back as a block of added lines, ignoring
-    indentation, and link the two."""
+def link_moves(files: list[FileDiff]) -> None:
+    """Link a run that only removes lines to a run that only adds the same lines elsewhere, ignoring indentation
+    and blank lines, when they hold at least 4 lines that are not blank: each run's moved_to names the other."""
 
     def key(lines: list[Line]) -> tuple[str, ...]:
         return tuple(t.strip() for _, t in lines if t.strip())
 
-    added_index: dict[tuple[str, ...], list[tuple[int, int]]] = defaultdict(list)
-    for fi, fd in enumerate(files):
-        for run in fd.runs:
-            if len(run.added) >= 4 and not run.removed:
-                added_index[key(run.added)].append((fi, run.index))
+    added: dict[tuple[str, ...], tuple[FileDiff, Run]] = {}
     for fd in files:
         for run in fd.runs:
-            if len(run.removed) >= 4 and not run.added:
-                k = key(run.removed)
-                if k in added_index:
-                    tfi, tri = added_index[k][0]
-                    target = files[tfi]
-                    run.cls = "moved"
-                    run.moved_to = Place(target.path, target.runs[tri].added[0][0])
-                    target.runs[tri].cls = "moved"
-                    target.runs[tri].moved_to = Place(fd.path, run.removed[0][0])
+            if not run.removed and len(key(run.added)) >= 4:
+                added.setdefault(key(run.added), (fd, run))
+    for fd in files:
+        for run in fd.runs:
+            if not run.added and (target := added.get(key(run.removed))):
+                target_file, target_run = target
+                run.moved_to = Place(target_file.path, target_run.added[0][0])
+                target_run.moved_to = Place(fd.path, run.removed[0][0])
 
 
 TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
@@ -591,6 +589,7 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
                 "rename": run.rename,
                 "origin": run.origin,
                 "pair_rename": run.pair_rename,
+                "noise": run.noise,
                 "moved_to": asdict(run.moved_to) if run.moved_to else None,
             }
             for run in fd.runs
@@ -631,17 +630,18 @@ def renames_json(files: list[FileDiff], origins: dict[Pair, Origin | None]) -> l
 
 
 def classify(diff: Diff) -> dict:
-    """The diff's files, the renames found across them, and the line totals by class."""
+    """The diff's files, the renames found across them, and the line totals by class, a run the page shows
+    counting as substantive."""
     files = parse_patch(diff.patch)
     for fd in files:
         build_runs(fd)
+    link_moves(files)
     renames = collect_renames(files)
     classified = classify_files(diff, files, renames)
-    detect_moves(files)
     totals: Counter[RunClass] = Counter()
     for fd in files:
         for run in fd.runs:
-            totals[run.cls] += run.size
+            totals[run.cls if run.noise else "substantive"] += run.size
     return {
         "files": [file_json(f, diff) for f in classified],
         "renames": renames_json(files, find_origins(classified, renames)),

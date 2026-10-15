@@ -7,7 +7,7 @@ function buildRows(f, plain) {
   const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
   for (const r of f.runs) {
     r.removed.forEach(n => runOfOld.set(n, r)); r.added.forEach(n => runOfNew.set(n, r));
-    if (r.class === 'rename' && r.origin) continue;
+    if (r.origin) continue;
     r.pair_rename.forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
   }
   const hl = plain ? [] : highlightLines(f);
@@ -79,8 +79,8 @@ function toggleFold(id) { const x = FOLDS.get(id); if (x) x.toggle(); }
 const toggleIn = (set, key) => () => { set.has(key) ? set.delete(key) : set.add(key); };
 
 const runKey = (f, r) => `${f.path}#${r.index}`;
-// A noise run folds; a rename run that holds the rename's origin does not.
-const isNoise = (r) => !!r && NOISE.includes(r.class) && !(r.class === 'rename' && r.origin);
+// A noise run folds; classify.py decides which runs are noise.
+const isNoise = (r) => !!r && r.noise;
 // A block of folded noise stays open while a thread, the comment being written, or the reader's choice needs it.
 function isCollapsed(f, b) {
   const r = b.run;
