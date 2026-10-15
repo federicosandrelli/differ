@@ -74,6 +74,36 @@ def test_parse_patch_reads_changed_lines_that_look_like_file_headers(tmp_path: P
     ]
 
 
+def test_parse_patch_ends_lines_at_newlines_only(tmp_path: Path) -> None:
+    diff = make_diff(
+        tmp_path,
+        old={"a.py": "a = 1\nb = 2\n", "b.txt": "one\r\ntwo\r\n"},
+        new={"a.py": "a = 1\n\x0c\nb = 2\n", "b.txt": "one\r\nTWO\r\n"},
+    )
+    files = {fd.path: fd.hunks[0].lines for fd in classify.parse_patch(diff.patch)}
+    assert files["a.py"] == [(" ", 1, 1, "a = 1"), ("+", None, 2, "\x0c"), (" ", 2, 3, "b = 2")]
+    assert files["b.txt"] == [(" ", 1, 1, "one\r"), ("-", 2, None, "two\r"), ("+", None, 2, "TWO\r")]
+
+
+def test_read_diff_reads_the_paths_git_quotes(tmp_path: Path) -> None:
+    names = ["docs/café.md", 'say "hi".txt', "tab\there.txt", "back\\slash.txt", "Plan b/notes.md"]
+    diff = make_diff(
+        tmp_path,
+        old={**dict.fromkeys(names, "a\n"), "old é.py": "x = 1\n"},
+        new={
+            **dict.fromkeys(names, "b\n"),
+            "new é.py": "x = 1\n",
+            ".gitattributes": "gen/*.py linguist-generated\n",
+            "gen/schéma.py": "y = 2\n",
+        },
+    )
+    files = {fd.path: fd for fd in classify.parse_patch(diff.patch)}
+    assert set(files) == {*names, "new é.py", ".gitattributes", "gen/schéma.py"}
+    assert all(files[name].old_path == name and diff.old[name] == b"a\n" and diff.new[name] == b"b\n" for name in names)
+    assert files["new é.py"].old_path == "old é.py" and files["new é.py"].status == "R"
+    assert diff.generated == {"gen/schéma.py"}
+
+
 def test_parse_patch_keeps_a_binary_file_without_hunks(tmp_path: Path) -> None:
     diff = make_diff(tmp_path, old={"img.bin": b"\0\1\2"}, new={"img.bin": b"\0\1\3"})
     (fd,) = classify.parse_patch(diff.patch)

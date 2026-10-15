@@ -213,43 +213,21 @@ def read_files(repo_dir: Path, commit: str, paths: list[str]) -> dict[str, bytes
     return files
 
 
-def changed_paths(names: str) -> list[tuple[str | None, str | None]]:
-    """(old path, new path) per entry of `git diff --name-status`; None on the side where the file does not exist."""
-    pairs: list[tuple[str | None, str | None]] = []
-    for line in names.splitlines():
-        if not line:
-            continue
-        parts = line.split("\t")
-        status = parts[0]
-        if status.startswith(("R", "C")):
-            pairs.append((parts[1], parts[2]))
-        elif status == "D":
-            pairs.append((parts[1], None))
-        elif status == "A":
-            pairs.append((None, parts[1]))
-        else:
-            pairs.append((parts[1], parts[1]))
-    return pairs
-
-
 def read_diff(repo_dir: Path, base: str, head: str, log: Log) -> classify.Diff:
     log("Computing the diff")
     patch = git(repo_dir, "diff", "-M", "-U3", base, head).decode(errors="replace")
-    pairs = changed_paths(git(repo_dir, "diff", "-M", "--name-status", base, head).decode(errors="replace"))
-    log(f"Reading {len(pairs)} changed files")
-    old = read_files(repo_dir, base, [old for old, _ in pairs if old])
-    new = read_files(repo_dir, head, [new for _, new in pairs if new])
-    paths = "".join(path + "\n" for old, new in pairs if (path := new or old))
-    # A git older than 2.40 has no --source and fails here, so it marks no file; lock files and generator headers
-    # still mark theirs.
+    files = classify.parse_patch(patch)
+    log(f"Reading {len(files)} changed files")
+    old = read_files(repo_dir, base, [f.old_path for f in files if f.old_path])
+    new = read_files(repo_dir, head, [f.new_path for f in files if f.new_path])
+    # With -z, paths go in and come out between NULs, as they are, so git never quotes one. A git older than 2.40 has
+    # no --source and fails here, so it marks no file; lock files and generator headers still mark theirs.
     attrs = commands.call(
-        ["git", "-C", str(repo_dir), "check-attr", f"--source={head}", "--stdin", "linguist-generated"], paths.encode()
+        ["git", "-C", str(repo_dir), "check-attr", "-z", f"--source={head}", "--stdin", "linguist-generated"],
+        "".join(f.path + "\0" for f in files).encode(),
     )
-    generated = {
-        line.rsplit(": ", 2)[0]
-        for line in attrs.stdout.decode(errors="replace").splitlines()
-        if line.rsplit(": ", 1)[-1] in ("set", "true")
-    }
+    fields = attrs.stdout.decode(errors="replace").split("\0")
+    generated = {fields[i] for i in range(0, len(fields) - 2, 3) if fields[i + 2] in ("set", "true")}
     return classify.Diff(patch, old, new, generated)
 
 

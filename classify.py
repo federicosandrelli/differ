@@ -126,16 +126,45 @@ class ClassifiedFile:
     old_import_lines: set[int]
 
 
+C_ESCAPES = {
+    b"a": b"\a",
+    b"b": b"\b",
+    b"t": b"\t",
+    b"n": b"\n",
+    b"v": b"\v",
+    b"f": b"\f",
+    b"r": b"\r",
+    b'"': b'"',
+    b"\\": b"\\",
+}
+
+
+def unquoted(name: str) -> str:
+    """A path as git prints it: as it is, or between double quotes with C escapes when it holds a tab, a quote, a
+    backslash or a character outside ASCII, each byte of which git writes in octal."""
+    if not name.startswith('"'):
+        return name
+
+    def unescape(m: re.Match[bytes]) -> bytes:
+        code = m.group(1)
+        return bytes([int(code, 8)]) if code.isdigit() else C_ESCAPES[code]
+
+    return re.sub(rb"\\([0-7]{3}|.)", unescape, name[1:-1].encode()).decode(errors="replace")
+
+
 def parse_patch(patch: str) -> list[FileDiff]:
+    """The files of a diff that `git diff` printed, as git reads one: lines end at a newline only, and a file's
+    paths come from its `diff --git` line, or from its rename lines when it is renamed."""
     files: list[FileDiff] = []
     current: FileDiff | None = None
     hunk: Hunk | None = None
     old_no = new_no = 0
-    for raw in patch.splitlines():
+    for raw in patch.split("\n"):
         if raw.startswith("diff --git "):
-            m = re.match(r"diff --git a/(.*) b/(.*)$", raw)
-            assert m
-            current = FileDiff(old_path=m.group(1), new_path=m.group(2), status="M")
+            # A file that keeps its name has it twice, so the first half of the line names it.
+            names = raw.removeprefix("diff --git ")
+            path = unquoted(names[: len(names) // 2])[2:]
+            current = FileDiff(old_path=path, new_path=path, status="M")
             files.append(current)
             hunk = None
             continue
@@ -159,6 +188,10 @@ def parse_patch(patch: str) -> list[FileDiff]:
             elif raw.startswith("similarity index"):
                 current.status = "R"
                 current.similarity = int(raw.removeprefix("similarity index ").rstrip("%"))
+            elif raw.startswith("rename from "):
+                current.old_path = unquoted(raw.removeprefix("rename from "))
+            elif raw.startswith("rename to "):
+                current.new_path = unquoted(raw.removeprefix("rename to "))
             elif raw.startswith("Binary files "):
                 current.binary = True
             elif raw.startswith("old mode"):
@@ -167,7 +200,7 @@ def parse_patch(patch: str) -> list[FileDiff]:
         if raw.startswith("\\ No newline"):
             continue
         tag, body = raw[:1], raw[1:]
-        if tag == " " or raw == "":
+        if tag == " ":
             hunk.lines.append((" ", old_no, new_no, body))
             old_no += 1
             new_no += 1

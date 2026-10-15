@@ -13,17 +13,6 @@ from github import PullRef
 REF = PullRef("owner", "repo", 7)
 
 
-def test_changed_paths_reads_name_status() -> None:
-    names = "M\tkept.py\nA\tnew.py\nD\told.py\nR095\tbefore.py\tafter.py\nC100\tsrc.py\tcopy.py\n\n"
-    assert build.changed_paths(names) == [
-        ("kept.py", "kept.py"),
-        (None, "new.py"),
-        ("old.py", None),
-        ("before.py", "after.py"),
-        ("src.py", "copy.py"),
-    ]
-
-
 def test_page_path_uses_the_cache_and_a_short_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(build, "CACHE", tmp_path)
     assert build.page_path(REF, "0123456789abcdef") == tmp_path / "pages/owner/repo/7/0123456789ab.html"

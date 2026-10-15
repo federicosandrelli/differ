@@ -31,7 +31,7 @@ def git(repo: Path, *args: str) -> str:
 
 def commit_tree(repo: Path, files: Files, message: str) -> str:
     """Replace the working tree with `files`, commit, and return the commit's sha."""
-    for tracked in git(repo, "ls-files").split("\n"):
+    for tracked in git(repo, "ls-files", "-z").split("\0"):
         if tracked:
             (repo / tracked).unlink()
     for path, content in files.items():
