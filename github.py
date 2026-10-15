@@ -73,13 +73,14 @@ class PullRequest:
     draft: bool
 
     @property
-    def status(self) -> Status:
+    def status(self) -> Status | None:
         return status_of(self.state, self.draft)
 
 
-def status_of(state: str, draft: bool) -> Status:
-    """A pull request's status from its GitHub state: an open draft is a draft."""
-    return "draft" if draft and state == "OPEN" else STATUSES[state]
+def status_of(state: str, draft: bool) -> Status | None:
+    """A pull request's status from its GitHub state: an open draft is a draft. None for a state the app has no
+    status for."""
+    return "draft" if draft and state == "OPEN" else STATUSES.get(state)
 
 
 def gh(*args: str, timeout: float = commands.TIMEOUT) -> str:
@@ -164,8 +165,8 @@ def pr_statuses(refs: list[PullRef]) -> dict[PullRef, Status]:
     statuses = {}
     for i, ref in enumerate(refs):
         pr = (data.get(f"p{i}") or {}).get("pullRequest")
-        if pr:
-            statuses[ref] = status_of(pr["state"], pr["isDraft"])
+        if pr and (status := status_of(pr["state"], pr["isDraft"])):
+            statuses[ref] = status
     return statuses
 
 

@@ -97,7 +97,21 @@ def test_graphql_names_the_errors_github_answers_with(monkeypatch: pytest.Monkey
 
 @pytest.mark.parametrize(
     ("state", "draft", "status"),
-    [("OPEN", False, "open"), ("OPEN", True, "draft"), ("MERGED", True, "merged"), ("CLOSED", False, "closed")],
+    [
+        ("OPEN", False, "open"),
+        ("OPEN", True, "draft"),
+        ("MERGED", True, "merged"),
+        ("CLOSED", False, "closed"),
+        ("ARCHIVED", False, None),
+    ],
 )
-def test_status_of_a_pull_request(state: str, draft: bool, status: str) -> None:
+def test_status_of_a_pull_request(state: str, draft: bool, status: str | None) -> None:
     assert github.status_of(state, draft) == status
+
+
+def test_pr_statuses_leaves_out_a_state_without_a_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    answer = b'{"data": {"p0": {"pullRequest": {"state": "ARCHIVED", "isDraft": false}}, "p1": {"pullRequest": {"state": "MERGED", "isDraft": false}}}}'
+    monkeypatch.setattr(
+        commands.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 0, answer, b"")
+    )
+    assert github.pr_statuses([PullRef("o", "r", 1), PullRef("o", "r", 2)]) == {PullRef("o", "r", 2): "merged"}

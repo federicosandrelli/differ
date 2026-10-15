@@ -192,7 +192,7 @@ def build(ref: PullRef, log: Log = print) -> Path:
         "head_ref": pr.head_ref,
         "state": pr.state,
         "draft": pr.draft,
-        "status": pr.status,
+        "status": pr.status or "",
     }
     log("Classifying changes")
     classified = classify.classify(diff)
