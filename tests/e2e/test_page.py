@@ -204,6 +204,52 @@ def test_a_fold_opens_on_click_and_closes_again(page: Page, server_url: str) -> 
     expect(section.locator("tr.add", has_text="import sys")).to_have_count(0)
 
 
+def test_an_opened_context_fold_keeps_its_row_and_folds_again(page: Page, server_url: str, config_pr: str) -> None:
+    open_pr(page, server_url, config_pr)
+    section = page.locator("section[data-file='src/near.py']")
+    section.scroll_into_view_if_needed()
+    y10 = section.locator("tr.ctx td.c", has_text=re.compile(r"^y10 = 10$"))
+    expect(y10).to_have_count(0)
+    section.locator("tr.fold").click()
+    expect(y10).to_be_visible()
+    opened = section.locator("tr.runhead[data-fold]")
+    expect(opened).to_have_text("▾ 12 unchanged lines")
+    opened.click()
+    expect(y10).to_have_count(0)
+    expect(section.locator("tr.fold")).to_have_text("⋯ 12 unchanged lines")
+
+
+def test_a_noise_button_locks_the_fold_rows_of_its_kind(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    section = page.locator(APP)
+    imports = section.locator("tr.add", has_text="import sys")
+    page.click("#overview .chip[data-show='import']")
+    expect(imports).to_be_visible()
+    locked = section.locator("tr.runhead.locked", has_text="import")
+    expect(locked).to_have_count(1)
+    expect(section.locator("tr.runhead[data-fold]")).to_have_count(0)
+    locked.click()
+    page.click("#overview .chip[data-show='import']")
+    expect(imports).to_have_count(0)
+    expect(section.locator("tr.collapsed[data-fold]", has_text="import")).to_have_count(1)
+
+
+def test_the_line_number_a_row_shows_starts_and_extends_a_comment(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, add_pr({"src/abc.py": "a = 1\nb = 2\nc = 3\n"}, {"src/abc.py": "a = 1\nb = 20\nc = 3\n"}))
+    section = page.locator("section[data-file='src/abc.py']")
+    hint = page.locator(".form.compose .hint")
+    first = section.locator("tr.ctx", has_text="a = 1").locator("td.n.key")
+    expect(first).to_have_text("1")
+    first.click()
+    expect(hint).to_contain_text("Comment on line 1 ")
+    section.locator("tr.ctx", has_text="c = 3").locator("td.n.key").click(modifiers=["Shift"])
+    expect(hint).to_contain_text("Comment on lines 1–3 ")
+    removed = section.locator("tr.del").locator("td.n.key")
+    expect(removed).to_have_text("2")
+    removed.click()
+    expect(hint).to_contain_text("Comment on line 2 of the old file")
+
+
 def hit_row(page: Page) -> str:
     """The element id of the row of the search hit Enter goes on from."""
     return page.evaluate("rowId(BY_PATH[state.hit.path], state.hit.key)")
@@ -374,7 +420,7 @@ def test_threads_show_on_their_lines_and_in_the_overview(page: Page, server_url:
 def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, server_url: str, gh_state: Path) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
-    section.locator("tr.add", has_text='print("hello")').locator("td.n").first.click()
+    section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
     box = page.locator("textarea[data-compose-text]")
     expect(box).to_be_focused()
     expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 11")
@@ -421,7 +467,7 @@ def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str,
 
 def test_a_comment_draft_survives_opening_another_box_and_escape(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    hello = page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n").first
+    hello = page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n.key")
     hello.click()
     box = page.locator("textarea[data-compose-text]")
     box.fill("Use a logger here")
@@ -429,7 +475,7 @@ def test_a_comment_draft_survives_opening_another_box_and_escape(page: Page, ser
     expect(box).to_have_value("Use a logger here")
     expect(box).not_to_be_focused()
 
-    page.locator("section[data-file='README.md'] tr.add td.n").first.click()
+    page.locator("section[data-file='README.md'] tr.add td.n.key").first.click()
     expect(page.locator("textarea[data-compose-text]")).to_have_count(1)
     expect(page.locator("textarea[data-compose-text]")).to_have_value("")
     expect(page.locator("section[data-file='README.md'] .form.compose")).to_be_visible()
@@ -445,8 +491,8 @@ def test_a_comment_draft_survives_opening_another_box_and_escape(page: Page, ser
 def test_a_comment_draft_stays_on_its_line_and_joins_a_box_extended_onto_it(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
-    hello = section.locator("tr.add", has_text='print("hello")').locator("td.n").first
-    main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n").first
+    hello = section.locator("tr.add", has_text='print("hello")').locator("td.n.key")
+    main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n.key")
     box = page.locator("textarea[data-compose-text]")
     hello.click()
     box.fill("First")
@@ -456,7 +502,7 @@ def test_a_comment_draft_stays_on_its_line_and_joins_a_box_extended_onto_it(page
     hello.click(modifiers=["Shift"])
     expect(page.locator(".form.compose .hint")).to_contain_text("Comment on lines 10–11")
     expect(box).to_have_value("First\n\nSecond")
-    page.locator("section[data-file='README.md'] tr.add td.n").first.click()
+    page.locator("section[data-file='README.md'] tr.add td.n.key").first.click()
     expect(box).to_have_value("")
     hello.click()
     expect(box).to_have_value("First\n\nSecond")
@@ -466,8 +512,8 @@ def test_a_comment_draft_stays_on_its_line_and_joins_a_box_extended_onto_it(page
 def test_dragging_from_a_line_number_opens_a_comment_on_the_lines_in_between(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
-    hello = section.locator("tr.add", has_text='print("hello")').locator("td.n").first
-    main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n").first
+    hello = section.locator("tr.add", has_text='print("hello")').locator("td.n.key")
+    main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n.key")
     hello.scroll_into_view_if_needed()
     start, end = hello.bounding_box(), main.bounding_box()
     assert start and end
@@ -483,8 +529,8 @@ def test_dragging_from_a_line_number_opens_a_comment_on_the_lines_in_between(pag
 def test_dragging_across_chunks_highlights_the_rows_of_both(page: Page, server_url: str, add_pr: AddPr) -> None:
     open_pr(page, server_url, add_pr({}, {"src/long.py": "".join(f"x{n} = {n}\n" for n in range(1, 151))}))
     section = page.locator("section[data-file='src/long.py']")
-    start = section.locator("tr[id$='-L98'] td.n").first
-    end = section.locator("tr[id$='-L103'] td.n").first
+    start = section.locator("tr[id$='-L98'] td.n.key")
+    end = section.locator("tr[id$='-L103'] td.n.key")
     start.scroll_into_view_if_needed()
     a, b = start.bounding_box(), end.bounding_box()
     assert a and b

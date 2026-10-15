@@ -7,7 +7,8 @@ function renderRow(f, r, out, index) {
   const cls = [r.type, r.dim ? 'dim' : '', r.sel ? 'sel' : '', r.between ? 'between' : ''].join(' ');
   const tag = r.dim ? '<span class="tag">rename</span>' : '';
   index.set(key, out.length);
-  out.push(`<tr class="${cls}" id="${rowId(f, key)}"><td class="n">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n">${r.type === 'del' ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
+  const old = r.type === 'del';
+  out.push(`<tr class="${cls}" id="${rowId(f, key)}"><td class="n${old ? ' key' : ''}">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n${old ? '' : ' key'}">${old ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
   if (r.threads) for (const t of r.threads) out.push(`<tr class="thread"><td colspan="4">${threadHtml(f, t)}</td></tr>`);
   if (r.compose) out.push(`<tr class="compose"><td colspan="4">${composeHtml(f, state.compose)}</td></tr>`);
 }
@@ -28,11 +29,12 @@ function runSummary(r) {
   return `${n} lines`;
 }
 
-// The row that opens or closes a block's fold.
+// The row that opens or closes a block's fold, or only names it while the fold is locked.
 function foldRowHtml(b, symStarts) {
   if (b.inline) return inlineFoldRow(b);
-  if (b.ctx) return `<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">${contextLabel(b, symStarts)}</span></td></tr>`;
-  const label = b.imports ? importsLabel(b) : b.group ? groupLabel(b) : runSummary(b.run);
+  if (b.ctx && !b.open) return `<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">⋯ ${contextLabel(b, symStarts)}</span></td></tr>`;
+  const label = b.ctx ? contextLabel(b, symStarts) : b.imports ? importsLabel(b) : b.group ? groupLabel(b) : runSummary(b.run);
+  if (b.locked) return `<tr class="runhead locked"><td colspan="4"><span class="lbl">${label}</span></td></tr>`;
   return (b.open ? openRow : foldRow)(b.fold, label);
 }
 const foldRow = (id, label) => `<tr class="collapsed" data-fold="${esc(id)}"><td colspan="4"><span class="lbl">▸ ${label}</span></td></tr>`;
@@ -52,7 +54,7 @@ function groupLabel(b) {
 function contextLabel(b, symStarts) {
   const syms = b.mid.map(r => symStarts.get(r.newNo)).filter(Boolean);
   const hint = syms.length ? ` · ${syms.slice(0, 4).map(s => esc(s.name)).join(', ')}${syms.length > 4 ? ', …' : ''}` : '';
-  return `⋯ ${b.mid.length} unchanged lines${hint}`;
+  return `${b.mid.length} unchanged lines${hint}`;
 }
 
 // The number of columns a line takes with tabs expanded to the browser's default tab stops of 8.

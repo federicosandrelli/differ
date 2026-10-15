@@ -38,8 +38,8 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('[data-docs-open]')) { openDocs(); return; }
   if (e.target.closest('#docs')) return;
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
-  // The number cell of a code row is its comment button.
-  const cell = API && e.target.closest('table.diff td.n:first-child');
+  // The number cell that shows a code row's line is its comment button.
+  const cell = API && e.target.closest('table.diff td.n.key');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
   const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-tree],[data-noiseonly],[data-generated],[data-folder],[data-show],[data-review],[data-fold],' + COMMENT_ATTRS);
@@ -161,7 +161,7 @@ window.addEventListener('hashchange', () => {
   const rowUnder = (el) => { const tr = el.closest && el.closest('table.diff tr[id]'); return tr && rowAt(tr.id); };
   document.addEventListener('mousedown', (e) => {
     if (!API || e.button !== 0 || e.shiftKey) return;
-    const cell = e.target.closest('table.diff td.n:first-child');
+    const cell = e.target.closest('table.diff td.n.key');
     const at = cell && rowAt(cell.parentElement.id);
     if (!at) return;
     e.preventDefault();
