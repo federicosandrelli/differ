@@ -45,7 +45,7 @@ function groupLabel(b) {
 }
 function contextLabel(b, symStarts) {
   const syms = b.mid.map(r => symStarts.get(r.newNo)).filter(Boolean);
-  const hint = syms.length ? ` · ${syms.slice(0, 4).map(s => esc(s.short)).join(', ')}${syms.length > 4 ? ', …' : ''}` : '';
+  const hint = syms.length ? ` · ${syms.slice(0, 4).map(s => esc(s.name)).join(', ')}${syms.length > 4 ? ', …' : ''}` : '';
   return `⋯ ${b.mid.length} unchanged lines${hint}`;
 }
 
@@ -59,7 +59,7 @@ function lineColumns(text) {
 // The rows of a file's diff table, one HTML string each so the table can be shown in pieces, the index of
 // each row's key in them, and the columns of the longest drawn line.
 function codeRows(f) {
-  const symStarts = new Map((f.symbols || []).filter(s => s.kind !== 'call').map(s => [s.start, s]));
+  const symStarts = new Map(f.symbols.filter(s => s.kind !== 'call').map(s => [s.start, s]));
   const html = [], index = new Map();
   let cols = 0;
   const draw = (rows) => {

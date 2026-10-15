@@ -76,7 +76,7 @@ function bugPrompt(text) {
   const f = BY_PATH[state.view];
   const anchor = viewportAnchor(), at = anchor && anchor.rowId && rowAt(anchor.rowId);
   const side = document.getElementById('side');
-  const app = D.app || {};
+  const app = D.app;
   const where = [
     `- Page: ${location.href}${SHELL ? ' · inside the tabbed shell' : ' · top-level document'}${window.__TAURI__ ? ' · desktop app' : ''}`,
     `- Pull request: ${PR.repo}#${PR.number} (${PR.url}) · ${PR.state}${PR.draft ? ', draft' : ''} · head ${short(PR.head)} (${PR.head_ref}) · base ${short(PR.base)} (${PR.base_ref}) · ${plural(FILES.length, 'file')} · ${plural(PR.commits, 'commit')}`,

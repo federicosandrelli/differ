@@ -8,7 +8,7 @@ function buildRows(f, plain) {
   for (const r of f.runs) {
     r.removed.forEach(n => runOfOld.set(n, r)); r.added.forEach(n => runOfNew.set(n, r));
     if (r.class === 'rename' && r.origin) continue;
-    (r.pair_rename || []).forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
+    r.pair_rename.forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
   }
   const hl = plain ? [] : highlightLines(f);
   const raw = contentLines(f);
@@ -93,7 +93,7 @@ function isCollapsed(f, b) {
 // Several collapsed blocks of one class with only short context between them read as one thing (an import
 // section), so they fold into one row that expands together.
 function mergeCollapsed(f, blocks) {
-  const importSet = new Set(f.import_lines || []);
+  const importSet = new Set(f.import_lines);
   const merged = [];
   let i = 0;
   while (i < blocks.length) {
@@ -115,7 +115,7 @@ function mergeCollapsed(f, blocks) {
 
 // Every import section folds to one row, changed or not: the file's import lines, with the blank lines between them.
 function importSegments(f, rows) {
-  const newSet = new Set(f.import_lines || []), oldSet = new Set(f.old_import_lines || []);
+  const newSet = new Set(f.import_lines), oldSet = new Set(f.old_import_lines);
   const isImp = (r) => r.type === 'del' ? oldSet.has(r.oldNo) : newSet.has(r.newNo);
   const isBlank = (r) => !r.text.trim();
   const segs = [];
@@ -145,7 +145,7 @@ function enclosingBodies(f) {
   for (const r of f.runs) {
     if (isNoise(r) || !r.added.length) continue;
     const first = r.added[0];
-    const around = (f.symbols || []).filter(s => s.start < first && first <= s.end);
+    const around = f.symbols.filter(s => s.start < first && first <= s.end);
     if (!around.length) continue;
     const inner = around.reduce((a, s) => s.start > a.start ? s : a);
     bodies.set(inner.start, inner.body);

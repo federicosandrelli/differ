@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 import classify
-from classify import FileDiff, Hunk, Run
+from classify import FileDiff, Hunk, Place, Run
 from helpers import make_diff
 
 OLD_APP = """import os
@@ -132,7 +132,6 @@ def test_build_runs_groups_changed_lines_between_context() -> None:
         Hunk(
             old_start=1,
             new_start=1,
-            header="",
             lines=[
                 (" ", 1, 1, "ctx"),
                 ("-", 2, None, "old"),
@@ -173,11 +172,11 @@ def f():
 """
     imports, symbols = classify.python_structure(source)
     assert imports == {1, 2, 3, 4, 5}
-    assert [(s["name"], s["kind"], s["start"], s["depth"]) for s in symbols] == [
-        ("C", "class", 8, 0),
-        ("C.m", "def", 9, 1),
-        ("f", "def", 13, 0),
-        ("f.inner", "def", 16, 1),
+    assert [(s.name, s.kind, s.start) for s in symbols] == [
+        ("C", "class", 8),
+        ("m", "def", 9),
+        ("f", "def", 13),
+        ("inner", "def", 16),
     ]
 
 
@@ -200,10 +199,10 @@ def f():
     )
 """
     _, symbols = classify.python_structure(source)
-    assert [(s["name"], s["short"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
-        ("Settings", "Settings", "call", 1, 2, 3),
-        ("app.run", "run", "call", 4, 5, 6),
-        ("f", "f", "def", 13, 14, 16),
+    assert [(s.name, s.kind, s.start, s.body, s.end) for s in symbols] == [
+        ("Settings", "call", 1, 2, 3),
+        ("run", "call", 4, 5, 6),
+        ("f", "def", 13, 14, 16),
     ]
 
 
@@ -216,7 +215,7 @@ def f(
     return a
 """
     _, symbols = classify.python_structure(source)
-    assert [(s["start"], s["body"]) for s in symbols] == [(1, 5)]
+    assert [(s.start, s.body) for s in symbols] == [(1, 5)]
 
 
 def test_python_structure_starts_a_class_body_at_the_decorator_of_its_first_method() -> None:
@@ -226,7 +225,7 @@ def test_python_structure_starts_a_class_body_at_the_decorator_of_its_first_meth
         return 1
 """
     _, symbols = classify.python_structure(source)
-    assert [(s["name"], s["start"], s["body"]) for s in symbols] == [("C", 1, 2), ("C.a", 2, 4)]
+    assert [(s.name, s.start, s.body) for s in symbols] == [("C", 1, 2), ("a", 2, 4)]
 
 
 def test_python_structure_is_empty_for_a_file_that_does_not_parse() -> None:
@@ -257,9 +256,22 @@ def test_collect_renames_needs_two_runs_or_a_file_rename() -> None:
     once.runs = [run_of(["y = lone()"], ["y = alone()"])]
     moved = FileDiff(old_path="pkg/before.py", new_path="pkg/after.py", status="R")
     renames = classify.collect_renames([twice, once, moved])
-    assert renames[("old", "new")] == {"from": "old", "to": "new", "count": 2, "seed": None}
-    assert ("lone", "alone") not in renames
-    assert renames[("before", "after")]["seed"] == "file rename"
+    assert renames == {
+        ("old", "new"): None,
+        ("pkg.before", "pkg.after"): "pkg/after.py",
+        ("before", "after"): "pkg/after.py",
+    }
+
+
+def test_a_rename_that_follows_a_renamed_file_has_that_file_as_its_origin(tmp_path: Path) -> None:
+    diff = make_diff(
+        tmp_path,
+        old={"a/one.py": "x = 1\n", "b/two.py": "y = 2\n", "f.py": "one.f()\n", "g.py": "two.g()\n"},
+        new={"a/uno.py": "x = 1\n", "b/dos.py": "y = 2\n", "f.py": "uno.f()\n", "g.py": "dos.g()\n"},
+    )
+    origins = {(r["from"], r["to"]): r["origin"] for r in classify.classify(diff)["renames"]}
+    assert origins[("one", "uno")] == {"path": "a/uno.py", "line": 1, "side": "new", "text": "renamed from a/one.py"}
+    assert origins[("two", "dos")] == {"path": "b/dos.py", "line": 1, "side": "new", "text": "renamed from b/two.py"}
 
 
 def test_apply_renames_respects_word_boundaries() -> None:
@@ -287,40 +299,39 @@ def test_is_definition(line: str, name: str, expected: bool) -> None:
 
 def test_classify_run_whitespace() -> None:
     run = run_of(["  x = 1", ""], ["x = 1", "   "])
-    classify.classify_run(run, set(), set(), [], {})
+    classify.classify_run(run, set(), set(), [])
     assert run.cls == "whitespace"
 
 
 def test_classify_run_import() -> None:
     run = run_of(["import os"], ["import os", "import sys"])
-    classify.classify_run(run, {1}, {1, 2}, [], {})
+    classify.classify_run(run, {1}, {1, 2}, [])
     assert run.cls == "import"
     other = run_of([], ["import sys"], start=2)
-    classify.classify_run(other, {1}, {1}, [], {})
+    classify.classify_run(other, {1}, {1}, [])
     assert other.cls == "substantive"
 
 
 def test_classify_run_rename_marks_the_definition_as_origin() -> None:
     renames = [("old", "new")]
-    info = {("old", "new"): {}}
     definition = run_of(["def old(x):"], ["def new(x):"])
-    classify.classify_run(definition, set(), set(), renames, info)
+    classify.classify_run(definition, set(), set(), renames)
     assert (definition.cls, definition.rename, definition.origin) == ("rename", ("old", "new"), True)
     use = run_of(["    return old(1)"], ["    return new(1)"])
-    classify.classify_run(use, set(), set(), renames, info)
+    classify.classify_run(use, set(), set(), renames)
     assert (use.cls, use.rename, use.origin, use.pair_rename) == ("rename", ("old", "new"), False, [True])
 
 
 def test_classify_run_names_a_rename_applied_twice_on_one_line() -> None:
     renames = [("old", "new")]
     run = run_of(["old(old)"], ["new(new)"])
-    classify.classify_run(run, set(), set(), renames, {("old", "new"): {}})
+    classify.classify_run(run, set(), set(), renames)
     assert (run.cls, run.rename) == ("rename", ("old", "new"))
 
 
 def test_classify_run_substantive() -> None:
     run = run_of(["return 1"], ["return 2"])
-    classify.classify_run(run, set(), set(), [("a", "b")], {})
+    classify.classify_run(run, set(), set(), [("a", "b")])
     assert run.cls == "substantive" and run.pair_rename == [False]
 
 
@@ -331,8 +342,8 @@ def test_detect_moves_links_a_block_removed_here_and_added_there() -> None:
     dst = FileDiff(old_path="dst.py", new_path="dst.py", status="M")
     dst.runs = [run_of([], ["  " + line for line in block], start=20)]
     classify.detect_moves([src, dst])
-    assert src.runs[0].cls == "moved" and src.runs[0].moved_to == {"path": "dst.py", "line": 20}
-    assert dst.runs[0].cls == "moved" and dst.runs[0].moved_to == {"path": "src.py", "line": 10}
+    assert src.runs[0].cls == "moved" and src.runs[0].moved_to == Place("dst.py", 20)
+    assert dst.runs[0].cls == "moved" and dst.runs[0].moved_to == Place("src.py", 10)
 
 
 def test_detect_moves_ignores_short_blocks() -> None:
@@ -458,13 +469,7 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
 
     assert [r["class"] for r in files["app.py"]["runs"]] == ["import", "rename", "rename"]
     assert files["app.py"]["runs"][1]["origin"] is True
-    assert files["app.py"]["stats"] == {
-        "raw": 5,
-        "substantive": 2,
-        "by_class": {"import": 1, "rename": 4},
-        "additions": 3,
-        "deletions": 2,
-    }
+    assert files["app.py"]["stats"] == {"raw": 5, "substantive": 2, "additions": 3, "deletions": 2}
     assert files["app.py"]["import_lines"] == [1, 2] and files["app.py"]["old_import_lines"] == [1]
     assert [s["name"] for s in files["app.py"]["symbols"]] == ["new_name", "main"]
 
