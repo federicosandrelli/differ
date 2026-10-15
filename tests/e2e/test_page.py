@@ -93,7 +93,7 @@ def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, s
     expect(section.locator("tr.add")).to_have_text(re.compile("new_total: float"))
     for line in ("@dataclass", "class Order:", "id: int", "shipped: bool"):
         expect(section.locator("tr.ctx", has_text=line)).to_be_visible()
-    expect(section.locator("tr.fold")).to_have_text("⋯ 7 unchanged lines")
+    expect(section.locator("tr.fold")).to_have_text("⋯ 8 unchanged lines")
 
 
 CONFIG_FIELDS = "".join(f"    field_{n}: int\n" for n in range(1, 13))
@@ -217,6 +217,24 @@ def test_an_opened_context_fold_keeps_its_row_and_folds_again(page: Page, server
     opened.click()
     expect(y10).to_have_count(0)
     expect(section.locator("tr.fold")).to_have_text("⋯ 12 unchanged lines")
+
+
+def test_folds_with_nothing_between_them_join_into_one_row_that_opens_them_all(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    helper = "".join(f"    h{n} = {n}\n" for n in range(1, 21))
+    head = f'"""Date helpers.\n\nMore about them.\n"""\n\nimport os\nimport sys\n\n\ndef helper():\n{helper}\n\ndef target():\n'
+    open_pr(page, server_url, add_pr({"dates.py": head + "    return 0\n"}, {"dates.py": head + "    return 1\n"}))
+    section = page.locator("section[data-file='dates.py']")
+    section.scroll_into_view_if_needed()
+    code = lambda line: section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}$"))  # noqa: E731
+    expect(section.locator("tr.collapsed")).to_have_count(0)
+    expect(section.locator("tr.fold")).to_have_count(1)
+    expect(code("def target():")).to_be_visible()
+    section.locator("tr.fold").click()
+    for line in ('"""Date helpers.', "import os", "def helper():", "h10 = 10"):
+        expect(code(line)).to_be_visible()
+    expect(section.locator("tr.fold")).to_have_count(0)
 
 
 def test_a_noise_button_locks_the_fold_rows_of_its_kind(page: Page, server_url: str) -> None:

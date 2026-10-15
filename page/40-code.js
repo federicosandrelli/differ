@@ -39,8 +39,8 @@ function runSummary(r) {
 // The row that opens or closes a block's fold, or only names it while the fold is locked.
 function foldRowHtml(b, symStarts) {
   if (b.inline) return inlineFoldRow(b);
-  if (b.ctx && !b.open) return `<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">⋯ ${contextLabel(b, symStarts)}</span></td></tr>`;
-  const label = b.ctx ? contextLabel(b, symStarts) : b.imports ? importsLabel(b) : b.group ? groupLabel(b) : runSummary(b.run);
+  if (b.joined || (b.ctx && !b.open)) return `<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">⋯ ${hiddenLabel(b.joined ? b.rows : b.mid, symStarts)}</span></td></tr>`;
+  const label = b.ctx ? hiddenLabel(b.mid, symStarts) : b.imports ? importsLabel(b) : b.group ? groupLabel(b) : runSummary(b.run);
   if (b.locked) return `<tr class="runhead locked"><td colspan="4"><span class="lbl">${label}</span></td></tr>`;
   return (b.open ? openRow : foldRow)(b.fold, label);
 }
@@ -58,10 +58,15 @@ function groupLabel(b) {
   const rename = named ? ` · <code>${esc(named.rename[0])}</code> → <code>${esc(named.rename[1])}</code>` : '';
   return `<span class="cls">${esc(NOISE_LABEL[b.cls])}</span> ${n} lines in ${b.group.length} places${rename}`;
 }
-function contextLabel(b, symStarts) {
-  const syms = b.mid.map(r => symStarts.get(r.newNo)).filter(Boolean);
+// How many of these rows a fold hides, unchanged and changed, and the classes and functions that start on them.
+function hiddenLabel(rows, symStarts) {
+  const count = (type) => rows.filter(r => r.type === type).length;
+  const same = count('ctx'), adds = count('add'), dels = count('del');
+  const syms = rows.map(r => symStarts.get(r.newNo)).filter(Boolean);
   const hint = syms.length ? ` · ${syms.slice(0, 4).map(s => esc(s.name)).join(', ')}${syms.length > 4 ? ', …' : ''}` : '';
-  return `${plural(b.mid.length, 'unchanged line')}${hint}`;
+  if (!adds && !dels) return `${plural(same, 'unchanged line')}${hint}`;
+  const changed = `<span class="counts"><span class="a">+${adds}</span> <span class="d">−${dels}</span></span> changed ${adds + dels === 1 ? 'line' : 'lines'}`;
+  return `${same ? `${same} unchanged, ` : ''}${changed}${hint}`;
 }
 
 // The number of columns a line takes with tabs expanded to the browser's default tab stops of 8.

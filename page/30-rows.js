@@ -184,6 +184,7 @@ function contextBlock(f, blocks, bi, register, bodies) {
 //   { group, cls, rows }              noise runs folded together, always closed
 //   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
 //   { run, rows }                     a change run; a noise run folds, shown when open
+//   { joined, parts, rows }           closed folds with nothing drawn between them, always closed
 // An import section or a noise run is locked while a noise button or a pinned row holds it open, so a click on
 // its fold row would change nothing on the page.
 // Blocks only read, for the search and the height estimate, leave their folds out of FOLDS, whose entries would keep
@@ -193,7 +194,7 @@ function fileBlocks(f, readOnly) {
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);
-  return blocks.flatMap((b, bi) => {
+  return joinFolds(f, blocks.flatMap((b, bi) => {
     if (b.imports) {
       const k = importsKey(f, b);
       return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b), locked: state.show.import || b.rows.some(pinned) };
@@ -206,7 +207,31 @@ function fileBlocks(f, readOnly) {
     if (!isNoise(b.run)) return { ...b, fold: null, open: true };
     const k = runKey(f, b.run);
     return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b), locked: state.show[b.run.class] || b.rows.some(pinned) };
-  });
+  }), register);
+}
+// Closed folds with no row drawn between them read as one fold, so they join into one fold row that opens them
+// all. A context block in the join gives it the rows it folds and keeps the rows it shows.
+function joinFolds(f, blocks, register) {
+  const closed = (b) => b.fold && !b.open;
+  const shown = (rows) => ({ ctx: true, rows, head: rows, mid: [], tail: [], fold: null, open: true });
+  const joined = [];
+  for (let i = 0; i < blocks.length;) {
+    let j = i;
+    if (closed(blocks[i]) && !(blocks[i].ctx && blocks[i].tail.length)) {
+      while (j + 1 < blocks.length && closed(blocks[j + 1]) && !(blocks[j + 1].ctx && blocks[j + 1].head.length)) {
+        j++;
+        if (blocks[j].ctx && blocks[j].tail.length) break;
+      }
+    }
+    if (j === i) { joined.push(blocks[i++]); continue; }
+    const parts = blocks.slice(i, j + 1), first = parts[0], last = parts[parts.length - 1];
+    const rows = parts.flatMap(p => p.ctx ? p.mid : p.rows), keys = rows.map(rowKeyOf);
+    if (first.ctx && first.head.length) joined.push(shown(first.head));
+    joined.push({ joined: true, parts, rows, fold: register(parts.map(p => p.fold).join('+'), () => revealRows(f, keys)), open: false });
+    if (last.ctx && last.tail.length) joined.push(shown(last.tail));
+    i = j + 1;
+  }
+  return joined;
 }
 // Where a block's fold row goes among the rows drawn of it.
 const FOLD_ROW = { foldRow: true };
@@ -221,14 +246,18 @@ const rowsDrawn = (b) => drawn(b).filter(x => x !== FOLD_ROW);
 const shownRows = (f) => f.runs.length ? fileBlocks(f, true).flatMap(rowsDrawn) : [];
 
 // Open whatever hides the row with this key, so the next render shows it; false when the file has no such row.
-// Opening one fold can uncover another (a grouped run's context folds on its own), so it looks again.
-function reveal(f, key) {
-  const has = (rows) => rows.some(r => rowKeyOf(r) === key);
+const reveal = (f, key) => revealRows(f, [key]);
+// Open whatever hides the rows with these keys; false when the file has none of them. Opening one fold can fold
+// another (a grouped run's context folds on its own, and a context block next to an opened import section shows
+// other lines), so it looks again.
+function revealRows(f, keys) {
+  const wanted = new Set(keys);
   for (let pass = 0; pass < 4; pass++) {
-    const b = fileBlocks(f).find(b => has(b.rows));
-    if (!b) return false;
-    if (has(rowsDrawn(b))) return true;
-    FOLDS.get(b.fold).open();
+    const blocks = fileBlocks(f).filter(b => b.rows.some(r => wanted.has(rowKeyOf(r))));
+    if (!blocks.length) return false;
+    const hiding = blocks.filter(b => { const drawnRows = new Set(rowsDrawn(b)); return b.rows.some(r => wanted.has(rowKeyOf(r)) && !drawnRows.has(r)); });
+    if (!hiding.length) return true;
+    for (const b of hiding) for (const p of b.parts || [b]) FOLDS.get(p.fold).open();
   }
   return true;
 }
