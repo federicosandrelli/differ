@@ -18,21 +18,18 @@ function buildRows(f, plain) {
     raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl && hl[i], text: t, run: runOfOld.get(i + 1) }));
     return plain ? attachThreads(f, rows) : markHits(attachThreads(f, rows));
   }
-  const removedBefore = new Map();
+  // The hunks in order: a removed line goes where it is, and a line of the new file brings the lines before it.
+  let next = 1;
+  const newUpTo = (n) => {
+    for (; next <= Math.min(n, raw.length); next++) rows.push({ type: runOfNew.has(next) ? 'add' : 'ctx', newNo: next, html: hl && hl[next - 1], text: raw[next - 1], run: runOfNew.get(next), dim: dimNew.has(next) });
+  };
   for (const h of f.hunks) {
-    const L = h.lines;
-    for (let i = 0; i < L.length; i++) {
-      const [tag, o, , t] = L[i]; if (tag !== '-') continue;
-      let anchor = null;
-      for (let j = i + 1; j < L.length; j++) if (L[j][2] != null) { anchor = L[j][2]; break; }
-      if (anchor == null) anchor = h.new_start + L.filter(x => x[2] != null).length;
-      (removedBefore.get(anchor) || removedBefore.set(anchor, []).get(anchor)).push({ type: 'del', oldNo: o, html: plain ? undefined : hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
+    for (const [tag, o, n, t] of h.lines) {
+      if (tag === '-') rows.push({ type: 'del', oldNo: o, html: plain ? undefined : hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
+      else newUpTo(n);
     }
   }
-  for (let i = 1; i <= raw.length + 1; i++) {
-    for (const d of removedBefore.get(i) || []) rows.push(d);
-    if (i <= raw.length) rows.push({ type: runOfNew.has(i) ? 'add' : 'ctx', newNo: i, html: hl && hl[i - 1], text: raw[i - 1], run: runOfNew.get(i), dim: dimNew.has(i) });
-  }
+  newUpTo(raw.length);
   return plain ? attachThreads(f, rows) : markHits(attachThreads(f, rows));
 }
 function attachThreads(f, rows) {

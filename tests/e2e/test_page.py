@@ -67,6 +67,13 @@ def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_
     expect(section.locator(".code > .empty")).to_have_text("Binary file added · 4.9 KB")
 
 
+def test_a_file_the_pull_request_empties_shows_its_removed_lines(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, add_pr({"notes.txt": "one\ntwo\n"}, {"notes.txt": ""}))
+    section = page.locator("section[data-file='notes.txt']")
+    section.scroll_into_view_if_needed()
+    expect(section.locator("tr.del td.c")).to_have_text(["one", "two"])
+
+
 def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, server_url: str, add_pr: AddPr) -> None:
     fields = (
         "    id: int\n    customer: str\n    amount: float\n    currency: str\n    created: str\n    shipped: bool\n"
