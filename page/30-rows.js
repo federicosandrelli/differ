@@ -3,34 +3,32 @@
 // table draws of each, reveal opens whatever hides a row, and toggleFold answers a click on a fold row; the fold
 // keys stay in here.
 
-// Plain rows skip the syntax highlighting and have no HTML: they decide the folds but are never drawn.
-function buildRows(f, plain) {
+function buildRows(f) {
   const runOfOld = new Map(), runOfNew = new Map(), dimOld = new Set(), dimNew = new Set();
   for (const r of f.runs) {
     r.removed.forEach(n => runOfOld.set(n, r)); r.added.forEach(n => runOfNew.set(n, r));
     if (r.origin) continue;
     r.pair_rename.forEach((flag, i) => { if (flag) { dimOld.add(r.removed[i]); dimNew.add(r.added[i]); } });
   }
-  const hl = plain ? [] : highlightLines(f);
   const raw = contentLines(f);
   const rows = [];
   if (f.content_side === 'old') {
-    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, html: hl && hl[i], text: t, run: runOfOld.get(i + 1) }));
-    return plain ? attachThreads(f, rows) : markHits(attachThreads(f, rows));
+    raw.forEach((t, i) => rows.push({ type: 'del', oldNo: i + 1, text: t, run: runOfOld.get(i + 1) }));
+    return attachThreads(f, rows);
   }
   // The hunks in order: a removed line goes where it is, and a line of the new file brings the lines before it.
   let next = 1;
   const newUpTo = (n) => {
-    for (; next <= Math.min(n, raw.length); next++) rows.push({ type: runOfNew.has(next) ? 'add' : 'ctx', newNo: next, html: hl && hl[next - 1], text: raw[next - 1], run: runOfNew.get(next), dim: dimNew.has(next) });
+    for (; next <= Math.min(n, raw.length); next++) rows.push({ type: runOfNew.has(next) ? 'add' : 'ctx', newNo: next, text: raw[next - 1], run: runOfNew.get(next), dim: dimNew.has(next) });
   };
   for (const h of f.hunks) {
     for (const [tag, o, n, t] of h.lines) {
-      if (tag === '-') rows.push({ type: 'del', oldNo: o, html: plain ? undefined : hlOne(t, f.lang), text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
+      if (tag === '-') rows.push({ type: 'del', oldNo: o, text: t, run: runOfOld.get(o), dim: dimOld.has(o) });
       else newUpTo(n);
     }
   }
   newUpTo(raw.length);
-  return plain ? attachThreads(f, rows) : markHits(attachThreads(f, rows));
+  return attachThreads(f, rows);
 }
 function attachThreads(f, rows) {
   const entry = THREADS.byFile.get(f.path), c = state.compose && state.compose.path === f.path ? state.compose : null;
@@ -52,12 +50,6 @@ function markBetween(rows, sel) {
 }
 // A row that must stay in view whatever folds around it: a thread, or the comment being written.
 const pinned = (r) => r.threads || r.compose;
-function markHits(rows) {
-  const q = caseFold(state.q);
-  if (!q) return rows;
-  for (const r of rows) if (caseFold(r.text).includes(q) && r.html !== undefined) r.html = markHtml(r.html, state.q);
-  return rows;
-}
 function blocksFor(rows) {
   const blocks = [];
   for (const r of rows) {
@@ -194,9 +186,10 @@ function contextBlock(f, blocks, bi, register, bodies) {
 //   { run, rows }                     a change run; a noise run folds, shown when open
 // An import section or a noise run is locked while a noise button or a pinned row holds it open, so a click on
 // its fold row would change nothing on the page.
-// Blocks of plain rows leave their folds out of FOLDS, whose entries would keep the rows alive.
-function fileBlocks(f, plain) {
-  const rows = buildRows(f, plain), register = plain ? (id) => id : fold, bodies = enclosingBodies(f);
+// Blocks only read, for the search and the height estimate, leave their folds out of FOLDS, whose entries would keep
+// the rows alive.
+function fileBlocks(f, readOnly) {
+  const rows = buildRows(f), register = readOnly ? (id) => id : fold, bodies = enclosingBodies(f);
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);
@@ -224,7 +217,7 @@ function drawn(b) {
   return [...(b.fold ? [FOLD_ROW] : []), ...(b.open ? b.rows : [])];
 }
 const rowsDrawn = (b) => drawn(b).filter(x => x !== FOLD_ROW);
-// The rows of the file the diff table draws when the file's section is open, in order, as plain rows.
+// The rows of the file the diff table draws when the file's section is open, in order.
 const shownRows = (f) => f.runs.length ? fileBlocks(f, true).flatMap(rowsDrawn) : [];
 
 // Open whatever hides the row with this key, so the next render shows it; false when the file has no such row.

@@ -1,5 +1,12 @@
 // The diff table of one file: draws the blocks the file view decided.
 
+// A row's code as HTML: its line of the highlighted file, or a removed line highlighted on its own, with the
+// matches of the search marked.
+function rowHtml(f, r) {
+  const html = r.type === 'del' && f.content_side === 'new' ? hlOne(r.text, f.lang) : highlightLines(f)[(r.newNo ?? r.oldNo) - 1];
+  return state.q && caseFold(r.text).includes(caseFold(state.q)) ? markHtml(html, state.q) : html;
+}
+
 // Append the row's HTML to out, with its threads and the comment being written on it, noting in index where the
 // row's key landed.
 function renderRow(f, r, out, index) {
@@ -72,6 +79,7 @@ function codeRows(f) {
   let cols = 0;
   for (const b of fileBlocks(f)) {
     const r = b.run;
+    for (const row of rowsDrawn(b)) row.html = rowHtml(f, row);
     if (b.open && r && r.removed.length === r.added.length && b.rows.length === r.removed.length * 2) markPairs(b.rows);
     for (const item of drawn(b)) {
       if (item === FOLD_ROW) { html.push(foldRowHtml(b, symStarts)); continue; }
