@@ -437,7 +437,7 @@ def test_search_counts_the_lines_on_screen_and_skips_closed_folds_and_sections(p
     section.locator("tr.collapsed[data-fold]").click()
     expect(page.locator("#searchmeta")).to_have_text("2 files · 8 lines")
     expect(page.locator("#main tr:has(mark)")).to_have_count(8)
-    section.locator(".fhead .top").click()
+    section.locator(".fhead .chev").click()
     expect(page.locator("#searchmeta")).to_have_text("2 files · 2 lines")
     expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_count(1)
     expect(page.locator("#side .leaf[data-path='src/app.py'] .hits")).to_have_count(0)
@@ -450,6 +450,15 @@ def test_cmd_f_fills_the_search_with_the_selected_code(page: Page, server_url: s
     expect(page.locator("#side .search")).to_be_focused()
     expect(page.locator("#side .search")).to_have_value('print("hello")')
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+
+
+def test_a_click_on_the_header_leaves_the_section_open_and_the_chevron_closes_it(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    section = page.locator(APP)
+    section.locator(".fhead .path").click()
+    expect(section).not_to_have_class(re.compile(r"\bclosed\b"))
+    section.locator(".fhead .chev").click()
+    expect(section).to_have_class(re.compile(r"\bclosed\b"))
 
 
 def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
@@ -800,16 +809,16 @@ def test_a_tooltip_shows_on_an_element_reached_by_scrolling(page: Page, server_u
 
 def test_a_click_dismisses_the_tooltip_even_when_the_click_redraws_the_element(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    badge = page.locator(f"{APP} .fhead .badge")
+    chevron = page.locator(f"{APP} .fhead .chev")
     tip = page.locator(".tooltip")
-    badge.hover()
+    chevron.hover()
     expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
-    badge.click()
+    chevron.click()
     expect(page.locator(APP)).to_have_class(re.compile(r"\bclosed\b"))
     page.wait_for_timeout(600)
     expect(tip).not_to_have_class(re.compile(r"\bon\b"))
     page.locator("#side h1").hover()
-    badge.hover()
+    chevron.hover()
     expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
 
 
