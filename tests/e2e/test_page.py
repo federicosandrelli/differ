@@ -34,6 +34,15 @@ def test_start_page_builds_and_opens_a_pull_request(page: Page, server_url: str)
     expect(page.locator("#overview h1")).to_have_text(TITLE)
 
 
+def test_the_overview_links_the_author_and_the_commits_to_github(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    meta = page.locator("#overview .meta")
+    expect(meta.get_by_role("link", name="ann")).to_have_attribute("href", "https://github.com/ann")
+    head = page.evaluate("PR.head")
+    expect(meta.locator(".mono a").last).to_have_attribute("href", f"https://github.com/acme/widgets/commit/{head}")
+    assert 'href="https://github.com/apps/dependabot"' in page.evaluate("PR.author = 'app/dependabot', overviewHtml()")
+
+
 def test_the_page_highlights_code_without_the_network(page: Page, server_url: str) -> None:
     requests: list[str] = []
     page.on("request", lambda request: requests.append(request.url))
