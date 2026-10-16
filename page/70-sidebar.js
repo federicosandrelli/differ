@@ -82,13 +82,17 @@ function renderSide() {
   // The box keeps the spaces the reader typed around the query, which the search ignores.
   const box = document.querySelector('#side .search');
   const typed = box && box.value.trim() === state.q ? box.value : state.q;
-  const reviewed = FILES.filter(isReviewed).length, tests = FILES.filter(f => f.kind === 'test').length;
-  const filterButton = (filter, label, n) => `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="count">${fmt(n)}</span></button>`;
+  const reviewed = FILES.filter(isReviewed).length;
+  const filterButton = (filter, label) => {
+    const files = FILES.filter(f => ofKind(f, filter));
+    const lines = files.reduce((n, f) => n + f.stats.additions + f.stats.deletions, 0);
+    return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span><span class="count" title="${plural(lines, 'line')} changed">${fmt(lines)}</span></button>`;
+  };
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
     ${commentNotices()}${state.reviewPanel ? reviewPanelHtml() : ''}
     <div class="controls"><span class="seg">
-      ${filterButton('all', 'All', FILES.length)}${filterButton('implementation', 'Implementation', FILES.length - tests)}${filterButton('test', 'Tests', tests)}</span>
+      ${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}</span>
       <span class="hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>o</kbd> top</span></div>
     <div class="searchbar">
       <input type="search" class="search" placeholder="Search" value="${esc(typed)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
