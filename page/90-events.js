@@ -78,16 +78,23 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('input', () => { if (SHELL) SHELL.draft(hasDraft()); });
 
-// Cmd+F searches for the first line of the selected text, as an editor's find does.
+// Cmd+F searches the rows for the first line of the selected text, as an editor's find does.
 function openSearch() {
   const text = String(window.getSelection()).split('\n').map(l => l.trim()).find(Boolean);
   const box = document.querySelector('#side .search');
-  if (text && box) { box.value = text; box.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (box && (text || state.fileSearch)) { if (text) box.value = text; state.fileSearch = false; box.dispatchEvent(new Event('input', { bubbles: true })); }
   focusBox('#side .search');
 }
+// Shift+Cmd+F switches the search between the rows and the file paths, and keeps the query.
+function switchSearch() {
+  state.fileSearch = !state.fileSearch;
+  render();
+  focusBox('#side .search');
+}
+// Ending the search also takes it back to the rows.
 function closeSearch() {
   const box = document.querySelector('#side .search');
-  if (box && box.value) { box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (box && (box.value || state.fileSearch)) { box.value = ''; state.fileSearch = false; box.dispatchEvent(new Event('input', { bubbles: true })); }
 }
 
 // The hit after (or before) the one Enter last went to. When that one is gone, as when its section closed, the
@@ -126,7 +133,7 @@ function stepFile(dir) {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('#docs')) return;
-  if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); openSearch(); return; }
+  if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? switchSearch() : openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {

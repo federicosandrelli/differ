@@ -17,7 +17,7 @@ FILES.forEach((f, i) => {
 });
 
 const state = {
-  view: 'overview', filter: 'implementation', closed: new Set(), q: '', hit: null,
+  view: 'overview', filter: 'implementation', closed: new Set(), q: '', fileSearch: false, hit: null,
   showNoiseOnly: false, showGenerated: false, cursor: null, openOverride: new Map(),
   expanded: new Set(), unfolded: new Set(),
   compose: null, drafts: new Map(), replyOpen: new Map(), openThreads: new Set(), showOutdated: new Set(),

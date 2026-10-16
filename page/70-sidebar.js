@@ -1,7 +1,7 @@
 // The sidebar: the PR header, the controls, the search box and the file tree.
 
 function countFiles(node) { let n = node.files.length; for (const c of node.dirs.values()) n += countFiles(c); return n; }
-const noHit = (f) => state.q && !viewHits(f).length;
+const noHit = (f) => state.q && !found(f);
 const allNoHit = (node) => node.files.every(noHit) && [...node.dirs.values()].every(allNoHit);
 // Background gradients paint the guide lines, so a row can span the full sidebar width.
 function guides(depth) {
@@ -60,8 +60,10 @@ function renderList() {
 function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
   if (!state.q) { el.textContent = ''; return; }
+  const files = plural(visibleFiles().length, 'file');
+  if (state.fileSearch) { el.textContent = files; return; }
   const all = allHits(), at = hitPosition(all);
-  el.textContent = `${plural(visibleFiles().length, 'file')} · ${at >= 0 ? `${at + 1} / ${all.length}` : plural(all.length, 'line')}`;
+  el.textContent = `${files} · ${at >= 0 ? `${at + 1} / ${all.length}` : plural(all.length, 'line')}`;
 }
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
@@ -95,8 +97,8 @@ function renderSide() {
       ${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}</span>
       <span class="hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>o</kbd> top</span></div>
     <div class="searchbar">
-      <input type="search" class="search" placeholder="Search" value="${esc(typed)}" spellcheck="false" title="Enter: next hit · Shift+Enter: previous">
-      <span class="meta" id="searchmeta"></span></div>
+      <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false"${state.fileSearch ? '' : ' title="Enter: next hit · Shift+Enter: previous"'}>
+      ${state.fileSearch ? '<span class="mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
     <div class="list" tabindex="0">${renderList()}</div>${bugFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;

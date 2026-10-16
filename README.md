@@ -254,9 +254,9 @@ the second build of a repository fast, and `git fetch` keeps them small.
 
 Keys in the page: arrow keys in the tree, Option+Up and Option+Down for the
 previous and next shown file, Cmd+F search (it starts from the selected text)
-and Enter for the next hit, `o` back to the top. Escape leaves
-the focused element and ends the search; in a comment box it only leaves the
-box.
+and Enter for the next hit, Shift+Cmd+F to search the file paths instead and
+again to go back, `o` back to the top. Escape leaves the focused element and
+ends the search; in a comment box it only leaves the box.
 
 The search looks at the lines a reader can see: added, removed and unchanged
 lines in the open sections of the shown files. It skips the lines inside a

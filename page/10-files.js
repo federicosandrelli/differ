@@ -7,15 +7,19 @@ function kindVisible(f) { return ofKind(f, state.filter); }
 function fileListed(f) {
   return kindVisible(f) && (state.showNoiseOnly || !f.noise_only) && (state.showGenerated || !f.generated);
 }
-// While searching, the page shows the files with a hit in their view. A closed section counts its view too, so
-// closing a section keeps its file on the page.
-function fileShown(f) { return fileListed(f) && (!state.q || viewHits(f).length > 0); }
+// The query the rows are searched for: none while the search looks at the file paths instead (Shift+Cmd+F).
+const rowQuery = () => state.fileSearch ? '' : state.q;
+// Whether the search finds the file: its path holds the query, or a row of its view does.
+const found = (f) => state.fileSearch ? caseFold(f.path).includes(caseFold(state.q)) : viewHits(f).length > 0;
+// While searching, the page shows the files the search finds. A closed section counts its view too, so closing a
+// section keeps its file on the page.
+function fileShown(f) { return fileListed(f) && (!state.q || found(f)); }
 
 // The keys of the rows the file's view shows that hold the query, in file order, whether its section is open
 // or not. The rows are kept per fold state and searched once per query.
 const hitCache = new Map();
 function viewHits(f) {
-  const q = caseFold(state.q);
+  const q = caseFold(rowQuery());
   if (!q) return [];
   const key = foldKey(f);
   let c = hitCache.get(f.path);
@@ -65,8 +69,8 @@ function treeOrder(node, out) {
 // The shown files in tree order; recomputed only when the state that selects them changes.
 const visibleCache = { key: null, files: [] };
 function visibleFiles() {
-  const folds = state.q ? FILES.map(foldKey).join('\u0000') : '';
-  const key = [state.filter, state.q, state.showNoiseOnly, state.showGenerated, folds].join('\u0000');
+  const folds = rowQuery() ? FILES.map(foldKey).join('\u0000') : '';
+  const key = [state.filter, state.q, state.fileSearch, state.showNoiseOnly, state.showGenerated, folds].join('\u0000');
   if (visibleCache.key !== key) {
     visibleCache.key = key;
     visibleCache.files = treeOrder(buildTree(FILES.filter(fileShown)), []);
