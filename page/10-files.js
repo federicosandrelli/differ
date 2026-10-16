@@ -1,6 +1,8 @@
 // Which files the page shows, in which order, and where the search hits are.
 
-function kindVisible(f) { return state.filter === 'all' || (state.filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
+// Whether the file type button `filter` lists f.
+function ofKind(f, filter) { return filter === 'all' || (filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
+function kindVisible(f) { return ofKind(f, state.filter); }
 // The files the tree lists: the search leaves them all in place.
 function fileListed(f) {
   return kindVisible(f) && (state.showNoiseOnly || !f.noise_only) && (state.showGenerated || !f.generated);
