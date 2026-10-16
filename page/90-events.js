@@ -46,8 +46,8 @@ document.addEventListener('click', (e) => {
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
-  if (d.review !== undefined) { e.preventDefault(); e.stopPropagation(); toggleReviewed(BY_PATH[d.review]); return; }
-  if (d.toggle !== undefined && !e.target.closest('button, a')) { toggleSection(BY_PATH[d.toggle]); return; }
+  if (d.review !== undefined) { e.preventDefault(); toggleReviewed(BY_PATH[d.review]); return; }
+  if (d.toggle !== undefined) { toggleSection(BY_PATH[d.toggle]); return; }
   if (d.go) { scrollToFile('overview'); return; }
   if (d.path) {
     e.preventDefault();
