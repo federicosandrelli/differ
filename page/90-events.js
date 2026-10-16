@@ -118,6 +118,12 @@ function goFirstHit(path) {
   return !!key;
 }
 
+// Option+Down (Option+Up) goes to the shown file after (before) the active one; from the overview, Down goes to the first.
+function stepFile(dir) {
+  const files = visibleFiles(), f = files[files.indexOf(BY_PATH[state.view]) + dir];
+  if (f) passFile(f);
+}
+
 document.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('#docs')) return;
   if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); openSearch(); return; }
@@ -131,6 +137,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
+  if (e.altKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); stepFile(e.key === 'ArrowUp' ? -1 : 1); return; }
   if (e.key === 'o') scrollToFile('overview');
 });
 

@@ -141,10 +141,11 @@ function setCursor(el) {
   el.classList.add('cursor');
   const list = document.querySelector('#side .list'), a = el.getBoundingClientRect(), l = list.getBoundingClientRect();
   if (a.top < l.top || a.bottom > l.bottom) el.scrollIntoView({ block: 'nearest' });
-  // While searching, a file opens at its first hit; a closed section stays closed as the cursor passes it.
   const f = el.dataset.path && BY_PATH[el.dataset.path];
-  if (f && !(sectionOpen(f) && goFirstHit(f.path))) scrollToFile(f.path);
+  if (f) passFile(f);
 }
+// Show a file the reader steps onto. While searching, it opens at its first hit; a closed section stays closed.
+function passFile(f) { if (!(sectionOpen(f) && goFirstHit(f.path))) scrollToFile(f.path); }
 function toggleFolder(folder) {
   state.closed.has(folder) ? state.closed.delete(folder) : state.closed.add(folder);
   renderSide();

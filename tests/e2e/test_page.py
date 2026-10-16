@@ -262,6 +262,17 @@ def test_the_line_number_a_row_shows_starts_and_extends_a_comment(page: Page, se
     expect(hint).to_contain_text("Comment on line 2 of the old file")
 
 
+def test_option_down_and_up_go_to_the_next_and_previous_file(page: Page, server_url: str, config_pr: str) -> None:
+    open_pr(page, server_url, config_pr)
+    active = page.locator("#side .leaf.active")
+    page.keyboard.press("Alt+ArrowDown")
+    expect(active).to_have_attribute("data-path", "src/config.py")
+    page.keyboard.press("Alt+ArrowDown")
+    expect(active).to_have_attribute("data-path", "src/jobs.py")
+    page.keyboard.press("Alt+ArrowUp")
+    expect(active).to_have_attribute("data-path", "src/config.py")
+
+
 def hit_row(page: Page) -> str:
     """The element id of the row of the search hit Enter goes on from."""
     return page.evaluate("rowId(BY_PATH[state.hit.path], state.hit.key)")

@@ -252,8 +252,9 @@ the second build of a repository fast, and `git fetch` keeps them small.
   with the status and author of each and the viewer's login, in `recent.json`
   in the cache.
 
-Keys in the page: arrow keys in the tree, Cmd+F search (it starts from the
-selected text) and Enter for the next hit, `o` back to the top. Escape leaves
+Keys in the page: arrow keys in the tree, Option+Up and Option+Down for the
+previous and next shown file, Cmd+F search (it starts from the selected text)
+and Enter for the next hit, `o` back to the top. Escape leaves
 the focused element and ends the search; in a comment box it only leaves the
 box.
 
