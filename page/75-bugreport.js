@@ -125,7 +125,7 @@ ${env}
 
 ## How the page works
 
-- README.md and CONTEXT.md describe the app and its terms. The page is one HTML file: render.py inlines page/page.css, shell/theme.js, page/vendor/highlight.min.js, shell/frame.js and page/*.js in name order; build.py caches it under ~/.cache/diff-review/pages/ and rebuilds it when a source file is newer than the page, or when the head commit moved (checked in the background on a visit, or at once with ?refresh=1).
+- README.md and CONTEXT.md describe the app and its terms. The page is one HTML file: render.py inlines page/page.css, shell/theme.js, page/vendor/highlight.min.js, shell/frame.js and page/*.js in name order; build.py caches it under ~/.cache/differ/pages/ and rebuilds it when a source file is newer than the page, or when the head commit moved (checked in the background on a visit, or at once with ?refresh=1).
 - Run \`python3 server.py 8765\` and open http://localhost:8765${location.pathname} to see this pull request. server.py and comments.py answer the comments API under /api/.
 - A "page line" above is a line of the built HTML; the file:line before it is where that line comes from.
 `;

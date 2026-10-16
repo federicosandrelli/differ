@@ -179,7 +179,7 @@ request that changes `src-tauri/`, `web/`, `package.json`,
 1. Reads the PR from GitHub with `gh pr view`: title, description, author,
    base and head commits.
 2. Keeps its own bare clone of the repo, without file contents, in
-   `~/.cache/diff-review/repos/`. The first PR from a repo clones its history;
+   `~/.cache/differ/repos/`. The first PR from a repo clones its history;
    later ones only fetch new commits, and git downloads just the files the
    diff needs.
 3. Fetches the PR's head and base commits and diffs the head against their
@@ -188,9 +188,9 @@ request that changes `src-tauri/`, `web/`, `package.json`,
    the diff to `classify.py`, then the result and the PR metadata to
    `render.py`.
 5. Writes the page to
-   `~/.cache/diff-review/pages/<owner>/<repo>/<number>/<head>.html`.
+   `~/.cache/differ/pages/<owner>/<repo>/<number>/<head>.html`.
 
-`DIFF_REVIEW_CACHE` moves the cache. The cache prunes itself: after a build,
+`DIFFER_CACHE` moves the cache. The cache prunes itself: after a build,
 `build.py` keeps only the pull request's two newest pages, so the page for the
 previous head commit stays while the new one builds. When `server.py` starts,
 it deletes the pages older than 30 days. The bare clones in `repos/` stay: they are what makes

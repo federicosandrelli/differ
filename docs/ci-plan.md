@@ -98,7 +98,7 @@ request.
 
 New directory `tests/` with `conftest.py` and one test file per module.
 
-`conftest.py` sets `DIFF_REVIEW_CACHE` to a temporary directory before any
+`conftest.py` sets `DIFFER_CACHE` to a temporary directory before any
 test imports `build`, because `build.py` reads that variable at import time.
 It also adds the repo root to `sys.path` so the tests import the modules as
 the scripts do.
@@ -160,7 +160,7 @@ The harness, in `tests/e2e/`:
   generated file), and a `refs/pull/1/head` ref so `build.fetch()` works
   as it does against GitHub.
 - A session fixture that starts `server.py` as a subprocess on a free port
-  with `DIFF_REVIEW_CACHE` pointing at a temp directory and the fake `gh`
+  with `DIFFER_CACHE` pointing at a temp directory and the fake `gh`
   on `PATH`, waits for it to answer, and stops it at the end.
 - The page inlines highlight.js from `page/vendor/`, so the tests do not
   depend on the network.

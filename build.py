@@ -29,7 +29,7 @@ import render
 from github import PullRef
 
 ROOT = Path(__file__).resolve().parent
-CACHE = Path(os.environ.get("DIFF_REVIEW_CACHE", Path.home() / ".cache" / "diff-review"))
+CACHE = Path(os.environ.get("DIFFER_CACHE") or Path.home() / ".cache" / "differ")
 PAGES_KEPT = 2
 PAGE_MAX_AGE = 30 * 86400
 HEAD_TTL = 20

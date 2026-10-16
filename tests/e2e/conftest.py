@@ -162,7 +162,7 @@ def server_url(gh_state: Path, tmp_path_factory: pytest.TempPathFactory) -> Iter
     env = {
         **os.environ,
         "PATH": f"{E2E / 'fakegh'}{os.pathsep}{os.environ['PATH']}",
-        "DIFF_REVIEW_CACHE": str(tmp_path_factory.mktemp("cache")),
+        "DIFFER_CACHE": str(tmp_path_factory.mktemp("cache")),
         "FAKE_GH_STATE": str(gh_state),
     }
     log = tmp_path_factory.mktemp("server") / "server.log"
