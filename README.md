@@ -253,7 +253,9 @@ the second build of a repository fast, and `git fetch` keeps them small.
   in the cache.
 
 Keys in the page: arrow keys in the tree, Cmd+F search (it starts from the
-selected text) and Enter for the next hit, `o` back to the top.
+selected text) and Enter for the next hit, `o` back to the top. Escape leaves
+the focused element and ends the search; in a comment box it only leaves the
+box.
 
 The search looks at the lines a reader can see: added, removed and unchanged
 lines in the open sections of the shown files. It skips the lines inside a

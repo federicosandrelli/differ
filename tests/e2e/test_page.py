@@ -346,6 +346,29 @@ def test_enter_in_the_tree_goes_on_when_the_hit_is_in_a_collapsed_folder(
     expect(meta).to_have_text("2 files · 2 / 2")
 
 
+def test_escape_in_the_tree_ends_the_search_and_leaves_the_tree(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.fill("#side .search", "hello")
+    expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+    page.click("#side .leaf[data-path='src/app.py']")
+    assert page.evaluate("document.activeElement.matches('#side .list')")
+    page.keyboard.press("Escape")
+    expect(page.locator("#side .search")).to_have_value("")
+    expect(page.locator("#searchmeta")).to_have_text("")
+    assert page.evaluate("state.q") == ""
+    assert page.evaluate("document.activeElement === document.body")
+
+
+def test_escape_in_a_comment_box_keeps_the_search(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.fill("#side .search", "hello")
+    page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+    page.locator("textarea[data-compose-text]").press("Escape")
+    expect(page.locator("#side .search")).to_have_value("hello")
+    page.keyboard.press("Escape")
+    expect(page.locator("#side .search")).to_have_value("")
+
+
 def test_search_keeps_every_file_in_the_tree(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     leaves = page.locator("#side .leaf")
@@ -577,6 +600,38 @@ def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: s
     page.click("#tabs .tab.home")
     expect(page.locator("#tabs .tab.home")).to_have_class(re.compile(r"\bon\b"))
     expect(page.frame_locator("#panes iframe.on").locator("input[name=pr]")).to_be_visible()
+
+
+def test_the_shell_cancels_escape_and_still_closes_the_docs(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    home = page.frame_locator("#panes iframe.on")
+    home.locator("input[name=pr]").fill("acme/widgets#1")
+    home.locator("input[name=pr]").press("Enter")
+    expect(page.locator("#tabs .tab:not(.home) .label")).to_have_text(f"#1 {TITLE}", timeout=30000)
+    pane = page.locator("#panes iframe.on")
+    expect(pane.content_frame.locator("#side .tree")).to_be_visible()
+    frame = pane.element_handle().content_frame()
+    assert frame
+    frame.evaluate(
+        "window.cancelled = [];"
+        "window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelled.push(e.defaultPrevented); })"
+    )
+    frame.click("button[data-docs-open]")
+    expect(frame.locator("#docs")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(frame.locator("#docs")).to_be_hidden()
+    frame.fill("#side .search", "hello")
+    page.keyboard.press("Escape")
+    expect(frame.locator("#side .search")).to_have_value("")
+    assert frame.evaluate("cancelled") == [True, True]
+
+    page.evaluate(
+        "document.activeElement.blur();"
+        "window.cancelled = [];"
+        "window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelled.push(e.defaultPrevented); })"
+    )
+    page.keyboard.press("Escape")
+    assert page.evaluate("cancelled") == [True]
 
 
 def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, server_url: str, gh_state: Path) -> None:
