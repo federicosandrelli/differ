@@ -379,6 +379,32 @@ def test_search_keeps_every_file_in_the_tree(page: Page, server_url: str) -> Non
     expect(page.locator("#main section[data-file]")).to_have_count(1)
 
 
+def test_typing_in_the_search_keeps_the_caret_where_the_reader_types(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    box = page.locator("#side .search")
+    box.click()
+    page.keyboard.type("hllo")
+    page.keyboard.press("Home")
+    page.keyboard.press("ArrowRight")
+    page.keyboard.type("e")
+    expect(box).to_have_value("hello")
+    assert box.evaluate("b => [b.selectionStart, b.selectionEnd]") == [2, 2]
+    expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+
+
+def test_typing_a_space_in_the_search_keeps_it(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    box = page.locator("#side .search")
+    box.click()
+    page.keyboard.type('print("hello")')
+    page.keyboard.press("Home")
+    page.keyboard.type(" ")
+    page.keyboard.press("End")
+    page.keyboard.type(" ")
+    expect(box).to_have_value(' print("hello") ')
+    expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+
+
 def test_search_counts_the_lines_on_screen_and_skips_closed_folds_and_sections(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
