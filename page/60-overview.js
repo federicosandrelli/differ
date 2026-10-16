@@ -46,8 +46,12 @@ function renamesHtml() {
 }
 
 function overviewHtml() {
+  const github = new URL(PR.url).origin;
+  const commit = (sha) => `<a href="${github}/${PR.repo}/commit/${sha}" target="_blank">${sha.slice(0, 8)}</a>`;
+  // gh names an app's bot app/<name>, and its GitHub page is apps/<name>.
+  const author = PR.author ? ` · <a href="${github}/${esc(PR.author.replace(/^app\//, 'apps/'))}" target="_blank">${esc(PR.author)}</a>` : '';
   return `<h1>${esc(PR.title)}</h1>
-    <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a> · ${esc(PR.author)} · ${plural(PR.commits, 'commit')} · <span class="mono">${PR.base.slice(0, 8)}…${PR.head.slice(0, 8)}</span></div>
+    <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a>${author} · ${plural(PR.commits, 'commit')} · <span class="mono">${commit(PR.base)}…${commit(PR.head)}</span></div>
     <div class="prbody">${bodyHtml({ body: PR.body || '', html: C.body_html })}</div>
     ${renamesHtml()}${conversationHtml()}`;
 }
