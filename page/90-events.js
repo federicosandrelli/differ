@@ -85,6 +85,10 @@ function openSearch() {
   if (text && box) { box.value = text; box.dispatchEvent(new Event('input', { bubbles: true })); }
   focusBox('#side .search');
 }
+function closeSearch() {
+  const box = document.querySelector('#side .search');
+  if (box && box.value) { box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true })); }
+}
 
 // The hit after (or before) the one Enter last went to. When that one is gone, as when its section closed, the
 // first hit of its file or of the files after it (the last hit of its file or of the files before it).
@@ -118,11 +122,11 @@ document.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('#docs')) return;
   if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
+  if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
   }
   if (e.target.classList && e.target.classList.contains('search')) {
-    if (e.key === 'Escape') { e.target.value = ''; e.target.dispatchEvent(new Event('input', { bubbles: true })); e.target.blur(); }
     if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); focusBox('.search'); }
     return;
   }

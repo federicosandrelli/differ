@@ -93,6 +93,8 @@ reviewed files on this computer only; GitHub does not see them.</p>
   <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Move through the file tree, and close or open
     folders (click the tree first).</td></tr>
   <tr><td><kbd>o</kbd></td><td>Go back to the overview.</td></tr>
+  <tr><td><kbd>Escape</kbd></td><td>Leave the box or the tree that has focus, and end the search. In a comment box,
+    only leave the box.</td></tr>
   <tr><td><kbd>Cmd</kbd>+<kbd>Option</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Go to the previous or next tab (desktop
     app).</td></tr>
 </table>

@@ -83,6 +83,8 @@
   }
   const zoomDir = (e) => !e.metaKey || e.altKey || e.ctrlKey ? null : e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
   window.addEventListener('keydown', (e) => {
+    // An Escape left alone would make the macOS window leave full screen.
+    if (e.key === 'Escape') { e.preventDefault(); return; }
     if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
       step(e.key === 'ArrowLeft' ? -1 : 1);
