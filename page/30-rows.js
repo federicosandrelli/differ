@@ -269,4 +269,4 @@ function foldKey(f) {
     threads ? [...threads.rows.keys()] : [], c && [c.side, c.startLine, c.line]]);
 }
 // The state the file's blocks depend on, for a cache key: the folds, and the search marks in the rows.
-const viewKey = (f) => [state.q, foldKey(f)];
+const viewKey = (f) => [rowQuery(), foldKey(f)];

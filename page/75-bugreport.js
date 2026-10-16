@@ -36,7 +36,7 @@ function fileLine(f) {
 function bugState() {
   const c = state.compose;
   return {
-    view: state.view, cursor: state.cursor, filter: state.filter, q: state.q, hit: state.hit,
+    view: state.view, cursor: state.cursor, filter: state.filter, q: state.q, fileSearch: state.fileSearch, hit: state.hit,
     showNoiseOnly: state.showNoiseOnly, showGenerated: state.showGenerated,
     closedFolders: cap([...state.closed]), openOverride: Object.fromEntries(state.openOverride),
     expanded: cap([...state.expanded]), unfolded: cap([...state.unfolded]),

@@ -41,6 +41,10 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 #side .searchbar { padding: 8px 12px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr; gap: 4px; }
 #side .searchbar input { font: 12.5px var(--sans); color: var(--text); background: var(--bg-canvas); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; outline: none; min-width: 0; width: 100%; }
 #side .searchbar input:focus { border-color: var(--accent); }
+/* The chip of the file search sits inside the box, at its right end; clicks pass through it to the box. */
+#side .searchbar input, #side .searchbar .mode { grid-area: 1 / 1; }
+#side .searchbar .mode { justify-self: end; align-self: center; margin-right: 8px; pointer-events: none; }
+#side .searchbar:has(.mode) input { padding-right: 52px; }
 /* The count line keeps its height while empty, so the tree below stays put when a search starts. */
 #side .searchbar .meta { grid-column: 1 / -1; font-size: 11.5px; line-height: 16px; height: 16px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #side .notice { padding: 8px 16px 2px; font-size: 11.5px; color: var(--text-muted); }
@@ -237,7 +241,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.primary:hover { background: var(--accent-hover); }
 button:disabled { opacity: .5; cursor: default; }
 .outdated { padding: 6px 20px 2px; font-size: 12px; } .outdated .thread { margin: 6px 0; }
-.tree .cnt.bubble { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-inset); color: var(--text-secondary); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
+.tree .cnt.bubble, #side .searchbar .mode { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-inset); color: var(--text-secondary); border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
 #side .head .meta button.review { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; padding: 1px 10px; }
 #side .head .meta button.review.primary { color: var(--bg-canvas); }
 #side .head .meta button.review.approved { color: var(--add-fg); } #side .head .meta button.review.changes { color: var(--del-fg); }

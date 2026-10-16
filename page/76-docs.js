@@ -60,6 +60,9 @@ reviewed files on this computer only; GitHub does not see them.</p>
 <h2>Search</h2>
 <ul>
   <li><kbd>Cmd</kbd>+<kbd>F</kbd> starts the search with the text you have selected.</li>
+  <li><kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>F</kbd> searches the file paths instead of the lines, and a "Files" chip
+    shows in the search box. Press it again to go back to the lines; <kbd>Cmd</kbd>+<kbd>F</kbd> and
+    <kbd>Escape</kbd> go back too.</li>
   <li>While you search, the tree shades the files without a match, and shows the number of matches next to each
     one.</li>
   <li><kbd>Enter</kbd> goes to the next match and <kbd>Shift</kbd>+<kbd>Enter</kbd> to the previous one. The match

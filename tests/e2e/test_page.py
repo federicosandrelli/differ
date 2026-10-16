@@ -461,6 +461,27 @@ def test_a_click_on_the_header_leaves_the_section_open_and_the_chevron_closes_it
     expect(section).to_have_class(re.compile(r"\bclosed\b"))
 
 
+def test_shift_cmd_f_switches_the_search_between_the_rows_and_the_file_paths(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    meta = page.locator("#searchmeta")
+    page.keyboard.press("Meta+Shift+f")
+    expect(page.locator("#side .search")).to_be_focused()
+    page.keyboard.type("app")
+    expect(meta).to_have_text("1 file")
+    expect(page.locator("#main section[data-file]")).to_have_attribute("data-file", "src/app.py")
+    page.keyboard.press("Meta+Shift+f")
+    expect(meta).to_have_text("0 files · 0 lines")
+    page.keyboard.press("Meta+Shift+f")
+    expect(meta).to_have_text("1 file")
+    page.keyboard.press("Meta+f")
+    expect(meta).to_have_text("0 files · 0 lines")
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.press("Escape")
+    page.click("#side .search")
+    page.keyboard.type("app")
+    expect(meta).to_have_text("0 files · 0 lines")
+
+
 def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
     page.set_viewport_size({"width": 1100, "height": 400})
     open_pr(page, server_url)

@@ -4,7 +4,8 @@
 // matches of the search marked.
 function rowHtml(f, r) {
   const html = r.type === 'del' && f.content_side === 'new' ? hlOne(r.text, f.lang) : highlightLines(f)[(r.newNo ?? r.oldNo) - 1];
-  return state.q && caseFold(r.text).includes(caseFold(state.q)) ? markHtml(html, state.q) : html;
+  const q = rowQuery();
+  return q && caseFold(r.text).includes(caseFold(q)) ? markHtml(html, q) : html;
 }
 
 // Append the row's HTML to out, with its threads and the comment being written on it, noting in index where the
