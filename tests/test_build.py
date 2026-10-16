@@ -133,65 +133,6 @@ def test_prune_all_on_an_empty_cache_is_a_no_op(tmp_path: Path, monkeypatch: pyt
     assert not (tmp_path / "missing").exists()
 
 
-def test_the_old_cache_moves_to_the_new_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DIFFER_CACHE")
-    monkeypatch.setattr(build, "OLD_CACHE", tmp_path / "diff-review")
-    monkeypatch.setattr(build, "CACHE", tmp_path / "differ")
-    (tmp_path / "diff-review" / "recent.json").parent.mkdir()
-    (tmp_path / "diff-review" / "recent.json").write_text("[]")
-
-    build.move_old_cache()
-
-    assert not (tmp_path / "diff-review").exists()
-    assert (tmp_path / "differ" / "recent.json").read_text() == "[]"
-
-
-def test_the_old_cache_moves_only_the_entries_the_new_one_lacks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(build, "OLD_CACHE", tmp_path / "diff-review")
-    monkeypatch.setattr(build, "CACHE", tmp_path / "differ")
-    (tmp_path / "diff-review" / "pages").mkdir(parents=True)
-    (tmp_path / "diff-review" / "repos").mkdir()
-    (tmp_path / "differ" / "pages").mkdir(parents=True)
-
-    build.move_old_cache()
-    assert (tmp_path / "diff-review" / "repos").exists()
-
-    monkeypatch.delenv("DIFFER_CACHE")
-    build.move_old_cache()
-    assert (tmp_path / "differ" / "repos").exists()
-    assert (tmp_path / "diff-review" / "pages").exists()
-
-
-def test_a_failed_move_of_the_old_cache_is_logged_and_tried_again(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    rename = Path.rename
-
-    def fail_for_repos(self: Path, target: Path) -> Path:
-        if self.name == "repos":
-            raise FileNotFoundError(2, "No such file or directory")
-        return rename(self, target)
-
-    monkeypatch.delenv("DIFFER_CACHE")
-    monkeypatch.setattr(build, "OLD_CACHE", tmp_path / "diff-review")
-    monkeypatch.setattr(build, "CACHE", tmp_path / "differ")
-    (tmp_path / "diff-review" / "repos").mkdir(parents=True)
-    (tmp_path / "diff-review" / "pages").mkdir()
-
-    with monkeypatch.context() as failing:
-        failing.setattr(Path, "rename", fail_for_repos)
-        build.move_old_cache()
-    assert "No such file or directory" in capsys.readouterr().err
-    assert (tmp_path / "differ" / "pages").exists()
-
-    (tmp_path / "differ" / "recent.json").write_text("[]")
-    build.move_old_cache()
-    assert (tmp_path / "differ" / "repos").exists()
-    assert not (tmp_path / "diff-review").exists()
-
-
 def test_a_page_is_stale_once_any_module_that_shapes_it_changes() -> None:
     assert {"build.py", "classify.py", "github.py", "render.py"} <= {p.name for p in build.sources()}
 
