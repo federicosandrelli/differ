@@ -29,7 +29,8 @@ import render
 from github import PullRef
 
 ROOT = Path(__file__).resolve().parent
-CACHE = Path(os.environ.get("DIFF_REVIEW_CACHE", Path.home() / ".cache" / "diff-review"))
+CACHE = Path(os.environ.get("DIFFER_CACHE") or Path.home() / ".cache" / "differ")
+OLD_CACHE = Path.home() / ".cache" / "diff-review"
 PAGES_KEPT = 2
 PAGE_MAX_AGE = 30 * 86400
 HEAD_TTL = 20
@@ -172,6 +173,25 @@ def prune(ref: PullRef) -> None:
         page.unlink(missing_ok=True)
 
 
+def move_old_cache() -> None:
+    """Move each entry of OLD_CACHE into CACHE when CACHE has no entry of that name, then remove OLD_CACHE if it is
+    empty. Does nothing when DIFFER_CACHE is set. A failed move goes to stderr."""
+    if os.environ.get("DIFFER_CACHE") or not OLD_CACHE.is_dir():
+        return
+    try:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        for entry in list(OLD_CACHE.iterdir()):
+            if not (CACHE / entry.name).exists():
+                try:
+                    entry.rename(CACHE / entry.name)
+                except OSError as exc:
+                    sys.stderr.write(f"moving {entry} to {CACHE} failed: {exc}\n")
+        if not any(OLD_CACHE.iterdir()):
+            OLD_CACHE.rmdir()
+    except OSError as exc:
+        sys.stderr.write(f"moving {OLD_CACHE} to {CACHE} failed: {exc}\n")
+
+
 def prune_all() -> None:
     """Delete the pages older than PAGE_MAX_AGE. The bare clones in repos/ stay."""
     cutoff = time.time() - PAGE_MAX_AGE
@@ -271,6 +291,7 @@ def build(ref: PullRef, log: Log = print) -> Path:
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
+    move_old_cache()
     try:
         print(build(PullRef.parse(sys.argv[1])))
     except (ValueError, commands.CommandError) as exc:

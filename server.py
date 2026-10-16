@@ -369,6 +369,7 @@ def main() -> None:
         sys.exit(f"Port {port} is already in use on {taken}. Stop that process or pass another port: server.py <port>")
     if args.exit_with_parent:
         threading.Thread(target=exit_with_parent, daemon=True).start()
+    build.move_old_cache()
     build.prune_all()
     if problem := gh_problem():
         sys.stderr.write(f"{problem} Run `gh auth login`; the start page checks again once a minute.\n")
