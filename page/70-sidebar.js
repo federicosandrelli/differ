@@ -87,8 +87,8 @@ function renderSide() {
   const filterButton = (filter, label) => {
     const files = FILES.filter(f => ofKind(f, filter));
     const sum = (key) => fmt(files.reduce((n, f) => n + f.stats[key], 0));
-    const split = filter === 'all' ? '' : `<span class="split"><span class="a">+${sum('additions')}</span><span class="d">−${sum('deletions')}</span></span>`;
-    return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span>${split}</button>`;
+    const extra = filter === 'all' ? '' : `<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span><span class="split"><span class="a">+${sum('additions')}</span><span class="d">−${sum('deletions')}</span></span>`;
+    return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}${extra}</button>`;
   };
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
