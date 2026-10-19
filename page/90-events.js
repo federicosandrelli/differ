@@ -1,8 +1,7 @@
 // Event handling and start-up.
 
-// Render after a file's section opens or closes. When the file's header is on screen, the header stays where it
-// is: a collapse removes the rows under the viewport, so keeping them as the anchor would carry the pane deep into
-// the next files.
+// Render, keeping the file's header where it is while it is on screen. A collapse removes the rows under the viewport,
+// so keeping them as the anchor would carry the pane deep into the next files.
 function renderKeepingHeader(f) {
   const head = (el) => el && el.querySelector(':scope > .fhead');
   const pane = main.getBoundingClientRect(), old = head(sectionEl(f));
@@ -87,14 +86,17 @@ function openSearch() {
 }
 // Shift+Cmd+F switches the search between the rows and the file paths, and keeps the query.
 function switchSearch() {
-  state.fileSearch = !state.fileSearch;
+  state.fileSearch = !state.fileSearch; state.hit = null;
   render();
   focusBox('#side .search');
 }
-// Ending the search also takes it back to the rows.
+// Ending the search also takes it back to the rows. The files it hid come back around the active file, which stays put.
 function closeSearch() {
   const box = document.querySelector('#side .search');
-  if (box && (box.value || state.fileSearch)) { box.value = ''; state.fileSearch = false; box.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (!box || !(box.value || state.fileSearch)) return;
+  box.value = ''; state.q = ''; state.hit = null; state.fileSearch = false;
+  const f = BY_PATH[state.view];
+  if (f) renderKeepingHeader(f); else render();
 }
 
 // The hit after (or before) the one Enter last went to. When that one is gone, as when its section closed, the

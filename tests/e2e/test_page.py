@@ -482,6 +482,46 @@ def test_shift_cmd_f_switches_the_search_between_the_rows_and_the_file_paths(pag
     expect(meta).to_have_text("0 files · 0 lines")
 
 
+def search_files_pr(add_pr: AddPr) -> str:
+    """A pull request adding four short files, two of them with "one" in their path."""
+    return add_pr({}, {p: "a = 1\nb = 2\n" for p in ("a/one.py", "a/two.py", "b/one_more.py", "b/three.py")})
+
+
+def test_file_search_lists_only_the_found_files_and_enter_steps_through_them(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    open_pr(page, server_url, search_files_pr(add_pr))
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.type("one")
+    expect(page.locator("#side .leaf")).to_have_count(2)
+    active = page.locator("#side .leaf.active")
+    page.keyboard.press("Enter")
+    expect(active).to_have_attribute("data-path", "a/one.py")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 1 / 2")
+    page.keyboard.press("Enter")
+    expect(active).to_have_attribute("data-path", "b/one_more.py")
+    page.keyboard.press("Shift+Enter")
+    expect(active).to_have_attribute("data-path", "a/one.py")
+
+
+def test_escape_brings_back_every_file_around_the_one_file_search_went_to(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    page.set_viewport_size({"width": 1100, "height": 400})
+    open_pr(page, server_url, search_files_pr(add_pr))
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    header = page.locator("section[data-file='b/one_more.py'] .fhead")
+    top = header.bounding_box()["y"]
+    page.keyboard.press("Escape")
+    expect(page.locator("#side .leaf")).to_have_count(4)
+    expect(page.locator("#main section[data-file]")).to_have_count(4)
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "b/one_more.py")
+    assert header.bounding_box()["y"] == pytest.approx(top, abs=1)
+
+
 def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
     page.set_viewport_size({"width": 1100, "height": 400})
     open_pr(page, server_url)

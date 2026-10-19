@@ -37,7 +37,7 @@ function renderTreeNode(node, depth, out) {
   for (const f of [...node.files].sort(byBase)) out.push(leafHtml(f, depth));
 }
 function renderTree() {
-  const files = FILES.filter(fileListed);
+  const files = FILES.filter(fileInTree);
   const root = buildTree(files);
   const counts = {}; for (const f of files) { const k = changeKind(f); counts[k] = (counts[k] || 0) + 1; }
   const out = [`<div class="tree"><div class="legend">${['A', 'M', 'D', 'R', 'V'].filter(k => counts[k]).map(k => `<span class="pill st-${k}">${KIND_LABEL[k]}</span><span class="n">${counts[k]}</span>`).join('')}</div>`];
@@ -60,10 +60,9 @@ function renderList() {
 function updateSearchMeta() {
   const el = document.getElementById('searchmeta'); if (!el) return;
   if (!state.q) { el.textContent = ''; return; }
-  const files = plural(visibleFiles().length, 'file');
-  if (state.fileSearch) { el.textContent = files; return; }
   const all = allHits(), at = hitPosition(all);
-  el.textContent = `${files} · ${at >= 0 ? `${at + 1} / ${all.length}` : plural(all.length, 'line')}`;
+  const where = at >= 0 ? ` · ${at + 1} / ${all.length}` : state.fileSearch ? '' : ` · ${plural(all.length, 'line')}`;
+  el.textContent = plural(visibleFiles().length, 'file') + where;
 }
 function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
@@ -97,7 +96,7 @@ function renderSide() {
       ${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}</span>
       <span class="hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> tree · <kbd>o</kbd> top</span></div>
     <div class="searchbar">
-      <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false"${state.fileSearch ? '' : ' title="Enter: next hit · Shift+Enter: previous"'}>
+      <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
     <div class="list" tabindex="0">${renderList()}</div>${bugFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .list');

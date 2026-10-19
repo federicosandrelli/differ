@@ -3,7 +3,7 @@
 // Whether the file type button `filter` lists f.
 function ofKind(f, filter) { return filter === 'all' || (filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
 function kindVisible(f) { return ofKind(f, state.filter); }
-// The files the tree lists: the search leaves them all in place.
+// The files the filters list.
 function fileListed(f) {
   return kindVisible(f) && (state.showNoiseOnly || !f.noise_only) && (state.showGenerated || !f.generated);
 }
@@ -14,6 +14,8 @@ const found = (f) => state.fileSearch ? caseFold(f.path).includes(caseFold(state
 // While searching, the page shows the files the search finds. A closed section counts its view too, so closing a
 // section keeps its file on the page.
 function fileShown(f) { return fileListed(f) && (!state.q || found(f)); }
+// The files the tree lists: the file search hides the files it doesn't find; the row search leaves them all in place.
+const fileInTree = (f) => state.fileSearch ? fileShown(f) : fileListed(f);
 
 // The keys of the rows the file's view shows that hold the query, in file order, whether its section is open
 // or not. The rows are kept per fold state and searched once per query.
@@ -84,8 +86,10 @@ function shownAtOrBefore(path) {
   return 'overview';
 }
 
-// ---------- search hits, for Enter to step through: every hit the reader can see as { path, key } of its row
+// ---------- search hits, for Enter to step through: every hit the reader can see as { path, key } of its row, or
+// in file search every file it finds, without a row
 function allHits() {
+  if (state.fileSearch) return state.q ? visibleFiles().map(f => ({ path: f.path, key: null })) : [];
   const out = [];
   for (const f of visibleFiles()) if (sectionOpen(f)) for (const key of viewHits(f)) out.push({ path: f.path, key });
   return out;
