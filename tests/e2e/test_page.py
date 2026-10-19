@@ -100,8 +100,10 @@ def test_a_renamed_dataclass_field_shows_the_lines_up_to_its_class(page: Page, s
     section = page.locator("section[data-file='src/models.py']")
     section.scroll_into_view_if_needed()
     expect(section.locator("tr.add")).to_have_text(re.compile("new_total: float"))
-    for line in ("@dataclass", "class Order:", "id: int", "shipped: bool"):
+    for line in ("@dataclass", "class Order:", "created: str", "shipped: bool"):
         expect(section.locator("tr.ctx", has_text=line)).to_be_visible()
+    expect(section.locator("tr.ctx", has_text="id: int")).to_have_count(0)
+    expect(section.locator(".inline-fold")).to_have_attribute("title", "Show 4 unchanged lines")
     expect(section.locator("tr.fold")).to_have_text("⋯ 8 unchanged lines")
 
 
@@ -111,6 +113,8 @@ CONFIG_STEPS = "".join(f"    step_{n}()\n" for n in range(1, 13))
 SERVICE_CALLS = {name: "".join(f"        {name}{n}()\n" for n in range(1, 13)) for name in ("a", "b")}
 JOBS_FIELDS = "".join(f"    j{n} = {n}\n" for n in range(1, 13))
 NEAR_LINES = "".join(f"y{n} = {n}\n" for n in range(2, 20))
+DEEP_STEPS = "".join(f"    pre_{n}()\n" for n in range(1, 13))
+DEEP_ARGS = "".join(f"            arg_{n}={n},\n" for n in range(1, 13))
 CONFIG_OLD = {
     "src/config.py": f"class Config:\n{CONFIG_FIELDS}\n\napp = make_app(\n{CONFIG_ARGS})\n\n\ndef run():\n{CONFIG_STEPS}    return 0\n",
     "src/service.py": (
@@ -132,6 +136,15 @@ CONFIG_NEW = {
     "src/jobs.py": f"class Jobs:\n{JOBS_FIELDS}\n    def run(self, x, y):\n        return x\n",
     "src/near.py": f"x = 10\n{NEAR_LINES}def f(a):\n    b = 1\n    return a + b\n",
 }
+DEEP_OLD = {
+    "src/deep.py": f"def main():\n{DEEP_STEPS}    try:\n        r = upload(\n{DEEP_ARGS}        )\n    except Exception:\n        raise\n"
+}
+DEEP_NEW = {
+    "src/deep.py": (
+        f"def main():\n{DEEP_STEPS}    try:\n        r = upload(\n{DEEP_ARGS}            extra=True,\n        )\n"
+        "    except Exception:\n        raise\n"
+    )
+}
 
 
 @pytest.fixture(scope="module")
@@ -148,14 +161,14 @@ def test_a_change_shows_the_class_function_or_call_line_and_folds_the_lines_betw
     section.scroll_into_view_if_needed()
     code = lambda line: section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}"))  # noqa: E731
     expect(section.locator("tr.add")).to_have_count(3)
-    for line in ("class Config:", "field_9: int", "app = make_app(", "arg_1=1,", "arg_9=9,", "def run():", "step_9()"):
+    for line in ("class Config:", "field_11: int", "app = make_app(", "arg_11=11,", "def run():", "step_11()"):
         expect(code(line)).to_be_visible()
-    for line in ("field_1: int", "arg_2=2,", "step_1()"):
+    for line in ("field_1: int", "field_10: int", "arg_1=1,", "arg_10=10,", "step_1()", "step_10()"):
         expect(code(line)).to_have_count(0)
     expect(section.locator("tr.fold")).to_have_count(0)
     chips = section.locator(".inline-fold")
     expect(chips).to_have_count(3)
-    expect(chips.first).to_have_attribute("title", "Show 8 unchanged lines")
+    expect(chips.first).to_have_attribute("title", "Show 10 unchanged lines")
 
     chips.first.click()
     expect(code("field_1: int")).to_be_visible()
@@ -186,6 +199,22 @@ def test_a_change_just_below_its_def_line_keeps_the_lines_next_to_it(
     for line in ("y18 = 18", "y19 = 19", "def f(a):", "b = 1"):
         expect(section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}$"))).to_be_visible()
     expect(section.locator("tr.fold")).to_have_text("⋯ 12 unchanged lines")
+
+
+def test_a_change_in_a_call_inside_a_function_shows_the_call_line_and_folds_the_lines_above_it(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    open_pr(page, server_url, add_pr(DEEP_OLD, DEEP_NEW))
+    section = page.locator("section[data-file='src/deep.py']")
+    section.scroll_into_view_if_needed()
+    code = lambda line: section.locator("tr.ctx td.c", has_text=re.compile(rf"^\s*{re.escape(line)}"))  # noqa: E731
+    for line in ("r = upload(", "arg_11=11,", "arg_12=12,"):
+        expect(code(line)).to_be_visible()
+    for line in ("def main():", "pre_12()", "try:", "arg_1=1,", "arg_10=10,"):
+        expect(code(line)).to_have_count(0)
+    expect(section.locator(".inline-fold")).to_have_count(1)
+    expect(section.locator(".inline-fold")).to_have_attribute("title", "Show 10 unchanged lines")
+    expect(section.locator("tr.fold")).to_have_text("⋯ 14 unchanged lines · main")
 
 
 def test_a_changed_def_line_shows_the_class_line_above_it(page: Page, server_url: str, config_pr: str) -> None:

@@ -127,8 +127,8 @@ function importSegments(f, rows) {
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
 const importsOpen = (f, b) => state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
-// The first body line of the innermost class, function or module-level call around each change run that adds
-// lines and is not noise, by the line the symbol starts on.
+// The first body line of the innermost class, function or call around each change run that adds lines and is not
+// noise, by the line the symbol starts on.
 function enclosingBodies(f) {
   const bodies = new Map();
   for (const r of f.runs) {
@@ -157,7 +157,8 @@ function contextPart(f, rs, headLength, tailLength, register, { minFold = 2 } = 
 // A context block shows RADIUS lines next to each visible neighbour and folds the middle. When the block holds the
 // start of the class, function or call around the next change, the last such start in the block, it splits in
 // two: the first part shows the lines of that start up to its body, and the second folds the body lines into an
-// inline fold, short of the RADIUS lines next to each visible neighbour.
+// inline fold. The chip of the inline fold counts as CHIP_LINES of the RADIUS lines on each side, so the lines
+// next to a change are RADIUS - CHIP_LINES lines and the chip.
 function contextBlock(f, blocks, bi, register, bodies) {
   const rs = blocks[bi].rows;
   const visible = (nb) => nb && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
@@ -173,7 +174,7 @@ function contextBlock(f, blocks, bi, register, bodies) {
   const rest = rs.slice(end);
   const above = contextPart(f, rs.slice(0, end), head, Math.max(end - k, tail - rest.length), register, { minFold: 3 });
   if (!rest.length) return [above];
-  const inner = contextPart(f, rest, Math.max(0, head - end), tail, register, { minFold: 3 });
+  const inner = contextPart(f, rest, Math.max(0, head - end - CHIP_LINES), Math.max(0, tail - CHIP_LINES), register, { minFold: 3 });
   return [above, inner.fold ? { ...inner, inline: true } : inner];
 }
 

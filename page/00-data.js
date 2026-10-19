@@ -6,6 +6,7 @@ const BY_PATH = Object.fromEntries(FILES.map(f => [f.path, f]));
 const NOISE_LABEL = { import: 'imports', rename: 'rename fallout', whitespace: 'whitespace', moved: 'moved code' };
 const KIND_LABEL = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', V: 'moved' };
 const RADIUS = 4;
+const CHIP_LINES = 2;
 // Comments live on GitHub and change independently of the page, so they load after it, from the server.
 const SERVED = location.protocol.startsWith('http');
 const API = SERVED ? `/api/${PR.repo}/${PR.number}` : null;

@@ -239,7 +239,7 @@ def f():
     ]
 
 
-def test_python_structure_finds_the_multi_line_calls_at_module_level() -> None:
+def test_python_structure_finds_the_multi_line_call_statements_at_any_depth() -> None:
     source = """settings = Settings(
     debug=True,
 )
@@ -256,12 +256,45 @@ def f():
     g(
         1,
     )
+
+
+class C:
+    items = field(
+        default_factory=list,
+    )
+
+
+async def h():
+    try:
+        r = await f(
+            1,
+        )
+    except Exception:
+        log(
+            2,
+        )
+    async with lock:
+        a = b(
+            3,
+        )
+    match r:
+        case 1:
+            d(
+                4,
+            )
 """
     _, symbols = classify.python_structure(source)
     assert [(s["name"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
         ("Settings", "call", 1, 2, 3),
         ("run", "call", 4, 5, 6),
         ("f", "def", 13, 14, 16),
+        ("g", "call", 14, 15, 16),
+        ("C", "class", 19, 20, 22),
+        ("field", "call", 20, 21, 22),
+        ("h", "def", 25, 26, 42),
+        ("log", "call", 31, 32, 33),
+        ("b", "call", 35, 36, 37),
+        ("d", "call", 40, 41, 42),
     ]
 
 
@@ -587,3 +620,8 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     assert rename["from"] == "old_name" and rename["to"] == "new_name"
     assert rename["runs"] == 3 and rename["files"] == ["app.py", "cli.py"]
     assert rename["origin"] == {"path": "app.py", "line": 5, "side": "new", "text": "def new_name(x):"}
+
+
+def test_python_structure_finds_the_imports_in_an_except_block() -> None:
+    imports, _ = classify.python_structure("try:\n    import ujson as json\nexcept ImportError:\n    import json\n")
+    assert imports == {2, 4}
