@@ -41,12 +41,15 @@ document.addEventListener('click', (e) => {
   const cell = API && e.target.closest('table.diff td.n.key');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-noiseonly],[data-generated],[data-folder],[data-review],[data-fold],' + COMMENT_ATTRS);
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-noiseonly],[data-generated],[data-folder],[data-review],[data-fold],[data-open-editor],[data-editor],[data-editor-dismiss],' + COMMENT_ATTRS);
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
   if (d.review !== undefined) { e.preventDefault(); toggleReviewed(BY_PATH[d.review]); return; }
   if (d.toggle !== undefined) { toggleSection(BY_PATH[d.toggle]); return; }
+  if (d.openEditor !== undefined) { openInEditor(BY_PATH[d.openEditor]); return; }
+  if (d.editor !== undefined) { lsSet('dr:editor', d.editor); render(); return; }
+  if (d.editorDismiss !== undefined) { e.preventDefault(); EDITOR.error = ''; render(); return; }
   if (d.go) { scrollToFile('overview'); return; }
   if (d.path) {
     e.preventDefault();
@@ -224,6 +227,7 @@ window.addEventListener('hashchange', () => {
   if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
   else if (t) go(t.path, t.key);
   loadComments();
+  loadEditors();
   // A reload rebuilds the forms, so it waits while a comment box has focus.
   const refresh = () => {
     const typing = document.activeElement && document.activeElement.tagName === 'TEXTAREA';

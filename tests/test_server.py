@@ -318,6 +318,8 @@ def test_a_reference_that_names_no_pull_request_answers_400() -> None:
         ("comment", {"path": "a.py", "body": "b", "line": None}, "None is not a line number"),
         ("comment", {"path": "a.py", "body": "b", "line": 2, "start_line": "1"}, "'1' is not a line number"),
         ("conversation", ["b"], "the request is not a JSON object"),
+        ("open", {"editor": "vscode", "path": "a.py", "line": 0}, "0 is not a line number"),
+        ("open", {"editor": "vscode", "line": 1}, "'path'"),
     ],
 )
 def test_a_request_field_outside_its_type_answers_400(

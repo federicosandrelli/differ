@@ -83,8 +83,8 @@ def status_of(state: str, draft: bool) -> Status | None:
     return "draft" if draft and state == "OPEN" else STATUSES.get(state)
 
 
-def gh(*args: str, timeout: float = commands.TIMEOUT) -> str:
-    return commands.run(["gh", *args], timeout=timeout).decode(errors="replace")
+def gh(*args: str, timeout: float = commands.TIMEOUT, cwd: Path | None = None) -> str:
+    return commands.run(["gh", *args], timeout=timeout, cwd=cwd).decode(errors="replace")
 
 
 def pull_request(ref: PullRef) -> PullRequest:
@@ -122,6 +122,34 @@ def clone(ref: PullRef, mirror: Path) -> None:
         "--quiet",
         timeout=commands.LONG_TIMEOUT,
     )
+
+
+def clone_with_files(ref: PullRef, folder: Path) -> None:
+    """A normal clone of the pull request's repository, with file contents, in the folder, with the repository as gh's
+    default there (gh picks the parent for a clone of a fork)."""
+    gh("repo", "clone", ref.slug, str(folder), "--", "--quiet", timeout=commands.LONG_TIMEOUT)
+    gh("repo", "set-default", ref.slug, cwd=folder)
+
+
+def head_branch(ref: PullRef) -> tuple[str, bool]:
+    """The name of the pull request's head branch, and whether that branch lives in a fork."""
+    meta = json.loads(gh("pr", "view", str(ref.number), "--repo", ref.slug, "--json", "headRefName,isCrossRepository"))
+    return meta["headRefName"], meta["isCrossRepository"]
+
+
+def checkout(ref: PullRef, folder: Path) -> None:
+    """Fetch the pull request's head and check out its branch in the clone in the folder, with its upstream set. An
+    existing local branch fast-forwards to the head, or the command fails."""
+    gh("pr", "checkout", str(ref.number), "--repo", ref.slug, timeout=commands.LONG_TIMEOUT, cwd=folder)
+
+
+def branch_pull_request(folder: Path) -> int | None:
+    """The number of the pull request that the branch checked out in the clone in the folder belongs to, as the
+    branch's config from `gh pr checkout` says, or None when gh finds none."""
+    try:
+        return int(gh("pr", "view", "--json", "number", "--jq", ".number", cwd=folder))
+    except (commands.CommandError, ValueError):
+        return None
 
 
 def auth_problem() -> str | None:
