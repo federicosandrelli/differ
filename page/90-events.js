@@ -1,8 +1,7 @@
 // Event handling and start-up.
 
-// Render after a file's section opens or closes. When the file's header is on screen, the header stays where it
-// is: a collapse removes the rows under the viewport, so keeping them as the anchor would carry the pane deep into
-// the next files.
+// Render, keeping the file's header where it is while it is on screen. A collapse removes the rows under the viewport,
+// so keeping them as the anchor would carry the pane deep into the next files.
 function renderKeepingHeader(f) {
   const head = (el) => el && el.querySelector(':scope > .fhead');
   const pane = main.getBoundingClientRect(), old = head(sectionEl(f));
@@ -87,14 +86,17 @@ function openSearch() {
 }
 // Shift+Cmd+F switches the search between the rows and the file paths, and keeps the query.
 function switchSearch() {
-  state.fileSearch = !state.fileSearch;
+  state.fileSearch = !state.fileSearch; state.hit = null;
   render();
   focusBox('#side .search');
 }
-// Ending the search also takes it back to the rows.
+// Ending the search also takes it back to the rows. The files it hid come back around the active file, which stays put.
 function closeSearch() {
   const box = document.querySelector('#side .search');
-  if (box && (box.value || state.fileSearch)) { box.value = ''; state.fileSearch = false; box.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (!box || !(box.value || state.fileSearch)) return;
+  state.q = ''; state.hit = null; state.fileSearch = false;
+  const f = BY_PATH[state.view];
+  if (f) renderKeepingHeader(f); else render();
 }
 
 // The hit after (or before) the one Enter last went to. When that one is gone, as when its section closed, the
@@ -111,15 +113,17 @@ function stepHit(dir) {
   const all = allHits();
   if (all.length) goHit(nextHit(all, dir));
 }
-// Go to a search hit and make it the one Enter goes on from.
+// Go to a search hit and make it the one Enter goes on from. A file search hit shows its file and leaves a closed
+// section closed.
 function goHit(hit) {
   state.hit = hit;
-  go(hit.path, hit.key, true);
-  popHit();
+  if (hit.key == null) scrollToFile(hit.path); else { go(hit.path, hit.key, true); popHit(); }
   updateSearchMeta();
 }
-// While searching, a file shown from the tree opens at its first hit; false when the file has none.
+// While searching, a file shown from the tree opens at its first hit; false when the file has none. In file search
+// it makes the file the current hit and returns false.
 function goFirstHit(path) {
+  if (state.fileSearch) { if (state.q) { state.hit = { path, key: null }; updateSearchMeta(); } return false; }
   const key = state.q ? firstHitKey(BY_PATH[path]) : null;
   if (key) goHit({ path, key });
   return !!key;

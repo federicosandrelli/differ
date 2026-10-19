@@ -482,6 +482,67 @@ def test_shift_cmd_f_switches_the_search_between_the_rows_and_the_file_paths(pag
     expect(meta).to_have_text("0 files · 0 lines")
 
 
+def search_files_pr(add_pr: AddPr) -> str:
+    """A pull request adding four short files, two of them with "one" in their path."""
+    return add_pr({}, {p: "a = 1\nb = 2\n" for p in ("a/one.py", "a/two.py", "b/one_more.py", "b/three.py")})
+
+
+def test_file_search_lists_only_the_found_files_and_enter_steps_through_them(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    open_pr(page, server_url, search_files_pr(add_pr))
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.type("one")
+    expect(page.locator("#side .leaf")).to_have_count(2)
+    active = page.locator("#side .leaf.active")
+    page.keyboard.press("Enter")
+    expect(active).to_have_attribute("data-path", "a/one.py")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 1 / 2")
+    page.keyboard.press("Enter")
+    expect(active).to_have_attribute("data-path", "b/one_more.py")
+    page.keyboard.press("Shift+Enter")
+    expect(active).to_have_attribute("data-path", "a/one.py")
+    page.click("#side .leaf[data-path='b/one_more.py']")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 2 / 2")
+    page.keyboard.press("Alt+ArrowUp")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 1 / 2")
+    page.click("#side .search")
+    page.keyboard.press("Enter")
+    expect(active).to_have_attribute("data-path", "b/one_more.py")
+
+
+def test_enter_in_file_search_leaves_a_reviewed_file_closed(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, search_files_pr(add_pr))
+    page.click("#side .leaf[data-path='a/one.py'] .check")
+    section = page.locator("section[data-file='a/one.py']")
+    expect(section).to_have_class(re.compile(r"\bclosed\b"))
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "a/one.py")
+    expect(section).to_have_class(re.compile(r"\bclosed\b"))
+
+
+def test_escape_brings_back_every_file_around_the_one_file_search_went_to(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    page.set_viewport_size({"width": 1100, "height": 400})
+    open_pr(page, server_url, search_files_pr(add_pr))
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    header = page.locator("section[data-file='b/one_more.py'] .fhead")
+    before = header.bounding_box()
+    page.keyboard.press("Escape")
+    expect(page.locator("#side .leaf")).to_have_count(4)
+    expect(page.locator("#main section[data-file]")).to_have_count(4)
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "b/one_more.py")
+    after = header.bounding_box()
+    assert before and after
+    assert after["y"] == pytest.approx(before["y"], abs=1)
+
+
 def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
     page.set_viewport_size({"width": 1100, "height": 400})
     open_pr(page, server_url)
