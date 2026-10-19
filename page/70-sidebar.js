@@ -87,8 +87,9 @@ function renderSide() {
   const reviewed = FILES.filter(isReviewed).length;
   const filterButton = (filter, label) => {
     const files = FILES.filter(f => ofKind(f, filter));
-    const lines = files.reduce((n, f) => n + f.stats.additions + f.stats.deletions, 0);
-    return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span><span class="count" title="${plural(lines, 'line')} changed">${fmt(lines)}</span></button>`;
+    const sum = (key) => fmt(files.reduce((n, f) => n + f.stats[key], 0));
+    const split = filter === 'all' ? '' : `<span class="split"><span class="a">+${sum('additions')}</span><span class="d">−${sum('deletions')}</span></span>`;
+    return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span>${split}</button>`;
   };
   const h = `<div class="head">${SERVED ? '<a class="back" href="/">← Pull requests</a>' : ''}<h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
@@ -112,6 +113,14 @@ function renderSide() {
   else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus(); el.setSelectionRange(...selection); } }
   revealActive();
   updateSearchMeta();
+  fitFilterCounts();
+}
+// The file type buttons drop their file counts when the buttons don't fit on one line, then their line counts.
+function fitFilterCounts() {
+  const seg = document.querySelector('#side .seg');
+  if (!seg) return;
+  seg.classList.remove('no-files', 'no-lines');
+  for (const cls of ['no-files', 'no-lines']) if (seg.scrollWidth > seg.clientWidth) seg.classList.add(cls);
 }
 function revealActive() {
   const active = document.querySelector('#side .row.active');
