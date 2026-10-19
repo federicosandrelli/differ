@@ -35,7 +35,10 @@ const countsHtml = (f) => f.binary ? `<span class="counts">${binarySize(f)}</spa
 const EDITOR = { installed: null, known: [], opening: new Set(), error: '' };
 async function loadEditors() {
   if (!API) return;
-  try { Object.assign(EDITOR, await api('editors')); } catch (e) { EDITOR.installed = []; EDITOR.error = e.message; }
+  try {
+    Object.assign(EDITOR, await api('editors'));
+    if (!EDITOR.installed.some(e => e.id === lsGet('dr:editor'))) lsSet('dr:editor', null);
+  } catch (e) { EDITOR.installed = []; EDITOR.error = e.message; }
   render();
 }
 const chosenEditor = () => EDITOR.installed && (EDITOR.installed.find(e => e.id === lsGet('dr:editor')) || EDITOR.installed[0]);

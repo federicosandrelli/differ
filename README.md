@@ -71,16 +71,25 @@ file (deleted files have no button). There you can read the code around the
 change, run it, commit and push. The server keeps one clone of each
 repository, with file contents, in `~/.cache/differ/checkouts/<owner>/<repo>`,
 and runs `gh pr checkout` in it on each click, which fast-forwards the branch
-to the pull request's head.
+to the pull request's head. When a pull request's page opens, the server
+clones the repository in the background if it has no clone yet, so the first
+click doesn't wait for it. A click on a pull request that is already checked
+out at its head skips the checkout: the server only checks the head on GitHub,
+unless it read it in the last 20 seconds. While the
+editor is still opening the last click from the same repository, for example
+while PyCharm waits on a dialog, the next click shows an error instead.
 
 The server never loses uncommitted changes or commits that were never pushed.
 When it can't switch the clone to the branch safely, the page shows why.
 
 The server knows VS Code, Cursor, and the JetBrains IDEs PyCharm, IntelliJ
 IDEA, WebStorm and GoLand, which open the folder as their "Open project in"
-setting says. When more than one editor is installed, the sidebar shows a
-picker, and the page saves the choice as `dr:editor`. When none is installed,
-the button says so.
+setting says. When a running JetBrains IDE has the clone open as a project, as
+its list of recent projects says, the server opens the file through the
+IDE's URL scheme (`pycharm://open?file=…`), which takes a fraction of a second
+instead of the launcher's two. When more than one editor is installed, the sidebar shows a
+picker, and the page saves the choice as `dr:editor`. It forgets a saved
+editor that is no longer installed. When none is installed, the button says so.
 
 ## Desktop app
 

@@ -1,8 +1,9 @@
-"""A stand-in for the GitHub CLI, answering the four commands the app runs from files in FAKE_GH_STATE.
+"""A stand-in for the GitHub CLI, answering the commands the app runs from files in FAKE_GH_STATE.
 
 `gh auth status` reports a signed-in user.
 `gh pr view <n> --repo o/r --json <fields> [--jq .field]` prints pr<n>.json, or one field of it.
-`gh repo clone o/r <dest> -- --bare ...` clones the repo named in repo.txt.
+`gh repo clone o/r <dest> [-- --bare ...]` clones the repo named in repo.txt, bare when asked; `gh repo set-default`
+does nothing.
 `gh api graphql --input -` answers a read query from comments.json; a mutation is appended to mutations.log,
 and a review posted with threads adds them to comments.json, so the page sees what it sent.
 """
@@ -30,7 +31,8 @@ def pr_view(args: list[str]) -> None:
 
 def repo_clone(args: list[str]) -> None:
     source = (state_dir() / "repo.txt").read_text().strip()
-    subprocess.run(["git", "clone", "--bare", "--quiet", source, args[1]], check=True)
+    bare = ["--bare"] if "--bare" in args else []
+    subprocess.run(["git", "clone", *bare, "--quiet", source, args[1]], check=True)
 
 
 def thread_node(tid: str, draft: dict) -> dict:
@@ -106,6 +108,8 @@ def main() -> None:
         pr_view(args[2:])
     elif args[:2] == ["repo", "clone"]:
         repo_clone(args[2:])
+    elif args[:2] == ["repo", "set-default"]:
+        pass
     elif args[:2] == ["api", "graphql"]:
         graphql()
     else:

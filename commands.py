@@ -38,11 +38,11 @@ def run(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT, c
     return r.stdout
 
 
-def start(args: list[str]) -> None:
+def start(args: list[str]) -> subprocess.Popen[bytes]:
     """Start the command without waiting for it, in a session of its own, so it keeps running after this process
     exits. Raises CommandError when it is not installed."""
     try:
-        subprocess.Popen(
+        return subprocess.Popen(
             args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
         )
     except FileNotFoundError:
