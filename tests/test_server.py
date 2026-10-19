@@ -39,10 +39,8 @@ def get(path: str, site: str | None = None) -> tuple[int, bytes]:
     return int(head.split(b" ", 2)[1]), body
 
 
-@pytest.mark.parametrize("path", ["/o/r/pull/1", "/open?pr=o/r%231", "/status/o/r/1", "/api/o/r/1/editors"])
-def test_a_cross_site_get_to_a_page_open_status_or_editors_is_refused(
-    path: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.mark.parametrize("path", ["/o/r/pull/1", "/open?pr=o/r%231", "/status/o/r/1"])
+def test_a_cross_site_get_to_a_page_open_or_status_is_refused(path: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server.build, "start", lambda ref: pytest.fail("a cross-site GET started a build"))
     monkeypatch.setattr(server.build, "latest_page", lambda ref: pytest.fail("a cross-site GET read a page"))
     monkeypatch.setattr(server.editors, "prepare", lambda ref: pytest.fail("a cross-site GET started a clone"))

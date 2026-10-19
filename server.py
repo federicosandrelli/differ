@@ -14,11 +14,10 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
-                                     (the page, /open, /status and /api/.../editors refuse a request a browser
-                                     marks Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
+                                     (the page, /open and /status refuse a request a browser marks
+                                     Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
-  /api/<owner>/<repo>/<number>/editors    GET: the editors installed, and the names of all the editors the app knows;
-                                     starts cloning the repository for them in the background
+  /api/<owner>/<repo>/<number>/editors    GET: the editors installed, and the names of all the editors the app knows
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
                                      conversation, open (opens a file in an editor, on the pull request's branch)
                                      (only from a page this server served: the Origin must be this server
@@ -193,6 +192,7 @@ class Handler(BaseHTTPRequestHandler):
                 if "refresh" in query:
                     build.refresh(ref)
                     return self.redirect(url.path)
+                editors.prepare(ref)
                 if page := build.serve(ref):
                     body = page.read_bytes()
                     recent.note_opened(ref, *render.read_head(body))
@@ -201,9 +201,6 @@ class Handler(BaseHTTPRequestHandler):
             if (m := API.match(url.path)) and m["action"] == "comments":
                 return self.send_json(comments.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "editors":
-                if why := self.cross_site():
-                    return self.send_json({"error": f"Forbidden: {why}"}, 403)
-                editors.prepare(PullRef.from_match(m))
                 return self.send_json(
                     {
                         "installed": [{"id": e.id, "name": e.name} for e in editors.installed()],
@@ -228,8 +225,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def cross_site(self) -> str | None:
         """Why this GET is refused, or None: a page on another site must not start a clone or a build with the
-        user's gh identity, which a GET to a page path, to /open or to /api/.../editors does, nor read a build's
-        progress at /status.
+        user's gh identity, which a GET to a page path or to /open does, nor read a build's progress at /status.
 
         Browsers send Sec-Fetch-Site with every request: same-origin, same-site, none (a typed address or a
         bookmark) or cross-site. A request without the header (an old browser, curl) passes.

@@ -14,6 +14,7 @@ import pytest
 import checkout
 import commands
 import editors
+import server
 from github import PullRef
 from test_server import request, response
 
@@ -376,9 +377,7 @@ def test_the_open_route_answers_a_refusal_with_its_reason(fake: FakeProcesses, c
     assert fake.started == []
 
 
-def test_the_editors_route_lists_the_installed_editors_and_the_known_names_and_prepares_the_clone(
-    fake: FakeProcesses, clone: StubCheckouts, at_once: None
-) -> None:
+def test_the_editors_route_lists_the_installed_editors_and_the_known_names(fake: FakeProcesses) -> None:
     h = request("GET", "/api/o/r/7/editors")
     h.do_GET()
     code, raw = response(h)
@@ -387,4 +386,14 @@ def test_the_editors_route_lists_the_installed_editors_and_the_known_names_and_p
         "installed": [{"id": "vscode", "name": "VS Code"}, {"id": "pycharm", "name": "PyCharm"}],
         "known": ["VS Code", "Cursor", "PyCharm", "IntelliJ IDEA", "WebStorm", "GoLand"],
     }
+
+
+def test_serving_the_review_page_prepares_the_clone(
+    fake: FakeProcesses, clone: StubCheckouts, at_once: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server.build, "start", lambda ref: None)
+    monkeypatch.setattr(server.build, "latest_page", lambda ref: None)
+    h = request("GET", "/o/r/pull/7")
+    h.do_GET()
+    assert response(h)[0] == 200
     assert clone.warmed == [REF]

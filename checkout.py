@@ -89,11 +89,11 @@ class Checkouts:
         return (
             number == ref.number
             and branch == _current_branch(folder)
-            and _git(folder, "rev-parse", "HEAD").stdout.decode().strip() == self.head(ref)
+            and build.git(folder, "rev-parse", "HEAD").decode().strip() == self.head(ref)
         )
 
     def _check_out(self, ref: PullRef, folder: Path) -> None:
-        changed = _git(folder, "status", "--porcelain", "--untracked-files=no").stdout.strip()
+        changed = build.git(folder, "status", "--porcelain", "--untracked-files=no").strip()
         if changed and _branch_pull_request(folder) != ref.number:
             raise Refused(
                 f"The clone at {folder} has uncommitted changes on {_current_branch(folder) or 'a detached HEAD'}. "
@@ -108,15 +108,15 @@ class Checkouts:
             # the new head; it refuses rather than overwrite an untracked file or an uncommitted change, and the
             # branch keeps its upstream.
             local, remote = f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"
-            if fork or _git(folder, "merge-base", "--is-ancestor", local, remote, check=False).returncode != 1:
+            if fork or _try_git(folder, "merge-base", "--is-ancestor", local, remote).returncode != 1:
                 raise
-            heads = _git(folder, "log", "-g", "--format=%H", remote).stdout.decode().split()
+            heads = build.git(folder, "log", "-g", "--format=%H", remote).decode().split()
             # The reflog lists each new head; the head the clone started from is the old value of the oldest entry.
-            first = _git(folder, "rev-parse", "--verify", "--quiet", f"{remote}@{{{len(heads)}}}", check=False)
+            first = _try_git(folder, "rev-parse", "--verify", "--quiet", f"{remote}@{{{len(heads)}}}")
             heads += first.stdout.decode().split()
-            if int(_git(folder, "rev-list", "--count", local, "--not", *heads, "--remotes").stdout):
+            if int(build.git(folder, "rev-list", "--count", local, "--not", *heads, "--remotes")):
                 raise
-            _git(folder, "checkout", "-B", branch, remote)
+            build.git(folder, "checkout", "-B", branch, remote)
 
 
 class Clone:
@@ -137,12 +137,13 @@ class Clone:
         return self.folder
 
 
-def _git(folder: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
-    return commands.call(["git", "-C", str(folder), *args], check=check)
+def _try_git(folder: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    """Run git in the folder, also when it fails, for a caller that reads its exit code."""
+    return commands.call(["git", "-C", str(folder), *args])
 
 
 def _current_branch(folder: Path) -> str:
-    return _git(folder, "branch", "--show-current").stdout.decode().strip()
+    return build.git(folder, "branch", "--show-current").decode().strip()
 
 
 def _branch_pull_request(folder: Path) -> int | None:
