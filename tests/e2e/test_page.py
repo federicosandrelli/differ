@@ -514,6 +514,18 @@ def test_file_search_lists_only_the_found_files_and_enter_steps_through_them(
     expect(active).to_have_attribute("data-path", "b/one_more.py")
 
 
+def test_enter_in_file_search_leaves_a_reviewed_file_closed(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, search_files_pr(add_pr))
+    page.click("#side .leaf[data-path='a/one.py'] .check")
+    section = page.locator("section[data-file='a/one.py']")
+    expect(section).to_have_class(re.compile(r"\bclosed\b"))
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "a/one.py")
+    expect(section).to_have_class(re.compile(r"\bclosed\b"))
+
+
 def test_escape_brings_back_every_file_around_the_one_file_search_went_to(
     page: Page, server_url: str, add_pr: AddPr
 ) -> None:

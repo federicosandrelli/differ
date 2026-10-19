@@ -113,11 +113,11 @@ function stepHit(dir) {
   const all = allHits();
   if (all.length) goHit(nextHit(all, dir));
 }
-// Go to a search hit and make it the one Enter goes on from.
+// Go to a search hit and make it the one Enter goes on from. A file search hit shows its file and leaves a closed
+// section closed.
 function goHit(hit) {
   state.hit = hit;
-  go(hit.path, hit.key, true);
-  popHit();
+  if (hit.key == null) scrollToFile(hit.path); else { go(hit.path, hit.key, true); popHit(); }
   updateSearchMeta();
 }
 // While searching, a file shown from the tree opens at its first hit; false when the file has none. In file search
