@@ -214,7 +214,7 @@ def test_a_change_in_a_call_inside_a_function_shows_the_call_line_and_folds_the_
         expect(code(line)).to_have_count(0)
     expect(section.locator(".inline-fold")).to_have_count(1)
     expect(section.locator(".inline-fold")).to_have_attribute("title", "Show 10 unchanged lines")
-    expect(section.locator("tr.fold")).to_have_text(re.compile(r"14 unchanged lines"))
+    expect(section.locator("tr.fold")).to_have_text("⋯ 14 unchanged lines · main")
 
 
 def test_a_changed_def_line_shows_the_class_line_above_it(page: Page, server_url: str, config_pr: str) -> None:

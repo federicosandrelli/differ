@@ -296,8 +296,6 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
                     )
                 )
                 visit(child)
-            elif isinstance(child, ast.If | ast.Try | ast.With | ast.For | ast.While):
-                visit(child)
             elif (
                 isinstance(child, ast.Expr | ast.Assign | ast.AnnAssign | ast.AugAssign)
                 and isinstance(child.value, ast.Call)
@@ -307,6 +305,8 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
                 symbols.append(
                     Symbol(name=callee, kind="call", start=child.lineno, body=child.lineno + 1, end=last_line(child))
                 )
+            elif isinstance(child, ast.stmt | ast.excepthandler | ast.match_case):
+                visit(child)
 
     visit(tree)
     return imports, symbols

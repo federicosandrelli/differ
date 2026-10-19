@@ -127,8 +127,8 @@ function importSegments(f, rows) {
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
 const importsOpen = (f, b) => state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
-// The first body line of the innermost class, function or call around each change run that adds
-// lines and is not noise, by the line the symbol starts on.
+// The first body line of the innermost class, function or call around each change run that adds lines and is not
+// noise, by the line the symbol starts on.
 function enclosingBodies(f) {
   const bodies = new Map();
   for (const r of f.runs) {
