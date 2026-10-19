@@ -40,8 +40,8 @@ function runSummary(r) {
 // The row that opens or closes a block's fold, or only names it while the fold is locked.
 function foldRowHtml(b, symStarts) {
   if (b.inline) return inlineFoldRow(b);
-  if (b.joined || (b.ctx && !b.open)) return `<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">⋯ ${hiddenLabel(b.joined ? b.rows : b.mid, symStarts)}</span></td></tr>`;
-  const label = b.ctx ? hiddenLabel(b.mid, symStarts) : b.imports ? importsLabel(b) : b.group ? groupLabel(b) : runSummary(b.run);
+  if ((b.joined || b.ctx) && !b.open) return `<tr class="fold" data-fold="${esc(b.fold)}"><td colspan="4"><span class="lbl">⋯ ${hiddenLabel(b.joined ? b.rows : b.mid, symStarts)}</span></td></tr>`;
+  const label = b.joined ? hiddenLabel(b.rows, symStarts) : b.ctx ? hiddenLabel(b.mid, symStarts) : b.imports ? importsLabel(b) : b.group ? groupLabel(b) : runSummary(b.run);
   if (b.locked) return `<tr class="runhead locked"><td colspan="4"><span class="lbl">${label}</span></td></tr>`;
   return (b.open ? openRow : foldRow)(b.fold, label);
 }
@@ -70,6 +70,17 @@ function hiddenLabel(rows, symStarts) {
   return `${same ? `${same} unchanged, ` : ''}${changed}${hint}`;
 }
 
+// Mark the word changes of each whole run among these rows that pairs every removed line with an added one.
+function markRuns(rows) {
+  for (let i = 0; i < rows.length;) {
+    const r = rows[i].run;
+    let j = i + 1;
+    while (j < rows.length && rows[j].run === r) j++;
+    if (r && r.removed.length === r.added.length && j - i === r.removed.length * 2) markPairs(rows.slice(i, j));
+    i = j;
+  }
+}
+
 // The number of columns a line takes with tabs expanded to the browser's default tab stops of 8.
 function lineColumns(text) {
   let n = 0;
@@ -84,9 +95,8 @@ function codeRows(f) {
   const html = [], index = new Map();
   let cols = 0;
   for (const b of fileBlocks(f)) {
-    const r = b.run;
     for (const row of rowsDrawn(b)) row.html = rowHtml(f, row);
-    if (b.open && r && r.removed.length === r.added.length && b.rows.length === r.removed.length * 2) markPairs(b.rows);
+    if (b.open && (b.run || b.group || b.joined)) markRuns(b.rows);
     for (const item of drawn(b)) {
       if (item === FOLD_ROW) { html.push(foldRowHtml(b, symStarts)); continue; }
       renderRow(f, item, html, index);
