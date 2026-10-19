@@ -1206,7 +1206,10 @@ def test_an_address_near_the_end_stays_in_place_when_the_comments_load(
 def test_choosing_an_editor_in_a_file_s_menu_opens_the_file_in_it_and_keeps_the_choice(
     page: Page, server_url: str
 ) -> None:
-    installed = [{"id": "vscode", "name": "VS Code"}, {"id": "pycharm", "name": "PyCharm"}]
+    installed = [
+        {"id": "vscode", "name": "VS Code", "local": True},
+        {"id": "pycharm", "name": "PyCharm", "local": True},
+    ]
     page.route(
         "**/api/acme/widgets/1/editors",
         lambda r: r.fulfill(json={"installed": installed, "known": ["VS Code", "PyCharm"]}),
@@ -1230,4 +1233,4 @@ def test_choosing_an_editor_in_a_file_s_menu_opens_the_file_in_it_and_keeps_the_
     assert page.evaluate("localStorage.getItem('dr:editor')") == "pycharm"
     page.click("section[data-file='README.md'] [data-open-editor]")
     page.wait_for_function("!EDITOR.opening.size")
-    assert opened[-1]["editor"] == "pycharm"
+    assert opened[-1] == {"editor": "pycharm", "path": "README.md", "line": 2}

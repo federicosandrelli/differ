@@ -88,10 +88,12 @@ IDEA, WebStorm and GoLand, which open the folder as their "Open project in"
 setting says. When a running JetBrains IDE has the clone open as a project, as
 its list of recent projects says, the server opens the file through the
 IDE's URL scheme (`pycharm://open?file=…`), which takes a fraction of a second
-instead of the launcher's two. When more than one editor is installed, a `⋮`
-next to the button opens a menu of them; choosing one opens the file in it, and
-the page saves the choice as `dr:editor` for every file. It forgets a saved
-editor that is no longer installed. When none is installed, the button says so.
+instead of the launcher's two. GitHub is always in the list: it opens the file
+on github.com at the pull request's head commit, at the same line, in the
+browser, with no clone. When an editor is installed besides GitHub, a `⋮` next
+to the button opens a menu of them; choosing one opens the file in it, and the
+page saves the choice as `dr:editor` for every file. It forgets a saved editor
+that is no longer installed.
 
 ## Desktop app
 
@@ -281,7 +283,8 @@ editors open, stay too.
   `commands.py` runs `gh` and `git` with a time limit and says how a command
   failed.
 - `editors.py` knows the editors the page can open a file in, and starts them
-  through one adapter per kind of editor: VS Code and Cursor, or a JetBrains IDE.
+  through one adapter per kind of editor: VS Code and Cursor, a JetBrains IDE,
+  or GitHub, which opens the file on github.com.
   `checkout.py` keeps the clone of each repository that they open, and moves it
   to the pull request's branch without losing the user's work.
 - `recent.py` keeps the start page's list of the pull requests opened last,

@@ -1,11 +1,11 @@
-"""Open a pull request's files in the user's editor: the editors the app knows, and how the server starts them on the
-repository's clone from checkout.py.
+"""Open a pull request's files in the user's editor: the editors the app knows, and how the server opens a file in
+each, on the repository's clone from checkout.py or on GitHub.
 
-The module's interface is `Editor`, `known`, `installed`, `prepare` and `open_file`. Behind it, a launcher
-seam holds one adapter per kind of editor: `_Code` for VS Code and Cursor, `_JetBrains` for the JetBrains IDEs. Each
-adapter finds its command line tool, builds the command that opens a file, and says whether the editor is still busy
-with the last file it opened for a folder. The adapters start and look up processes through `processes`, a
-`Processes`; tests replace it."""
+The module's interface is `Editor`, `known`, `installed`, `prepare` and `open_file`. Behind it, a launcher seam holds
+one adapter per kind of editor: `_Code` for VS Code and Cursor and `_JetBrains` for the JetBrains IDEs, both `_Local`
+editors that open the clone, and `_GitHub`, which opens the file on github.com. A local adapter finds its command line
+tool, builds the command that opens a file, and says whether the editor is still busy with the last file it opened for
+a folder. The adapters start and look up processes through `processes`, a `Processes`; tests replace it."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
 
+import build
 import checkout
 import commands
 from checkout import Refused
@@ -30,10 +31,12 @@ JETBRAINS_CONFIG = Path.home() / "Library/Application Support/JetBrains"
 
 @dataclass(frozen=True)
 class Editor:
-    """An editor the page can open a file in."""
+    """An editor the page can open a file in. A local one opens the repository's clone on this computer; the others
+    open the file on a website."""
 
     id: str
     name: str
+    local: bool = True
 
 
 class Launch(Protocol):
@@ -72,13 +75,31 @@ processes: Processes = SystemProcesses()
 
 @dataclass(frozen=True)
 class _Launcher(ABC):
-    """An adapter at the launcher seam: how the server starts one editor. The server starts the editor's command line
-    tool by its full path inside the app bundle, since the desktop app starts the server with a PATH that may not
-    hold the tool."""
+    """An adapter at the launcher seam: how the server opens a file in one editor."""
 
     editor: Editor
+
+    @abstractmethod
+    def available(self) -> bool:
+        """Whether the editor can open a file on this computer now."""
+
+    @abstractmethod
+    def open(self, ref: PullRef, path: PurePosixPath, line: int) -> None:
+        """Open the file at the path, relative to the repository, at the line, on the pull request's head. Returns
+        without waiting for the editor. Raises Refused and CommandError as `open_file` says."""
+
+
+@dataclass(frozen=True)
+class _Local(_Launcher):
+    """An editor installed on this computer, which opens the repository's clone. The server starts the editor's
+    command line tool by its full path inside the app bundle, since the desktop app starts the server with a PATH that
+    may not hold the tool."""
+
     apps: tuple[str, ...]
     tool: str
+
+    def available(self) -> bool:
+        return self.find() is not None
 
     def find(self) -> Path | None:
         """The command line tool of the first of the editor's app bundles installed, or None."""
@@ -93,13 +114,28 @@ class _Launcher(ABC):
         another one now."""
         return False
 
+    def open(self, ref: PullRef, path: PurePosixPath, line: int) -> None:
+        """Refuse, before the clone moves, while the editor is still opening the last file it opened for this
+        repository; else move the clone to the pull request's head (`checkout.Clone.at_head` tells how) and start the
+        editor on it in a new window."""
+        command = self.find()
+        if command is None:
+            raise commands.CommandError(f"{self.editor.name} is no longer installed")
+        with checkout.checkouts.held(ref) as clone:
+            if self.busy(clone.folder):
+                raise Refused(
+                    "The editor is still opening the last file from this repository. Answer its window first."
+                )
+            clone.at_head()
+            self.start(command, clone.folder, clone.folder / path, line)
+
     @abstractmethod
     def start(self, command: Path, folder: Path, file: Path, line: int) -> None:
         """Start the editor, through the tool at `command`, on the folder in a new window, at the line of the file.
         Returns without waiting for it. Raises CommandError when the tool is missing."""
 
 
-class _Code(_Launcher):
+class _Code(_Local):
     """The adapter for VS Code and Cursor."""
 
     def start(self, command: Path, folder: Path, file: Path, line: int) -> None:
@@ -110,7 +146,7 @@ _launches: dict[tuple[str, Path], tuple[Path, Launch]] = {}
 
 
 @dataclass(frozen=True)
-class _JetBrains(_Launcher):
+class _JetBrains(_Local):
     """The adapter for a JetBrains IDE. Its configuration folders start with one of `configs`, followed by the
     version."""
 
@@ -155,6 +191,19 @@ class _JetBrains(_Launcher):
         return False
 
 
+@dataclass(frozen=True)
+class _GitHub(_Launcher):
+    """The file on github.com, at the pull request's head commit, in the default browser. It needs no clone, so it is
+    always available."""
+
+    def available(self) -> bool:
+        return True
+
+    def open(self, ref: PullRef, path: PurePosixPath, line: int) -> None:
+        url = f"https://github.com/{ref.slug}/blob/{build.recent_head(ref)}/{quote(str(path))}#L{line}"
+        processes.start(["open", url])
+
+
 _LAUNCHERS: dict[str, _Launcher] = {
     a.editor.id: a
     for a in (
@@ -174,6 +223,7 @@ _LAUNCHERS: dict[str, _Launcher] = {
         ),
         _JetBrains(Editor("webstorm", "WebStorm"), ("WebStorm.app",), "Contents/MacOS/webstorm", ("WebStorm",)),
         _JetBrains(Editor("goland", "GoLand"), ("GoLand.app",), "Contents/MacOS/goland", ("GoLand",)),
+        _GitHub(Editor("github", "GitHub", local=False)),
     )
 }
 
@@ -184,14 +234,15 @@ def known() -> list[Editor]:
 
 
 def installed() -> list[Editor]:
-    """The editors with an installed app bundle, in the order of `known`. Looks for the bundles on each call."""
-    return [a.editor for a in _LAUNCHERS.values() if a.find()]
+    """The editors available on this computer: the local ones with an installed app bundle, and GitHub, in the order
+    of `known`. Looks for the bundles on each call."""
+    return [a.editor for a in _LAUNCHERS.values() if a.available()]
 
 
 def prepare(ref: PullRef) -> None:
-    """When an editor is installed, clone the repository and read the pull request's branch in the background, so
-    that the first open waits for neither."""
-    if not installed():
+    """When a local editor is installed, clone the repository and read the pull request's branch in the background,
+    so that the first open waits for neither."""
+    if not any(e.local for e in installed()):
         return
 
     def run() -> None:
@@ -204,22 +255,17 @@ def prepare(ref: PullRef) -> None:
 
 
 def open_file(ref: PullRef, editor_id: str, path: str, line: int) -> None:
-    """Open the repository's clone in a new window of the editor, on the pull request's branch, at the line of the
-    file; `checkout.Clone.at_head` tells how the clone gets there. Raises ValueError for an editor that is not
-    installed or a path outside the repository, before it waits for the repository's lock; Refused, before the clone
-    moves, while the editor is still opening the last file it opened for this repository, or when at_head refuses;
-    and CommandError when gh or git fails, or when the editor's tool is missing.
-    Returns once the editor starts, without waiting for it."""
+    """Open the file at the line, on the pull request's head, in the editor: a local editor opens the repository's
+    clone in a new window, on the pull request's branch, and GitHub opens the file at the head commit in the browser.
+    Raises ValueError for an editor that is not installed or a path outside the repository, before a local editor
+    waits for the repository's lock; Refused, before the clone moves, while a local editor is still opening the last
+    file it opened for this repository, or when `checkout.Clone.at_head` refuses; and CommandError when gh or git
+    fails, or when the editor's tool is missing. Returns once the editor starts, without waiting for it."""
     launcher = _LAUNCHERS.get(editor_id)
-    command = launcher and launcher.find()
-    if not launcher or not command:
+    if not launcher or not launcher.available():
         names = ", ".join(repr(e.id) for e in installed()) or "none"
         raise ValueError(f"{editor_id!r} is not an installed editor (installed: {names})")
     relative = PurePosixPath(path)
     if not path or relative.is_absolute() or ".." in relative.parts:
         raise ValueError(f"{path!r} is not a path inside the repository")
-    with checkout.checkouts.held(ref) as clone:
-        if launcher.busy(clone.folder):
-            raise Refused("The editor is still opening the last file from this repository. Answer its window first.")
-        clone.at_head()
-        launcher.start(command, clone.folder, clone.folder / relative, line)
+    launcher.open(ref, relative, line)

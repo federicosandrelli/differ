@@ -17,7 +17,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      (the page, /open and /status refuse a request a browser marks
                                      Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
-  /api/<owner>/<repo>/<number>/editors    GET: the editors installed, and the names of all the editors the app knows
+  /api/<owner>/<repo>/<number>/editors    GET: the editors installed (GitHub always is), and the names of all the editors
+                                     the app knows
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
                                      conversation, open (opens a file in an editor, on the pull request's branch)
                                      (only from a page this server served: the Origin must be this server
@@ -203,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
             if (m := API.match(url.path)) and m["action"] == "editors":
                 return self.send_json(
                     {
-                        "installed": [{"id": e.id, "name": e.name} for e in editors.installed()],
+                        "installed": [{"id": e.id, "name": e.name, "local": e.local} for e in editors.installed()],
                         "known": [e.name for e in editors.known()],
                     }
                 )

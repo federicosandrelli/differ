@@ -65,7 +65,8 @@ function editorButton(f) {
   if (!EDITOR.installed || f.status === 'D') return '';
   const editor = chosenEditor(), busy = EDITOR.opening.has(f.path);
   const title = !editor ? `No supported editor found. differ opens ${EDITOR.known.join(', ')}.`
-    : busy ? `Opening in ${editor.name}…` : `Open the repository in ${editor.name}, on the pull request's branch, at this file`;
+    : busy ? `Opening in ${editor.name}…`
+    : editor.local ? `Open the repository in ${editor.name}, on the pull request's branch, at this file` : `Open this file on ${editor.name}, at the pull request's head`;
   const button = `<button class="editor" data-open-editor="${esc(f.path)}" title="${esc(title)}"${editor && !busy ? '' : ' disabled'}${busy ? ' aria-busy="true"' : ''}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 4.5 1.5 8 5 11.5M11 4.5 14.5 8 11 11.5M9.25 3 6.75 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
   if (EDITOR.installed.length < 2) return button;
   const open = EDITOR.menu === f.path;

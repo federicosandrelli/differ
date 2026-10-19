@@ -193,14 +193,24 @@ def test_a_running_jetbrains_ide_with_the_project_open_gets_the_file_through_its
     assert fake.started == [url if by_url else launcher]
 
 
+def test_github_opens_the_file_at_the_pull_request_s_head_in_the_browser_without_the_clone(
+    fake: FakeProcesses, clone: StubCheckouts, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(editors.build, "recent_head", lambda ref: "c0ffee" if ref == REF else pytest.fail())
+    monkeypatch.setattr(clone, "held", lambda ref: pytest.fail("GitHub waited for the repository's lock"))
+    editors.open_file(REF, "github", "src/a b.py", 4)
+    assert fake.started == [["open", "https://github.com/o/r/blob/c0ffee/src/a%20b.py#L4"]]
+
+
 def test_installed_lists_the_installed_editors_of_every_app_folder_in_the_order_of_known(
     fake: FakeProcesses,
 ) -> None:
     install(editors.APP_FOLDERS[1], "goland")
     install(editors.APP_FOLDERS[1], "cursor")
-    assert [e.id for e in editors.known()] == ["vscode", "cursor", "pycharm", "idea", "webstorm", "goland"]
-    assert [e.id for e in editors.installed()] == ["vscode", "cursor", "pycharm", "goland"]
+    assert [e.id for e in editors.known()] == ["vscode", "cursor", "pycharm", "idea", "webstorm", "goland", "github"]
+    assert [e.id for e in editors.installed()] == ["vscode", "cursor", "pycharm", "goland", "github"]
     assert editors.installed()[1] == editors.Editor("cursor", "Cursor")
+    assert editors.installed()[-1] == editors.Editor("github", "GitHub", local=False)
 
 
 def test_an_open_runs_the_tool_of_the_first_app_folder_that_holds_the_editor(
@@ -218,7 +228,7 @@ def test_prepare_warms_the_clone(fake: FakeProcesses, clone: StubCheckouts, at_o
     assert clone.warmed == [REF]
 
 
-def test_prepare_does_nothing_without_an_installed_editor(
+def test_prepare_does_nothing_without_an_installed_local_editor(
     fake: FakeProcesses, clone: StubCheckouts, at_once: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(editors, "APP_FOLDERS", ())
@@ -237,8 +247,8 @@ def test_prepare_logs_a_failed_warm_up(
 @pytest.mark.parametrize(
     ("editor", "why"),
     [
-        ("cursor", "'cursor' is not an installed editor (installed: 'vscode', 'pycharm')"),
-        ("/bin/sh", "'/bin/sh' is not an installed editor (installed: 'vscode', 'pycharm')"),
+        ("cursor", "'cursor' is not an installed editor (installed: 'vscode', 'pycharm', 'github')"),
+        ("/bin/sh", "'/bin/sh' is not an installed editor (installed: 'vscode', 'pycharm', 'github')"),
     ],
 )
 def test_an_editor_outside_the_installed_ones_is_refused_before_the_repository_lock(
@@ -383,8 +393,12 @@ def test_the_editors_route_lists_the_installed_editors_and_the_known_names(fake:
     code, raw = response(h)
     assert code == 200
     assert json.loads(raw) == {
-        "installed": [{"id": "vscode", "name": "VS Code"}, {"id": "pycharm", "name": "PyCharm"}],
-        "known": ["VS Code", "Cursor", "PyCharm", "IntelliJ IDEA", "WebStorm", "GoLand"],
+        "installed": [
+            {"id": "vscode", "name": "VS Code", "local": True},
+            {"id": "pycharm", "name": "PyCharm", "local": True},
+            {"id": "github", "name": "GitHub", "local": False},
+        ],
+        "known": ["VS Code", "Cursor", "PyCharm", "IntelliJ IDEA", "WebStorm", "GoLand", "GitHub"],
     }
 
 
