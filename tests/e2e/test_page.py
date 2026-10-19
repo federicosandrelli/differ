@@ -536,12 +536,14 @@ def test_escape_brings_back_every_file_around_the_one_file_search_went_to(
     page.keyboard.press("Enter")
     page.keyboard.press("Enter")
     header = page.locator("section[data-file='b/one_more.py'] .fhead")
-    top = header.bounding_box()["y"]
+    before = header.bounding_box()
     page.keyboard.press("Escape")
     expect(page.locator("#side .leaf")).to_have_count(4)
     expect(page.locator("#main section[data-file]")).to_have_count(4)
     expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "b/one_more.py")
-    assert header.bounding_box()["y"] == pytest.approx(top, abs=1)
+    after = header.bounding_box()
+    assert before and after
+    assert after["y"] == pytest.approx(before["y"], abs=1)
 
 
 def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(page: Page, server_url: str) -> None:
