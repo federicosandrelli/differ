@@ -239,7 +239,7 @@ def f():
     ]
 
 
-def test_python_structure_finds_the_multi_line_calls_at_module_level() -> None:
+def test_python_structure_finds_the_multi_line_call_statements_at_any_depth() -> None:
     source = """settings = Settings(
     debug=True,
 )
@@ -262,6 +262,7 @@ def f():
         ("Settings", "call", 1, 2, 3),
         ("run", "call", 4, 5, 6),
         ("f", "def", 13, 14, 16),
+        ("g", "call", 14, 15, 16),
     ]
 
 

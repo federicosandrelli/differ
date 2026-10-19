@@ -94,8 +94,8 @@ class FileDiff:
 
 
 class Symbol(TypedDict):
-    """A class, a function, or a call at module level that spans several lines, in a Python file. It starts on
-    `start` (at its first decorator), its body on `body`, and it ends on `end`."""
+    """A class, a function, or a call statement that spans several lines, in a Python file. It starts on `start`
+    (at its first decorator), its body on `body`, and it ends on `end`."""
 
     name: str
     kind: Literal["class", "def", "call"]
@@ -280,7 +280,7 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
     except SyntaxError:
         return imports, symbols
 
-    def visit(node: ast.AST, module_level: bool) -> None:
+    def visit(node: ast.AST) -> None:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.Import | ast.ImportFrom):
                 imports.update(range(child.lineno, last_line(child) + 1))
@@ -295,12 +295,11 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
                         end=last_line(child),
                     )
                 )
-                visit(child, module_level=False)
+                visit(child)
             elif isinstance(child, ast.If | ast.Try | ast.With | ast.For | ast.While):
-                visit(child, module_level)
+                visit(child)
             elif (
-                module_level
-                and isinstance(child, ast.Expr | ast.Assign | ast.AnnAssign | ast.AugAssign)
+                isinstance(child, ast.Expr | ast.Assign | ast.AnnAssign | ast.AugAssign)
                 and isinstance(child.value, ast.Call)
                 and last_line(child) != child.lineno
             ):
@@ -309,7 +308,7 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
                     Symbol(name=callee, kind="call", start=child.lineno, body=child.lineno + 1, end=last_line(child))
                 )
 
-    visit(tree, module_level=True)
+    visit(tree)
     return imports, symbols
 
 
