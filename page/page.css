@@ -6,10 +6,14 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 button { font: inherit; color: inherit; background: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 button:hover { background: var(--bg-hover); } button.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.seg button { border: 0; border-radius: 0; padding: 3px 10px; } .seg button + button { border-left: 1px solid var(--border); }
+.seg button { border: 0; border-radius: 0; padding: 3px 10px; white-space: nowrap; } .seg button + button { border-left: 1px solid var(--border); }
 .seg button.on { background: var(--accent-bg); color: var(--accent); }
 .seg button .count { margin-left: 6px; display: inline-block; font-size: 11px; line-height: 16px; min-width: 16px; padding: 0 5px; border-radius: 999px; text-align: center; background: var(--bg-inset); color: var(--text-secondary); }
 .seg button.on .count { background: var(--accent); color: var(--bg-canvas); }
+.seg button .split { margin-left: 6px; display: inline-flex; font-size: 11px; line-height: 16px; border-radius: 999px; overflow: hidden; }
+.seg button .split span { padding: 0 3px; }
+.seg button .split .a { background: var(--add-num); color: var(--add-fg); } .seg button .split .d { background: var(--del-num); color: var(--del-fg); }
+.seg.no-files .count, .seg.no-lines .split { display: none; }
 kbd { font: 11px var(--mono); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
 .hint { color: var(--text-muted); font-size: 12px; }
 /* A mark wraps a whole match, highlighter tokens and all, so the tokens take its colour. */
