@@ -1,7 +1,14 @@
 """A stand-in for the GitHub CLI, answering the commands the app runs from files in FAKE_GH_STATE.
 
+Each call adds its arguments to calls.log, as a JSON list on a line of its own. A call fails, with exit code 1, when
+its arguments start with the words of a line of fail.txt.
+
 `gh auth status` reports a signed-in user.
 `gh pr view <n> --repo o/r --json <fields> [--jq .field]` prints pr<n>.json, or one field of it.
+`gh pr view --json number --jq .number` prints the <n> of a pr<n>.json with the branch checked out in the working
+folder as its `headRefName`, or fails when it finds none.
+`gh pr checkout <n> --repo o/r` checks out the pull request's branch in the working folder with the git commands
+gh 2.86.0 runs, and fails with git's error when one fails.
 `gh repo clone o/r <dest> [-- --bare ...]` clones the repo named in repo.txt, bare when asked; `gh repo set-default`
 does nothing.
 `gh api graphql --input -` answers a read query from comments.json; a mutation is appended to mutations.log,
@@ -9,6 +16,7 @@ and a review posted with threads adds them to comments.json, so the page sees wh
 """
 
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -16,17 +24,60 @@ from pathlib import Path
 
 
 def state_dir() -> Path:
-    import os
-
     return Path(os.environ["FAKE_GH_STATE"])
 
 
+def pr_meta(number: str) -> dict:
+    return json.loads((state_dir() / f"pr{number}.json").read_text())
+
+
 def pr_view(args: list[str]) -> None:
-    meta = json.loads((state_dir() / f"pr{args[0]}.json").read_text())
+    meta = pr_meta(args[0])
     if "--jq" in args:
         print(meta[args[args.index("--jq") + 1].lstrip(".")])
     else:
         print(json.dumps(meta))
+
+
+def git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def git_or_fail(*args: str) -> str:
+    r = git(*args)
+    if r.returncode:
+        sys.exit(r.stderr.strip() or r.stdout.strip())
+    return r.stdout
+
+
+def branch_pr_view() -> None:
+    branch = git_or_fail("branch", "--show-current").strip()
+    for path in state_dir().glob("pr*.json"):
+        if branch and json.loads(path.read_text())["headRefName"] == branch:
+            print(path.stem[2:])
+            return
+    sys.exit(f'no pull requests found for branch "{branch}"')
+
+
+def pr_checkout(args: list[str]) -> None:
+    meta = pr_meta(args[0])
+    branch = meta["headRefName"]
+    if not meta["isCrossRepository"]:
+        remote = f"refs/remotes/origin/{branch}"
+        git_or_fail("fetch", "origin", f"+refs/heads/{branch}:{remote}", "--no-tags")
+        if git("show-ref", "--verify", "--", f"refs/heads/{branch}").returncode == 0:
+            git_or_fail("checkout", branch)
+            git_or_fail("merge", "--ff-only", remote)
+        else:
+            git_or_fail("checkout", "-b", branch, "--track", f"origin/{branch}")
+        return
+    pull = f"refs/pull/{args[0]}/head"
+    if git("branch", "--show-current").stdout.strip() == branch:
+        git_or_fail("fetch", "origin", pull, "--no-tags")
+        git_or_fail("merge", "--ff-only", "FETCH_HEAD")
+    else:
+        git_or_fail("fetch", "origin", f"{pull}:{branch}", "--no-tags")
+        git_or_fail("checkout", branch)
 
 
 def repo_clone(args: list[str]) -> None:
@@ -100,12 +151,27 @@ def graphql() -> None:
     print(json.dumps({"data": {"viewer": {"login": "tester"}, "repository": {"pullRequest": pr}}}))
 
 
+def log_and_fail(args: list[str]) -> None:
+    with (state_dir() / "calls.log").open("a") as log:
+        log.write(json.dumps(args) + "\n")
+    failures = state_dir() / "fail.txt"
+    lines = failures.read_text().splitlines() if failures.exists() else []
+    for line in lines:
+        if line.split() and args[: len(line.split())] == line.split():
+            sys.exit(f"fake gh: injected failure of {' '.join(args)}")
+
+
 def main() -> None:
     args = sys.argv[1:]
+    log_and_fail(args)
     if args[:2] == ["auth", "status"]:
         print("Logged in to github.com account tester")
+    elif args[:3] == ["pr", "view", "--json"]:
+        branch_pr_view()
     elif args[:2] == ["pr", "view"]:
         pr_view(args[2:])
+    elif args[:2] == ["pr", "checkout"]:
+        pr_checkout(args[2:])
     elif args[:2] == ["repo", "clone"]:
         repo_clone(args[2:])
     elif args[:2] == ["repo", "set-default"]:

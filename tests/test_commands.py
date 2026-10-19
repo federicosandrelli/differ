@@ -25,3 +25,20 @@ def test_a_failed_command_keeps_a_short_error_whole(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(commands.subprocess, "run", failing(b"no pull requests found\n"))
     with pytest.raises(commands.CommandError, match=r"^`gh pr view 9` failed: no pull requests found$"):
         commands.run(["gh", "pr", "view", "9"])
+
+
+def test_start_runs_the_command_detached(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[dict] = []
+    monkeypatch.setattr(commands.subprocess, "Popen", lambda args, **kwargs: seen.append(kwargs))
+    commands.start(["tool"])
+    assert seen[0]["start_new_session"] is True
+    assert seen[0]["stdin"] == seen[0]["stdout"] == seen[0]["stderr"] == subprocess.DEVNULL
+
+
+def test_start_names_a_missing_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing(args: list[str], **kwargs: Any) -> None:
+        raise FileNotFoundError(args[0])
+
+    monkeypatch.setattr(commands.subprocess, "Popen", missing)
+    with pytest.raises(commands.CommandError, match="^/x/code is not installed$"):
+        commands.start(["/x/code"])

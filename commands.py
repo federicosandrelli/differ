@@ -16,26 +16,30 @@ class CommandError(Exception):
 
 
 def call(
-    args: list[str], input: bytes | None = None, timeout: float = TIMEOUT, cwd: Path | None = None
+    args: list[str],
+    input: bytes | None = None,
+    timeout: float = TIMEOUT,
+    cwd: Path | None = None,
+    check: bool = False,
 ) -> subprocess.CompletedProcess[bytes]:
-    """Run the command in cwd (by default this process's directory) and wait for it, whatever its exit code. Raises
-    CommandError when it is not installed or does not finish in time."""
+    """Run the command in cwd (by default this process's directory) and wait for it. Raises CommandError when it is
+    not installed or does not finish in time, and, when `check` holds, when it fails."""
     try:
-        return subprocess.run(args, capture_output=True, input=input, timeout=timeout, cwd=cwd)
+        r = subprocess.run(args, capture_output=True, input=input, timeout=timeout, cwd=cwd)
     except FileNotFoundError:
         name = "The GitHub CLI (gh)" if args[0] == "gh" else args[0]
         raise CommandError(f"{name} is not installed or not on PATH") from None
     except subprocess.TimeoutExpired:
         raise CommandError(f"`{shown(args)}` did not finish within {timeout:g} seconds") from None
+    if check and r.returncode:
+        err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
+        raise CommandError(f"`{shown(args)}` failed: {tail(err)}")
+    return r
 
 
 def run(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT, cwd: Path | None = None) -> bytes:
-    """The command's output. Raises CommandError as call does, and when the command fails."""
-    r = call(args, input, timeout, cwd)
-    if r.returncode:
-        err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
-        raise CommandError(f"`{shown(args)}` failed: {tail(err)}")
-    return r.stdout
+    """The command's output. Raises CommandError as call does with `check`."""
+    return call(args, input, timeout, cwd, check=True).stdout
 
 
 def start(args: list[str]) -> subprocess.Popen[bytes]:

@@ -274,11 +274,13 @@ editors open, stay too.
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API.
 - `github.py` is the one place that talks to GitHub: every `gh` command the
-  app runs, and `PullRef`, the name of a pull request (`owner/repo#123`).
+  app runs goes through its `gh`, and it holds `PullRef`, the name of a pull
+  request (`owner/repo#123`).
   `commands.py` runs `gh` and `git` with a time limit and says how a command
   failed.
-- `editors.py` knows the editors the page can open a file in, and keeps the
-  clone of each repository that they open, on the pull request's branch.
+- `editors.py` knows the editors the page can open a file in, and starts them.
+  `checkout.py` keeps the clone of each repository that they open, and moves it
+  to the pull request's branch without losing the user's work.
 - `recent.py` keeps the start page's list of the pull requests opened last,
   with the status and author of each and the viewer's login, in `recent.json`
   in the cache.
