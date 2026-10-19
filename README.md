@@ -75,9 +75,10 @@ to the pull request's head. When a pull request's page opens, the server
 clones the repository in the background if it has no clone yet, so the first
 click doesn't wait for it. A click on a pull request that is already checked
 out at its head skips the checkout: the server only checks the head on GitHub,
-unless it read it in the last 20 seconds. While the
-editor is still opening the last click from the same repository, for example
-while PyCharm waits on a dialog, the next click shows an error instead.
+unless it read it in the last 20 seconds. While a JetBrains IDE is still
+opening the last click from the same repository, for example while PyCharm
+waits on a dialog, the next click in that IDE shows an error instead. A click
+in another editor opens the file.
 
 The server never loses uncommitted changes or commits that were never pushed.
 When it can't switch the clone to the branch safely, the page shows why.
@@ -278,7 +279,8 @@ editors open, stay too.
   request (`owner/repo#123`).
   `commands.py` runs `gh` and `git` with a time limit and says how a command
   failed.
-- `editors.py` knows the editors the page can open a file in, and starts them.
+- `editors.py` knows the editors the page can open a file in, and starts them
+  through one adapter per kind of editor: VS Code and Cursor, or a JetBrains IDE.
   `checkout.py` keeps the clone of each repository that they open, and moves it
   to the pull request's branch without losing the user's work.
 - `recent.py` keeps the start page's list of the pull requests opened last,

@@ -207,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(
                     {
                         "installed": [{"id": e.id, "name": e.name} for e in editors.installed()],
-                        "known": [e.name for e in editors.EDITORS.values()],
+                        "known": [e.name for e in editors.known()],
                     }
                 )
             return self.send(404, error_page(f"No page at {url.path}"))
