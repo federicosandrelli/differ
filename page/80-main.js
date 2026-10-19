@@ -31,8 +31,8 @@ function binaryHtml(f) {
 }
 const countsHtml = (f) => f.binary ? `<span class="counts">${binarySize(f)}</span>`
   : `<span class="counts"><span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span></span>`;
-// installed is null until the editors load.
-const EDITOR = { installed: null, known: [], opening: new Set(), error: '' };
+// installed is null until the editors load. menu is the path of the file whose editor menu is open, or null.
+const EDITOR = { installed: null, known: [], opening: new Set(), error: '', menu: null };
 async function loadEditors() {
   if (!API) return;
   try {
@@ -66,9 +66,14 @@ function editorButton(f) {
   const editor = chosenEditor(), busy = EDITOR.opening.has(f.path);
   const title = !editor ? `No supported editor found. differ opens ${EDITOR.known.join(', ')}.`
     : busy ? `Opening in ${editor.name}…` : `Open the repository in ${editor.name}, on the pull request's branch, at this file`;
-  return `<button class="editor" data-open-editor="${esc(f.path)}" title="${esc(title)}"${editor && !busy ? '' : ' disabled'}${busy ? ' aria-busy="true"' : ''}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 4.5 1.5 8 5 11.5M11 4.5 14.5 8 11 11.5M9.25 3 6.75 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+  const button = `<button class="editor" data-open-editor="${esc(f.path)}" title="${esc(title)}"${editor && !busy ? '' : ' disabled'}${busy ? ' aria-busy="true"' : ''}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 4.5 1.5 8 5 11.5M11 4.5 14.5 8 11 11.5M9.25 3 6.75 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+  if (EDITOR.installed.length < 2) return button;
+  const open = EDITOR.menu === f.path;
+  const more = `<button class="editor-more" data-editor-menu="${esc(f.path)}" title="Choose the editor" aria-haspopup="menu" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3.5" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.5" r="1.3"/></svg></button>`;
+  const menu = open ? `<div class="editor-menu" role="menu">${EDITOR.installed.map(e => `<button role="menuitemradio" aria-checked="${e === editor}" data-editor="${esc(e.id)}" class="${e === editor ? 'on' : ''}">${esc(e.name)}</button>`).join('')}</div>` : '';
+  return `<span class="editor-pick"><span class="seg">${button}${more}</span>${menu}</span>`;
 }
-const editorKey = (f) => JSON.stringify([EDITOR.installed, chosenEditor(), EDITOR.opening.has(f.path)]);
+const editorKey = (f) => JSON.stringify([EDITOR.installed, chosenEditor(), EDITOR.opening.has(f.path), EDITOR.menu === f.path]);
 function headerHtml(f, open) {
   const ck = changeKind(f);
   return `<div class="fhead"><div class="top">

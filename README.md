@@ -88,8 +88,9 @@ IDEA, WebStorm and GoLand, which open the folder as their "Open project in"
 setting says. When a running JetBrains IDE has the clone open as a project, as
 its list of recent projects says, the server opens the file through the
 IDE's URL scheme (`pycharm://open?file=…`), which takes a fraction of a second
-instead of the launcher's two. When more than one editor is installed, the sidebar shows a
-picker, and the page saves the choice as `dr:editor`. It forgets a saved
+instead of the launcher's two. When more than one editor is installed, a `⋮`
+next to the button opens a menu of them; choosing one opens the file in it, and
+the page saves the choice as `dr:editor` for every file. It forgets a saved
 editor that is no longer installed. When none is installed, the button says so.
 
 ## Desktop app

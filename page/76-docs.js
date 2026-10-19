@@ -65,9 +65,9 @@ it, commit and push. differ keeps one clone of each repository for this, in
 commits, also after a force-push, except to a pull request from a fork. differ never loses your work there: when the clone has uncommitted changes on
 another pull request's branch, or when bringing the branch up to date would lose your changes or commits, differ
 leaves the clone as it is and shows the error.</p>
-<p>differ opens VS Code, Cursor, PyCharm, IntelliJ IDEA, WebStorm and GoLand. When more than one is installed, choose
-one under "Editor" in the sidebar, next to the file type buttons; differ remembers the choice on this computer.
-Deleted files have no button.</p>
+<p>differ opens VS Code, Cursor, PyCharm, IntelliJ IDEA, WebStorm and GoLand. When more than one is installed, the
+<code>⋮</code> next to the button lists them: choosing one opens the file in it, and differ keeps it as the editor for
+every file on this computer. Deleted files have no button.</p>
 
 <h2>Search</h2>
 <ul>

@@ -1201,3 +1201,33 @@ def test_an_address_near_the_end_stays_in_place_when_the_comments_load(
     expect(page.locator("#side .leaf[data-path='src/b.py']")).to_have_class(re.compile(r"\bactive\b"))
     if link:
         expect(page.locator(selector)).to_have_class(re.compile(r"\btarget\b"))
+
+
+def test_choosing_an_editor_in_a_file_s_menu_opens_the_file_in_it_and_keeps_the_choice(
+    page: Page, server_url: str
+) -> None:
+    installed = [{"id": "vscode", "name": "VS Code"}, {"id": "pycharm", "name": "PyCharm"}]
+    page.route(
+        "**/api/acme/widgets/1/editors",
+        lambda r: r.fulfill(json={"installed": installed, "known": ["VS Code", "PyCharm"]}),
+    )
+    opened: list[dict] = []
+    page.route(
+        "**/api/acme/widgets/1/open", lambda r: (opened.append(r.request.post_data_json or {}), r.fulfill(json={}))
+    )
+    open_pr(page, server_url)
+    page.wait_for_function("EDITOR.installed")
+    menu = page.locator(f"{APP} .editor-menu")
+    page.click(f"{APP} [data-editor-menu]")
+    expect(menu).to_be_visible()
+    page.click("#overview h1")
+    expect(menu).to_have_count(0)
+    page.click(f"{APP} [data-editor-menu]")
+    menu.get_by_role("menuitemradio", name="PyCharm").click()
+    expect(menu).to_have_count(0)
+    page.wait_for_function("!EDITOR.opening.size")
+    assert opened == [{"editor": "pycharm", "path": "src/app.py", "line": 2}]
+    assert page.evaluate("localStorage.getItem('dr:editor')") == "pycharm"
+    page.click("section[data-file='README.md'] [data-open-editor]")
+    page.wait_for_function("!EDITOR.opening.size")
+    assert opened[-1]["editor"] == "pycharm"
