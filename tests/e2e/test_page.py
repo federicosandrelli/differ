@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Page, Position, expect
+from playwright.sync_api import Locator, Page, Position, expect
 
 from e2e.conftest import TITLE
 from helpers import Files
@@ -257,7 +257,7 @@ def test_an_opened_context_fold_keeps_its_row_and_folds_again(page: Page, server
     expect(section.locator("tr.fold")).to_have_text("⋯ 12 unchanged lines")
 
 
-def test_folds_with_nothing_between_them_join_into_one_row_that_opens_them_all(
+def test_folds_with_nothing_between_them_join_into_one_fold_that_opens_and_closes_as_one(
     page: Page, server_url: str, add_pr: AddPr
 ) -> None:
     helper = "".join(f"    h{n} = {n}\n" for n in range(1, 21))
@@ -273,6 +273,143 @@ def test_folds_with_nothing_between_them_join_into_one_row_that_opens_them_all(
     for line in ('"""Date helpers.', "import os", "def helper():", "h10 = 10"):
         expect(code(line)).to_be_visible()
     expect(section.locator("tr.fold")).to_have_count(0)
+    expect(section.locator("tr.collapsed")).to_have_count(0)
+    opened = section.locator("tr.runhead[data-fold]")
+    expect(opened).to_have_count(1)
+    opened.click()
+    expect(section.locator("tr.fold")).to_have_count(1)
+    expect(code("import os")).to_have_count(0)
+
+
+def test_a_comment_inside_an_opened_merged_fold_keeps_the_fold_open_as_one(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    helper = "".join(f"    h{n} = {n}\n" for n in range(1, 21))
+    head = f'"""Date helpers.\n\nMore about them.\n"""\n\nimport os\nimport sys\n\n\ndef helper():\n{helper}\n\ndef target():\n'
+    open_pr(page, server_url, add_pr({"dates.py": head + "    return 0\n"}, {"dates.py": head + "    return 1\n"}))
+    section = page.locator("section[data-file='dates.py']")
+    section.scroll_into_view_if_needed()
+
+    def code(line: str) -> Locator:
+        return section.locator("tr.ctx", has=page.locator("td.c", has_text=re.compile(rf"^\s*{re.escape(line)}$")))
+
+    section.locator("tr.fold").click()
+    code("import os").locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 6 ")
+    for line in ('"""Date helpers.', "import os", "h10 = 10", "h19 = 19"):
+        expect(code(line)).to_be_visible()
+    expect(section.locator("tr.runhead[data-fold]")).to_have_count(1)
+    expect(section.locator("tr.fold, tr.collapsed")).to_have_count(0)
+    page.keyboard.press("Escape")
+    code("h20 = 20").locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 30 ")
+    expect(section.locator("tr.runhead[data-fold]")).to_have_count(1)
+    expect(section.locator("tr.fold")).to_have_count(0)
+    expect(code("h10 = 10")).to_be_visible()
+
+
+def test_an_opened_merged_fold_stays_open_while_comments_start_and_end_around_it(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    def body(x: str, last: int) -> str:
+        above = "".join(f"    a{n} = {n}\n" for n in range(1, 7))
+        below = "".join(f"    b{n} = {n}\n" for n in range(1, 16))
+        return f"def target():\n{above}    x ={x}0\n{below}    return {last}\n"
+
+    open_pr(page, server_url, add_pr({"t.py": body(" ", 0)}, {"t.py": body("  ", 1)}))
+    section = page.locator("section[data-file='t.py']")
+    section.scroll_into_view_if_needed()
+    noise = section.locator("tr.add td.c", has_text="x =  0")
+    section.locator("tr.ctx", has_text="b12 = 12").locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 20 ")
+    section.locator("tr.fold").click()
+    expect(noise).to_be_visible()
+    section.locator("[data-compose-cancel]").click()
+    expect(page.locator(".form.compose")).to_have_count(0)
+    expect(noise).to_be_visible()
+    expect(section.locator("tr.fold, tr.collapsed")).to_have_count(0)
+    section.locator("tr.ctx", has_text="def target():").locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 1 ")
+    expect(noise).to_be_visible()
+    expect(section.locator("tr.fold, tr.collapsed")).to_have_count(0)
+
+
+def test_grouped_noise_runs_open_as_one_fold_with_the_lines_between_them(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    old = "a = 0\nb = 0\nc = 0\nd = 0\ne = 0\nf = 0\ng = 0\nh = 0\n"
+    new = "a = 1\nb = 0\nc =  0\nd = 0\ne = 0\nf =  0\ng = 0\nh = 1\n"
+    open_pr(page, server_url, add_pr({"ws.py": old}, {"ws.py": new}))
+    section = page.locator("section[data-file='ws.py']")
+    section.scroll_into_view_if_needed()
+    group = section.locator("tr.collapsed[data-fold]")
+    expect(group).to_have_count(1)
+    expect(group).to_contain_text("in 2 places")
+    expect(section.locator("tr.ctx td.c", has_text="d = 0")).to_have_count(0)
+    group.click()
+    opened = section.locator("tr.runhead[data-fold]")
+    expect(opened).to_have_count(1)
+    expect(opened).to_contain_text("in 2 places")
+    expect(section.locator("tr.collapsed")).to_have_count(0)
+    expect(section.locator("tr.ctx td.c", has_text="d = 0")).to_be_visible()
+    expect(section.locator("tr.add td.c", has_text="f =  0")).to_be_visible()
+    opened.click()
+    expect(section.locator("tr.collapsed[data-fold]")).to_have_count(1)
+    expect(section.locator("tr.ctx td.c", has_text="d = 0")).to_have_count(0)
+    section.locator("tr.collapsed[data-fold]").click()
+    section.locator("tr.ctx", has_text="d = 0").locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 4 ")
+    expect(section.locator("tr.add td.c", has_text="c =  0")).to_be_visible()
+    expect(section.locator("tr.add td.c", has_text="f =  0")).to_be_visible()
+    expect(section.locator("tr.runhead[data-fold]")).to_contain_text("in 2 places")
+    expect(section.locator("tr.collapsed")).to_have_count(0)
+
+
+def test_a_fold_next_to_an_opened_merged_fold_still_closes(page: Page, server_url: str, add_pr: AddPr) -> None:
+    old = "".join(f"{c} = 0\n" for c in "abcdefghi")
+    new = "a = 1\nb = 0\nc =  0\nd = 0\ne =  0\nf = 0\ng =  0\nh = 0\ni = 1\n"
+    open_pr(page, server_url, add_pr({"ws.py": old}, {"ws.py": new}))
+    section = page.locator("section[data-file='ws.py']")
+    section.scroll_into_view_if_needed()
+    run_g = section.locator("tr.add td.c", has_text="g =  0")
+    section.locator("tr.collapsed[data-fold]").click()
+    section.locator("tr.ctx", has_text="f = 0").locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 6 ")
+    section.locator("tr.runhead[data-fold]").click()
+    for _ in range(2):
+        section.locator("tr.collapsed[data-fold]").last.click()
+    expect(section.locator("tr.collapsed")).to_have_count(0)
+    section.locator("[data-compose-cancel]").click()
+    expect(page.locator(".form.compose")).to_have_count(0)
+    expect(run_g).to_be_visible()
+    section.locator("tr.runhead[data-fold]").last.click()
+    expect(run_g).to_have_count(0)
+    expect(section.locator("tr.add td.c", has_text="e =  0")).to_be_visible()
+
+
+def test_a_comment_ending_next_to_an_opened_fold_opens_no_more_lines(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    def body(x: str, last: int) -> str:
+        above = "".join(f"    a{n} = {n}\n" for n in range(1, 13))
+        below = "".join(f"    b{n} = {n}\n" for n in range(1, 40))
+        return f"def target():\n    x ={x}0\n{above}    p = 0\n{below}    return {last}\n"
+
+    open_pr(page, server_url, add_pr({"t.py": body(" ", 0)}, {"t.py": body("  ", 1)}))
+    section = page.locator("section[data-file='t.py']")
+    section.scroll_into_view_if_needed()
+    section.locator("tr.fold").click()
+    section.locator("tr.ctx", has_text="p = 0").locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 15 ")
+    section.locator("tr.runhead[data-fold]").click()
+    expect(section.locator("tr.fold")).to_have_count(2)
+    section.locator("tr.fold").first.click()
+    expect(section.locator("tr.ctx td.c", has_text="a6 = 6")).to_be_visible()
+    section.locator("[data-compose-cancel]").click()
+    expect(page.locator(".form.compose")).to_have_count(0)
+    expect(section.locator("tr.ctx td.c", has_text="a6 = 6")).to_be_visible()
+    expect(section.locator("tr.ctx td.c", has_text="b20 = 20")).to_have_count(0)
+    expect(section.locator("tr.fold")).to_have_count(1)
 
 
 def test_the_line_number_a_row_shows_starts_and_extends_a_comment(page: Page, server_url: str, add_pr: AddPr) -> None:
