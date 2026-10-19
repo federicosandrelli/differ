@@ -62,7 +62,7 @@ reviewed files on this computer only; GitHub does not see them.</p>
 the pull request's branch, at the first changed line of the file. There you can read the code around the change, run
 it, commit and push. differ keeps one clone of each repository for this, in
 <code>~/.cache/differ/checkouts/</code>, made in the background when you open a pull request, and checks out the pull request's branch in it each time, with any new
-commits, also after a force-push. differ never loses your work there: when the clone has uncommitted changes on
+commits, also after a force-push, except to a pull request from a fork. differ never loses your work there: when the clone has uncommitted changes on
 another pull request's branch, or when bringing the branch up to date would lose your changes or commits, differ
 leaves the clone as it is and shows the error.</p>
 <p>differ opens VS Code, Cursor, PyCharm, IntelliJ IDEA, WebStorm and GoLand. When more than one is installed, choose
