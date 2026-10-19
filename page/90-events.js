@@ -94,7 +94,7 @@ function switchSearch() {
 function closeSearch() {
   const box = document.querySelector('#side .search');
   if (!box || !(box.value || state.fileSearch)) return;
-  box.value = ''; state.q = ''; state.hit = null; state.fileSearch = false;
+  state.q = ''; state.hit = null; state.fileSearch = false;
   const f = BY_PATH[state.view];
   if (f) renderKeepingHeader(f); else render();
 }
@@ -121,7 +121,7 @@ function goHit(hit) {
   updateSearchMeta();
 }
 // While searching, a file shown from the tree opens at its first hit; false when the file has none. In file search
-// the file is the hit: it becomes the one Enter goes on from, and the function returns false so the caller shows it.
+// it makes the file the current hit and returns false.
 function goFirstHit(path) {
   if (state.fileSearch) { if (state.q) { state.hit = { path, key: null }; updateSearchMeta(); } return false; }
   const key = state.q ? firstHitKey(BY_PATH[path]) : null;
