@@ -146,7 +146,7 @@ function setCursor(el) {
   if (f) passFile(f);
 }
 // Show a file the reader steps onto. While searching, it opens at its first hit; a closed section stays closed.
-function passFile(f) { if (!(sectionOpen(f) && goFirstHit(f.path))) scrollToFile(f.path); }
+function passFile(f) { if (!((state.fileSearch || sectionOpen(f)) && goFirstHit(f.path))) scrollToFile(f.path); }
 function toggleFolder(folder) {
   state.closed.has(folder) ? state.closed.delete(folder) : state.closed.add(folder);
   renderSide();

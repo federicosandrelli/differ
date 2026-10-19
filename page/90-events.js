@@ -120,8 +120,10 @@ function goHit(hit) {
   popHit();
   updateSearchMeta();
 }
-// While searching, a file shown from the tree opens at its first hit; false when the file has none.
+// While searching, a file shown from the tree opens at its first hit; false when the file has none. In file search
+// the file is the hit: it becomes the one Enter goes on from, and the function returns false so the caller shows it.
 function goFirstHit(path) {
+  if (state.fileSearch) { if (state.q) { state.hit = { path, key: null }; updateSearchMeta(); } return false; }
   const key = state.q ? firstHitKey(BY_PATH[path]) : null;
   if (key) goHit({ path, key });
   return !!key;

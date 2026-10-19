@@ -502,6 +502,16 @@ def test_file_search_lists_only_the_found_files_and_enter_steps_through_them(
     expect(active).to_have_attribute("data-path", "b/one_more.py")
     page.keyboard.press("Shift+Enter")
     expect(active).to_have_attribute("data-path", "a/one.py")
+    page.keyboard.press("Escape")
+    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.type("one")
+    page.click("#side .leaf[data-path='b/one_more.py']")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 2 / 2")
+    page.keyboard.press("Alt+ArrowUp")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 1 / 2")
+    page.click("#side .search")
+    page.keyboard.press("Enter")
+    expect(active).to_have_attribute("data-path", "b/one_more.py")
 
 
 def test_escape_brings_back_every_file_around_the_one_file_search_went_to(
