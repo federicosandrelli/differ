@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 TIMEOUT = 120
 # A clone or a fetch downloads history, so it gets longer.
@@ -14,25 +15,42 @@ class CommandError(Exception):
     """A command is not installed, did not finish in time, or failed; the message names it."""
 
 
-def call(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT) -> subprocess.CompletedProcess[bytes]:
-    """Run the command and wait for it, whatever its exit code. Raises CommandError when it is not installed or
-    does not finish in time."""
+def call(
+    args: list[str],
+    input: bytes | None = None,
+    timeout: float = TIMEOUT,
+    cwd: Path | None = None,
+    check: bool = False,
+) -> subprocess.CompletedProcess[bytes]:
+    """Run the command in cwd (by default this process's directory) and wait for it. Raises CommandError when it is
+    not installed or does not finish in time, and, when `check` holds, when it fails."""
     try:
-        return subprocess.run(args, capture_output=True, input=input, timeout=timeout)
+        r = subprocess.run(args, capture_output=True, input=input, timeout=timeout, cwd=cwd)
     except FileNotFoundError:
         name = "The GitHub CLI (gh)" if args[0] == "gh" else args[0]
         raise CommandError(f"{name} is not installed or not on PATH") from None
     except subprocess.TimeoutExpired:
         raise CommandError(f"`{shown(args)}` did not finish within {timeout:g} seconds") from None
-
-
-def run(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT) -> bytes:
-    """The command's output. Raises CommandError as call does, and when the command fails."""
-    r = call(args, input, timeout)
-    if r.returncode:
+    if check and r.returncode:
         err = r.stderr.decode(errors="replace").strip() or r.stdout.decode(errors="replace").strip()
         raise CommandError(f"`{shown(args)}` failed: {tail(err)}")
-    return r.stdout
+    return r
+
+
+def run(args: list[str], input: bytes | None = None, timeout: float = TIMEOUT, cwd: Path | None = None) -> bytes:
+    """The command's output. Raises CommandError as call does with `check`."""
+    return call(args, input, timeout, cwd, check=True).stdout
+
+
+def start(args: list[str]) -> subprocess.Popen[bytes]:
+    """Start the command without waiting for it, in a session of its own, so it keeps running after this process
+    exits. Raises CommandError when it is not installed."""
+    try:
+        return subprocess.Popen(
+            args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        )
+    except FileNotFoundError:
+        raise CommandError(f"{args[0]} is not installed") from None
 
 
 def shown(args: list[str]) -> str:

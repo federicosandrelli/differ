@@ -51,6 +51,7 @@ def pr_meta(number: int, base: str, head: str) -> dict:
         "headRefOid": head,
         "baseRefName": "main",
         "headRefName": "greeting",
+        "isCrossRepository": False,
         "commits": [{"oid": head}],
         "state": "OPEN",
         "isDraft": False,

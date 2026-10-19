@@ -17,7 +17,10 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      (the page, /open and /status refuse a request a browser marks
                                      Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
-  /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard, conversation
+  /api/<owner>/<repo>/<number>/editors    GET: the editors installed (GitHub always is), and the names of all the editors
+                                     the app knows
+  /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
+                                     conversation, open (opens a file in an editor, on the pull request's branch)
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -45,6 +48,7 @@ from urllib.parse import parse_qs, urlparse
 import build
 import commands
 import comments
+import editors
 import github
 import recent
 import render
@@ -189,6 +193,7 @@ class Handler(BaseHTTPRequestHandler):
                 if "refresh" in query:
                     build.refresh(ref)
                     return self.redirect(url.path)
+                editors.prepare(ref)
                 if page := build.serve(ref):
                     body = page.read_bytes()
                     recent.note_opened(ref, *render.read_head(body))
@@ -196,6 +201,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, progress_page(ref))
             if (m := API.match(url.path)) and m["action"] == "comments":
                 return self.send_json(comments.fetch(PullRef.from_match(m)))
+            if (m := API.match(url.path)) and m["action"] == "editors":
+                return self.send_json(
+                    {
+                        "installed": [{"id": e.id, "name": e.name, "local": e.local} for e in editors.installed()],
+                        "known": [e.name for e in editors.known()],
+                    }
+                )
             return self.send(404, error_page(f"No page at {url.path}"))
         except commands.CommandError as exc:
             return self.send_message(502, str(exc), as_json=API.match(url.path) is not None)
@@ -285,12 +297,15 @@ class Handler(BaseHTTPRequestHandler):
                 result = comments.discard(ref)
             elif action == "conversation":
                 result = comments.add_conversation_comment(ref, body=body["body"])
+            elif action == "open":
+                editors.open_file(ref, str(body["editor"]), str(body["path"]), line_number(body["line"]))
+                result = {}
             else:
                 return self.send_json({"error": f"Unknown action {action}"}, 404)
             return self.send_json(result)
         except (KeyError, ValueError) as exc:
             return self.send_json({"error": f"Bad request: {exc}"}, 400)
-        except comments.ReviewRefused as exc:
+        except (comments.ReviewRefused, editors.Refused) as exc:
             return self.send_json({"error": str(exc)}, 400)
         except commands.CommandError as exc:
             return self.send_json({"error": str(exc)}, 502)

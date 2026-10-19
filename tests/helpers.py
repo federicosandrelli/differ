@@ -29,8 +29,8 @@ def git(repo: Path, *args: str) -> str:
     ).stdout
 
 
-def commit_tree(repo: Path, files: Files, message: str) -> str:
-    """Replace the working tree with `files`, commit, and return the commit's sha."""
+def commit_tree(repo: Path, files: Files, message: str, amend: bool = False) -> str:
+    """Replace the working tree with `files`, commit (or amend the last commit), and return the commit's sha."""
     for tracked in git(repo, "ls-files", "-z").split("\0"):
         if tracked:
             (repo / tracked).unlink()
@@ -42,7 +42,7 @@ def commit_tree(repo: Path, files: Files, message: str) -> str:
         else:
             target.write_text(content)
     git(repo, "add", "-A")
-    git(repo, "commit", "-q", "--allow-empty", "-m", message)
+    git(repo, "commit", "-q", "--allow-empty", *(["--amend"] if amend else []), "-m", message)
     return git(repo, "rev-parse", "HEAD").strip()
 
 

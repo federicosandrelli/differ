@@ -63,6 +63,38 @@ they need the server (not a page opened from disk). They refresh after every
 change and when the window regains focus after 30 seconds away, unless a
 comment box has focus.
 
+## Open in an editor
+
+The `</>` button in a file's header opens the whole repository in a new window
+of your editor, on the pull request's branch, at the first changed line of the
+file (deleted files have no button). There you can read the code around the
+change, run it, commit and push. The server keeps one clone of each
+repository, with file contents, in `~/.cache/differ/checkouts/<owner>/<repo>`,
+and runs `gh pr checkout` in it on each click, which fast-forwards the branch
+to the pull request's head. When a pull request's page opens, the server
+clones the repository in the background if it has no clone yet, so the first
+click doesn't wait for it. A click on a pull request that is already checked
+out at its head skips the checkout: the server only checks the head on GitHub,
+unless it read it in the last 20 seconds. While a JetBrains IDE is still
+opening the last click from the same repository, for example while PyCharm
+waits on a dialog, the next click in that IDE shows an error instead. A click
+in another editor opens the file.
+
+The server never loses uncommitted changes or commits that were never pushed.
+When it can't switch the clone to the branch safely, the page shows why.
+
+The server knows VS Code, Cursor, and the JetBrains IDEs PyCharm, IntelliJ
+IDEA, WebStorm and GoLand, which open the folder as their "Open project in"
+setting says. When a running JetBrains IDE has the clone open as a project, as
+its list of recent projects says, the server opens the file through the
+IDE's URL scheme (`pycharm://open?file=…`), which takes a fraction of a second
+instead of the launcher's two. GitHub is always in the list: it opens the file
+on github.com at the pull request's head commit, at the same line, in the
+browser, with no clone. When an editor is installed besides GitHub, a `⋮` next
+to the button opens a menu of them; choosing one opens the file in it, and the
+page saves the choice as `dr:editor` for every file. It forgets a saved editor
+that is no longer installed.
+
 ## Desktop app
 
 The same pages in a native window, with the tab strip across the title bar.
@@ -194,7 +226,8 @@ request that changes `src-tauri/`, `web/`, `package.json`,
 `build.py` keeps only the pull request's two newest pages, so the page for the
 previous head commit stays while the new one builds. When `server.py` starts,
 it deletes the pages older than 30 days. The bare clones in `repos/` stay: they are what makes
-the second build of a repository fast, and `git fetch` keeps them small.
+the second build of a repository fast, and `git fetch` keeps them small. The clones in `checkouts/`, which the
+editors open, stay too.
 
 ## Pieces
 
@@ -245,9 +278,15 @@ the second build of a repository fast, and `git fetch` keeps them small.
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API.
 - `github.py` is the one place that talks to GitHub: every `gh` command the
-  app runs, and `PullRef`, the name of a pull request (`owner/repo#123`).
+  app runs goes through its `gh`, and it holds `PullRef`, the name of a pull
+  request (`owner/repo#123`).
   `commands.py` runs `gh` and `git` with a time limit and says how a command
   failed.
+- `editors.py` knows the editors the page can open a file in, and starts them
+  through one adapter per kind of editor: VS Code and Cursor, a JetBrains IDE,
+  or GitHub, which opens the file on github.com.
+  `checkout.py` keeps the clone of each repository that they open, and moves it
+  to the pull request's branch without losing the user's work.
 - `recent.py` keeps the start page's list of the pull requests opened last,
   with the status and author of each and the viewer's login, in `recent.json`
   in the cache.

@@ -31,13 +31,57 @@ function binaryHtml(f) {
 }
 const countsHtml = (f) => f.binary ? `<span class="counts">${binarySize(f)}</span>`
   : `<span class="counts"><span class="a">+${f.stats.additions}</span> <span class="d">−${f.stats.deletions}</span></span>`;
+// installed is null until the editors load. menu is the path of the file whose editor menu is open, or null.
+const EDITOR = { installed: null, known: [], opening: new Set(), error: '', menu: null };
+async function loadEditors() {
+  if (!API) return;
+  try {
+    Object.assign(EDITOR, await api('editors'));
+    if (!EDITOR.installed.some(e => e.id === lsGet('dr:editor'))) lsSet('dr:editor', null);
+  } catch (e) { EDITOR.installed = []; EDITOR.error = e.message; }
+  render();
+}
+const chosenEditor = () => EDITOR.installed && (EDITOR.installed.find(e => e.id === lsGet('dr:editor')) || EDITOR.installed[0]);
+// The first changed line of the file on the new side: an added line, or the line after the lines removed.
+function firstChangedLine(f) {
+  for (const h of f.hunks) {
+    let next = h.new_start;
+    for (const [tag, , n] of h.lines) {
+      if (tag === '+') return n;
+      if (tag === '-') return Math.max(1, next);
+      next = n + 1;
+    }
+  }
+  return 1;
+}
+async function openInEditor(f) {
+  const editor = chosenEditor();
+  if (!editor || EDITOR.opening.has(f.path)) return;
+  EDITOR.opening.add(f.path); EDITOR.error = ''; render();
+  try { await api('open', { editor: editor.id, path: f.path, line: firstChangedLine(f) }); } catch (e) { EDITOR.error = e.message; }
+  EDITOR.opening.delete(f.path); render();
+}
+function editorButton(f) {
+  if (!EDITOR.installed || f.status === 'D') return '';
+  const editor = chosenEditor(), busy = EDITOR.opening.has(f.path);
+  const title = !editor ? `No supported editor found. differ opens ${EDITOR.known.join(', ')}.`
+    : busy ? `Opening in ${editor.name}…`
+    : editor.local ? `Open the repository in ${editor.name}, on the pull request's branch, at this file` : `Open this file on ${editor.name}, at the pull request's head`;
+  const button = `<button class="editor" data-open-editor="${esc(f.path)}" title="${esc(title)}"${editor && !busy ? '' : ' disabled'}${busy ? ' aria-busy="true"' : ''}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 4.5 1.5 8 5 11.5M11 4.5 14.5 8 11 11.5M9.25 3 6.75 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+  if (EDITOR.installed.length < 2) return button;
+  const open = EDITOR.menu === f.path;
+  const more = `<button class="editor-more" data-editor-menu="${esc(f.path)}" title="Choose the editor" aria-haspopup="menu" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3.5" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.5" r="1.3"/></svg></button>`;
+  const menu = open ? `<div class="editor-menu" role="menu">${EDITOR.installed.map(e => `<button role="menuitemradio" aria-checked="${e === editor}" data-editor="${esc(e.id)}" class="${e === editor ? 'on' : ''}">${esc(e.name)}</button>`).join('')}</div>` : '';
+  return `<span class="editor-pick"><span class="seg">${button}${more}</span>${menu}</span>`;
+}
+const editorKey = (f) => JSON.stringify([EDITOR.installed, chosenEditor(), EDITOR.opening.has(f.path), EDITOR.menu === f.path]);
 function headerHtml(f, open) {
   const ck = changeKind(f);
   return `<div class="fhead"><div class="top">
       <button class="chev ${open ? 'open' : ''}" data-toggle="${esc(f.path)}" title="Close or open the file" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path"><b title="${esc(f.base)}">${esc(f.base)}</b><span class="dir" title="${esc(f.dir)}">${esc(f.dir)}</span>${renamedFrom(f)}</span>
-      <span class="kind">${esc(f.kind)}</span>${countsHtml(f)}
+      <span class="kind">${esc(f.kind)}</span>${countsHtml(f)}${editorButton(f)}
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
     </div></div>`;
 }
@@ -153,7 +197,7 @@ function patchOverview() {
   overviewEl.dataset.key = key;
 }
 function updateSection(f, el) {
-  const open = sectionOpen(f), key = `${open}|${isReviewed(f)}`;
+  const open = sectionOpen(f), key = `${open}|${isReviewed(f)}|${editorKey(f)}`;
   if (el.dataset.head === key) return;
   el.dataset.head = key;
   el.classList.toggle('closed', !open);

@@ -155,6 +155,7 @@ def pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(build, "jobs", {})
     monkeypatch.setattr(build, "head_checked", {})
     monkeypatch.setattr(build, "heads", {})
+    monkeypatch.setattr(build, "head_read", {})
     monkeypatch.setattr(build.threading, "Thread", AtOnce)
     state: dict[str, Any] = {"head": "a" * 40, "head_reads": 0, "started": []}
 
@@ -238,3 +239,18 @@ def test_serve_returns_the_page_of_a_head_moved_back_to_an_older_commit(
     assert build.serve(REF) == old
     build.refresh(REF)
     assert build.serve(REF) == old and pages["started"] == [REF]
+
+
+def test_recent_head_reads_the_head_from_github_at_most_once_in_head_ttl(
+    pages: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert build.recent_head(REF) == build.recent_head(REF) == "a" * 40
+    assert pages["head_reads"] == 1
+    monkeypatch.setitem(build.head_read, REF, time.time() - build.HEAD_TTL)
+    pages["head"] = "b" * 40
+    assert build.recent_head(REF) == "b" * 40 and pages["head_reads"] == 2
+
+
+def test_a_head_check_that_has_not_read_the_head_yet_does_not_make_the_old_head_recent(pages: dict[str, Any]) -> None:
+    build.heads[REF], build.head_checked[REF] = "old", time.time()
+    assert build.recent_head(REF) == "a" * 40

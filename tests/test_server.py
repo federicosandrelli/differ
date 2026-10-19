@@ -43,6 +43,7 @@ def get(path: str, site: str | None = None) -> tuple[int, bytes]:
 def test_a_cross_site_get_to_a_page_open_or_status_is_refused(path: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server.build, "start", lambda ref: pytest.fail("a cross-site GET started a build"))
     monkeypatch.setattr(server.build, "latest_page", lambda ref: pytest.fail("a cross-site GET read a page"))
+    monkeypatch.setattr(server.editors, "prepare", lambda ref: pytest.fail("a cross-site GET started a clone"))
     status, body = get(path, "cross-site")
     assert status == 403
     assert b"Forbidden: the request comes from another site (Sec-Fetch-Site: cross-site)" in body
@@ -318,6 +319,8 @@ def test_a_reference_that_names_no_pull_request_answers_400() -> None:
         ("comment", {"path": "a.py", "body": "b", "line": None}, "None is not a line number"),
         ("comment", {"path": "a.py", "body": "b", "line": 2, "start_line": "1"}, "'1' is not a line number"),
         ("conversation", ["b"], "the request is not a JSON object"),
+        ("open", {"editor": "vscode", "path": "a.py", "line": 0}, "0 is not a line number"),
+        ("open", {"editor": "vscode", "line": 1}, "'path'"),
     ],
 )
 def test_a_request_field_outside_its_type_answers_400(

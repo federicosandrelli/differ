@@ -4,13 +4,16 @@
 const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', status: '', pending: null, verdict: null, threads: [], reviews: [], comments: [] };
 const THREADS = { byFile: new Map(), orphans: [] };
 
+async function api(action, body) {
+  const init = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  const d = await (await fetch(`${API}/${action}`, init)).json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
 async function loadComments() {
   if (!API) return;
   try {
-    const r = await fetch(`${API}/comments`);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    Object.assign(C, d, { loaded: true, error: '', loadedAt: Date.now() });
+    Object.assign(C, await api('comments'), { loaded: true, error: '', loadedAt: Date.now() });
   } catch (e) { C.error = e.message; }
   C.version++;
   indexThreads();
@@ -26,9 +29,7 @@ function hasDraft() {
 async function post(action, body) {
   state.busy = true; render();
   try {
-    const r = await fetch(`${API}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
+    await api(action, body);
     state.busy = false;
     await loadComments();
     return true;

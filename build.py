@@ -79,10 +79,11 @@ class Job:
 
 
 jobs: dict[PullRef, Job] = {}
-# When the head commit of each pull request was last read from GitHub.
+# When a check of each pull request's head commit last started.
 head_checked: dict[PullRef, float] = {}
-# The head commit of each pull request last read from GitHub.
+# The head commit of each pull request last read from GitHub, and when that read started.
 heads: dict[PullRef, str] = {}
+head_read: dict[PullRef, float] = {}
 lock = threading.Lock()
 
 
@@ -125,11 +126,26 @@ def refresh(ref: PullRef) -> None:
 
 def needs_build(ref: PullRef) -> bool:
     """Whether the head commit on GitHub has no current page. Raises CommandError when gh can't tell the head."""
+    return not page_current(page_path(ref, read_head(ref)))
+
+
+def read_head(ref: PullRef) -> str:
+    """The pull request's head commit, read from GitHub now and remembered. Raises CommandError when gh can't tell
+    it."""
+    started = time.time()
     head = github.head_sha(ref)
     with lock:
-        head_checked[ref] = time.time()
+        head_checked[ref] = head_read[ref] = started
         heads[ref] = head
-    return not page_current(page_path(ref, head))
+    return head
+
+
+def recent_head(ref: PullRef) -> str:
+    """The pull request's head commit as read from GitHub less than HEAD_TTL seconds ago, else read now."""
+    with lock:
+        if ref in heads and time.time() - head_read.get(ref, 0.0) < HEAD_TTL:
+            return heads[ref]
+    return read_head(ref)
 
 
 def start(ref: PullRef) -> Job:

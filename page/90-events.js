@@ -36,17 +36,24 @@ document.addEventListener('click', (e) => {
   if (bug) { e.preventDefault(); bugClick(bug); return; }
   if (e.target.closest('[data-docs-open]')) { openDocs(); return; }
   if (e.target.closest('#docs')) return;
+  // A click anywhere but on the open editor menu or its button closes the menu, and does what it would do anyway.
+  if (EDITOR.menu !== null && !e.target.closest('.editor-pick')) { EDITOR.menu = null; render(); }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
   // The number cell that shows a code row's line is its comment button.
   const cell = API && e.target.closest('table.diff td.n.key');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-noiseonly],[data-generated],[data-folder],[data-review],[data-fold],' + COMMENT_ATTRS);
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-noiseonly],[data-generated],[data-folder],[data-review],[data-fold],[data-open-editor],[data-editor-menu],[data-editor],[data-editor-dismiss],' + COMMENT_ATTRS);
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
   if (d.review !== undefined) { e.preventDefault(); toggleReviewed(BY_PATH[d.review]); return; }
   if (d.toggle !== undefined) { toggleSection(BY_PATH[d.toggle]); return; }
+  if (d.openEditor !== undefined) { openInEditor(BY_PATH[d.openEditor]); return; }
+  if (d.editorMenu !== undefined) { EDITOR.menu = EDITOR.menu === d.editorMenu ? null : d.editorMenu; render(); return; }
+  // Choosing an editor in a file's menu keeps it as the choice for every file, and opens this file in it.
+  if (d.editor !== undefined) { const f = BY_PATH[EDITOR.menu]; lsSet('dr:editor', d.editor); EDITOR.menu = null; render(); openInEditor(f); return; }
+  if (d.editorDismiss !== undefined) { e.preventDefault(); EDITOR.error = ''; render(); return; }
   if (d.go) { scrollToFile('overview'); return; }
   if (d.path) {
     e.preventDefault();
@@ -139,6 +146,7 @@ document.addEventListener('keydown', (e) => {
   if (e.target.closest && e.target.closest('#docs')) return;
   if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? switchSearch() : openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
+  if (e.key === 'Escape' && EDITOR.menu !== null) { EDITOR.menu = null; render(); return; }
   if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
@@ -224,6 +232,7 @@ window.addEventListener('hashchange', () => {
   if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
   else if (t) go(t.path, t.key);
   loadComments();
+  loadEditors();
   // A reload rebuilds the forms, so it waits while a comment box has focus.
   const refresh = () => {
     const typing = document.activeElement && document.activeElement.tagName === 'TEXTAREA';

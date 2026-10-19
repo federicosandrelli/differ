@@ -57,6 +57,19 @@ button to show the lines, and click it again to fold them.</p>
 <p>When you mark a file as reviewed, its section closes and its name in the tree turns pale. differ remembers your
 reviewed files on this computer only; GitHub does not see them.</p>
 
+<h2>Open in your editor</h2>
+<p>The <code>&lt;/&gt;</code> button in a file's header opens the whole repository in a new window of your editor, on
+the pull request's branch, at the first changed line of the file. There you can read the code around the change, run
+it, commit and push. differ keeps one clone of each repository for this, in
+<code>~/.cache/differ/checkouts/</code>, made in the background when you open a pull request, and checks out the pull request's branch in it each time, with any new
+commits, also after a force-push, except to a pull request from a fork. differ never loses your work there: when the clone has uncommitted changes on
+another pull request's branch, or when bringing the branch up to date would lose your changes or commits, differ
+leaves the clone as it is and shows the error.</p>
+<p>differ opens VS Code, Cursor, PyCharm, IntelliJ IDEA, WebStorm and GoLand, and GitHub, which shows the file on
+github.com at the pull request's head commit, at the same line, in your browser, with no clone. The <code>⋮</code> next
+to the button lists the editors installed and GitHub: choosing one opens the file in it, and differ keeps it as the
+editor for every file on this computer. Deleted files have no button.</p>
+
 <h2>Search</h2>
 <ul>
   <li><kbd>Cmd</kbd>+<kbd>F</kbd> starts the search with the text you have selected.</li>

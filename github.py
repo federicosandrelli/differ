@@ -83,8 +83,8 @@ def status_of(state: str, draft: bool) -> Status | None:
     return "draft" if draft and state == "OPEN" else STATUSES.get(state)
 
 
-def gh(*args: str, timeout: float = commands.TIMEOUT) -> str:
-    return commands.run(["gh", *args], timeout=timeout).decode(errors="replace")
+def gh(*args: str, timeout: float = commands.TIMEOUT, cwd: Path | None = None) -> str:
+    return commands.run(["gh", *args], timeout=timeout, cwd=cwd).decode(errors="replace")
 
 
 def pull_request(ref: PullRef) -> PullRequest:
