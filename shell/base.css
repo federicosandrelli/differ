@@ -1,0 +1,33 @@
+/* The design system's shared stylesheet, in the head of every document (theme_head in render.py): the non-colour
+   tokens and the components. A document's own stylesheet says where a component goes and what colour a verdict
+   or status gives it, never its size, radius or text colour. CONTEXT.md lists the tokens and the components. */
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --dim: 0.45;
+  --radius-sm: 4px; --radius: 6px; --radius-lg: 8px; --radius-pill: 999px;
+  --control-font: 13px; --control-line: 20px;
+}
+
+/* A button is a control: control-sized text in a bordered box, 24px tall. .primary fills it with the accent, .on
+   tints it for a toggle that is on, .ghost drops the border and quietens it for icon buttons and side actions. */
+button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: var(--control-font)/var(--control-line) var(--sans); color: inherit; background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 1px 10px; white-space: nowrap; cursor: pointer; }
+button:enabled:hover { background: var(--bg-hover); }
+button.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-fill); }
+button.primary:enabled:hover { background: var(--accent-hover); }
+button.ghost { border-color: transparent; color: var(--text-secondary); }
+button.ghost:enabled:hover { color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+/* A segmented control: buttons side by side in one bordered box. */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button + button { border-left: 1px solid var(--border); }
+
+/* A count is a number in a rounded pill; inside a button that is on or primary, it swaps colours with the button. */
+.count { display: inline-block; font-size: 11px; line-height: 16px; min-width: 16px; padding: 0 5px; border-radius: var(--radius-pill); text-align: center; background: var(--bg-inset); color: var(--text-secondary); }
+button.on .count { background: var(--accent); color: var(--text-on-fill); }
+button.primary .count { background: var(--text-on-fill); color: var(--accent); }
+
+/* A key cap. */
+kbd { font: 11px var(--mono); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; }

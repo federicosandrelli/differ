@@ -7,10 +7,12 @@ function renderKeepingHeader(f) {
   const pane = main.getBoundingClientRect(), old = head(sectionEl(f));
   const top = old && old.getBoundingClientRect().top;
   const onScreen = top != null && top >= pane.top - 1 && top < pane.bottom;
+  const wasShown = shown === f.path;
   render();
   const now = onScreen && head(sectionEl(f));
   if (!now) return;
-  const keep = () => { main.scrollTop += now.getBoundingClientRect().top - top; };
+  // The render may have pushed the file off screen before the header is put back, which drops it as the file shown.
+  const keep = () => { main.scrollTop += now.getBoundingClientRect().top - top; if (wasShown) reshow(f); };
   keep(); syncViewport(); keep(); syncViewport(); keep();
 }
 // Change the file filter, keeping the reader on the file at the top of the pane, or on the nearest shown file before
