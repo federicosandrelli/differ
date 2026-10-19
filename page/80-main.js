@@ -67,10 +67,10 @@ function editorButton(f) {
   const title = !editor ? `No supported editor found. differ opens ${EDITOR.known.join(', ')}.`
     : busy ? `Opening in ${editor.name}…`
     : editor.local ? `Open the repository in ${editor.name}, on the pull request's branch, at this file` : `Open this file on ${editor.name}, at the pull request's head`;
-  const button = `<button class="editor" data-open-editor="${esc(f.path)}" title="${esc(title)}"${editor && !busy ? '' : ' disabled'}${busy ? ' aria-busy="true"' : ''}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 4.5 1.5 8 5 11.5M11 4.5 14.5 8 11 11.5M9.25 3 6.75 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+  const button = `<button class="editor ghost" data-open-editor="${esc(f.path)}" title="${esc(title)}"${editor && !busy ? '' : ' disabled'}${busy ? ' aria-busy="true"' : ''}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 4.5 1.5 8 5 11.5M11 4.5 14.5 8 11 11.5M9.25 3 6.75 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
   if (EDITOR.installed.length < 2) return button;
   const open = EDITOR.menu === f.path;
-  const more = `<button class="editor-more" data-editor-menu="${esc(f.path)}" title="Choose the editor" aria-haspopup="menu" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3.5" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.5" r="1.3"/></svg></button>`;
+  const more = `<button class="editor-more ghost" data-editor-menu="${esc(f.path)}" title="Choose the editor" aria-haspopup="menu" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3.5" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.5" r="1.3"/></svg></button>`;
   const menu = open ? `<div class="editor-menu" role="menu">${EDITOR.installed.map(e => `<button role="menuitemradio" aria-checked="${e === editor}" data-editor="${esc(e.id)}" class="${e === editor ? 'on' : ''}">${esc(e.name)}</button>`).join('')}</div>` : '';
   return `<span class="editor-pick"><span class="seg">${button}${more}</span>${menu}</span>`;
 }
@@ -78,7 +78,7 @@ const editorKey = (f) => JSON.stringify([EDITOR.installed, chosenEditor(), EDITO
 function headerHtml(f, open) {
   const ck = changeKind(f);
   return `<div class="fhead"><div class="top">
-      <button class="chev ${open ? 'open' : ''}" data-toggle="${esc(f.path)}" title="Close or open the file" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="chev ghost ${open ? 'open' : ''}" data-toggle="${esc(f.path)}" title="Close or open the file" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path"><b title="${esc(f.base)}">${esc(f.base)}</b><span class="dir" title="${esc(f.dir)}">${esc(f.dir)}</span>${renamedFrom(f)}</span>
       <span class="kind">${esc(f.kind)}</span>${countsHtml(f)}${editorButton(f)}
@@ -361,6 +361,11 @@ function keepShown(f, key = null) {
   shown = f.path;
   target = { f, key };
   readerAt = -Infinity;
+  setActive(f.path);
+}
+// Make a file the one shown again after a render dropped it, as when the render moved it off screen for a moment.
+function reshow(f) {
+  shown = f.path;
   setActive(f.path);
 }
 // Light up a row for a moment.

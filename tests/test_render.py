@@ -59,6 +59,7 @@ def test_sources_lists_every_file_a_page_inlines() -> None:
     assert {
         "render.py",
         "page.css",
+        "base.css",
         "theme.js",
         "tooltip.js",
         "highlight.min.js",
@@ -75,6 +76,7 @@ def test_splash_page_is_written_from_the_dark_palette() -> None:
 def test_every_token_is_used_and_every_used_token_is_defined() -> None:
     defined = {f"--{k.rstrip('_').replace('_', '-')}" for k in render.PALETTES["light"]}
     non_colour = {"--mono", "--sans", "--dim", "--d", "--titlebar", "--side", "--cols"}
+    non_colour |= {"--radius-sm", "--radius", "--radius-lg", "--radius-pill", "--control-font", "--control-line"}
     used: set[str] = set()
     for path in styled_sources():
         used |= set(re.findall(r"var\((--[a-z0-9-]+)", path.read_text()))
@@ -99,6 +101,7 @@ def styled_sources() -> list[Path]:
     return [
         render.PAGE_DIR / "page.css",
         *render.PAGE_DIR.glob("*.js"),
+        *render.SHELL_DIR.glob("*.css"),
         *render.SHELL_DIR.glob("*.html"),
         *render.SHELL_DIR.glob("*.js"),
     ]

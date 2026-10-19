@@ -7,7 +7,7 @@ const BUG_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="t
 
 function bugFootHtml() {
   const b = state.bug;
-  if (!b.open) return `<div class="foot">${docsButtonHtml()}<button data-bug-open class="bug">${BUG_ICON}Report a bug</button></div>`;
+  if (!b.open) return `<div class="foot">${docsButtonHtml()}<button data-bug-open class="bug ghost">${BUG_ICON}Report a bug</button></div>`;
   const note = b.copied === true ? 'Copied to the clipboard · paste it into a Claude Code session opened in the differ repository'
     : b.copied === false ? 'The clipboard refused the text · select it above and copy it' : '';
   return `<div class="foot"><div class="form bug">
