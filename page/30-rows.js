@@ -48,14 +48,17 @@ function markBetween(rows, sel) {
   const first = sel.indexOf(true), last = sel.lastIndexOf(true);
   return rows.map((_, i) => !sel[i] && i > first && i < last);
 }
-// A row that must stay in view whatever folds around it: a thread, or the comment being written.
-const pinned = (r) => r.threads || r.compose;
+// A row that must stay in view whatever folds around it: a thread, or the comment being written. In a range of rows
+// the reader opened (held), it pins nothing, since the folds there show open whatever their shape.
+const pinned = (r) => (r.threads || r.compose) && !r.held;
+// The open range that holds a block's rows, null when none does. No block, group or join crosses the edge of a range.
+const heldBy = (b) => b.rows[0].held;
 function blocksFor(rows) {
   const blocks = [];
   for (const r of rows) {
     const last = blocks[blocks.length - 1];
-    if (r.type === 'ctx' && !pinned(r)) { if (last && last.ctx) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
-    else if (r.run && last && last.run === r.run) last.rows.push(r);
+    if (r.type === 'ctx' && !pinned(r)) { if (last && last.ctx && heldBy(last) === r.held) last.rows.push(r); else blocks.push({ ctx: true, rows: [r] }); }
+    else if (r.run && last && last.run === r.run && heldBy(last) === r.held) last.rows.push(r);
     else blocks.push({ run: r.run || null, rows: [r] });
   }
   return blocks;
@@ -80,7 +83,7 @@ function isCollapsed(f, b) {
 }
 
 // Several collapsed blocks of one class with only short context between them read as one thing (an import
-// section), so they fold into one row that expands together.
+// section), so they fold into one row that opens to every line between the first and the last of them.
 function mergeCollapsed(f, blocks) {
   const importSet = new Set(f.import_lines);
   const merged = [];
@@ -89,17 +92,35 @@ function mergeCollapsed(f, blocks) {
     const b = blocks[i];
     if (!isCollapsed(f, b)) { merged.push(b); i++; continue; }
     const cls = b.run.class; const group = [b.run]; let j = i + 1; let lastRun = i;
+    const same = (c) => isCollapsed(f, c) && c.run.class === cls && heldBy(c) === heldBy(b);
     while (j < blocks.length) {
       const c = blocks[j];
-      if (isCollapsed(f, c) && c.run.class === cls) { group.push(c.run); lastRun = j; j++; continue; }
-      const nextSame = j + 1 < blocks.length && isCollapsed(f, blocks[j + 1]) && blocks[j + 1].run.class === cls;
-      if (c.ctx && nextSame && (c.rows.length <= RADIUS * 2 + 2 || (cls === 'import' && c.rows.every(r => importSet.has(r.newNo) || !r.text.trim())))) { j++; continue; }
+      if (same(c)) { group.push(c.run); lastRun = j; j++; continue; }
+      const nextSame = j + 1 < blocks.length && same(blocks[j + 1]);
+      if (c.ctx && heldBy(c) === heldBy(b) && nextSame && (c.rows.length <= RADIUS * 2 + 2 || (cls === 'import' && c.rows.every(r => importSet.has(r.newNo) || !r.text.trim())))) { j++; continue; }
       break;
     }
     merged.push(group.length > 1 ? { group, cls, rows: blocks.slice(i, lastRun + 1).flatMap(x => x.rows) } : b);
     i = lastRun + 1;
   }
   return merged;
+}
+const rowSpan = (rows) => `${rowKeyOf(rows[0])}..${rowKeyOf(rows[rows.length - 1])}`;
+// Opening a merged fold keeps the rows it hides open as a range in state.expanded, named by its first and last rows,
+// and every fold that hides a row of the range shows open. The range outlives the shape of the folds, which changes
+// when a row next to it becomes or stops being a pinned row.
+const rangeKey = (f, rows) => `${f.path}#open:${rowSpan(rows)}`;
+// The ranges of rows the reader opened in the file, each with its key and the indexes of its first and last rows,
+// with every row in one marked as held by the key of its range.
+function holdRows(f, rows) {
+  const at = new Map(rows.map((r, i) => [rowKeyOf(r), i])), prefix = `${f.path}#open:`, ranges = [];
+  for (const k of state.expanded) {
+    if (!k.startsWith(prefix)) continue;
+    const [lo, hi] = k.slice(prefix.length).split('..').map(x => at.get(x));
+    if (lo !== undefined && hi !== undefined) ranges.push({ k, lo, hi });
+  }
+  rows.forEach((r, i) => { const g = ranges.find(g => g.lo <= i && i <= g.hi); r.held = g ? g.k : null; });
+  return ranges;
 }
 
 // Every import section folds to one row, changed or not: the file's import lines, with the blank lines between them.
@@ -159,9 +180,12 @@ function contextPart(f, rs, headLength, tailLength, register, { minFold = 2 } = 
 // two: the first part shows the lines of that start up to its body, and the second folds the body lines into an
 // inline fold. The chip of the inline fold counts as CHIP_LINES of the RADIUS lines on each side, so the lines
 // next to a change are RADIUS - CHIP_LINES lines and the chip.
+// A context block in an open range folds all its rows, so that the range joins into one fold, and a context block
+// next to a range shows no lines on that side, so that its fold starts at the edge.
 function contextBlock(f, blocks, bi, register, bodies) {
   const rs = blocks[bi].rows;
-  const visible = (nb) => nb && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
+  if (heldBy(blocks[bi])) return [contextPart(f, rs, 0, 0, register, { minFold: 1 })];
+  const visible = (nb) => nb && !heldBy(nb) && !nb.group && !isCollapsed(f, nb) && !(nb.imports && !importsOpen(f, nb));
   const leftVisible = bi > 0 && visible(blocks[bi - 1]);
   const rightVisible = bi < blocks.length - 1 && visible(blocks[bi + 1]);
   if (rs.length <= RADIUS * 2 + 2 && (leftVisible || rightVisible)) return [contextPart(f, rs, rs.length, 0, register)];
@@ -181,16 +205,29 @@ function contextBlock(f, blocks, bi, register, bodies) {
 // The file as the blocks the diff table draws, every fold decided. A block has its rows, the id of the fold
 // that hides some of them (fold, null when nothing folds) and whether that fold is open:
 //   { imports, rows }                 an import section, shown when open
-//   { group, cls, rows }              noise runs folded together, always closed
+//   { group, cls, rows }              noise runs folded together, shown when open
 //   { ctx, rows, head, mid, tail }    context: head and tail show, mid when open
 //   { run, rows }                     a change run; a noise run folds, shown when open
-//   { joined, parts, rows }           closed folds with nothing drawn between them, always closed
+//   { joined, parts, rows }           closed folds with nothing drawn between them, shown when open
 // An import section or a noise run is locked while a pinned row holds it open, so a click on
 // its fold row would change nothing on the page.
 // Blocks only read, for the search and the height estimate, leave their folds out of FOLDS, whose entries would keep
 // the rows alive.
+// A fold that hides a held row shows open, and closing it closes its range.
 function fileBlocks(f, readOnly) {
-  const rows = buildRows(f), register = readOnly ? (id) => id : fold, bodies = enclosingBodies(f);
+  const rows = buildRows(f), ranges = holdRows(f, rows), register = readOnly ? (id) => id : fold;
+  const index = new Map(rows.map((r, i) => [r, i]));
+  return foldBlocks(f, rows, register).map(b => {
+    const hidden = !b.fold ? [] : b.ctx ? b.mid : b.rows;
+    if (!hidden.some(r => r.held)) return b;
+    if (readOnly) return { ...b, open: true };
+    const keys = ranges.filter(g => hidden.some(r => g.lo <= index.get(r) && index.get(r) <= g.hi)).map(g => g.k);
+    const was = FOLDS.get(b.fold), close = () => { keys.forEach(k => state.expanded.delete(k)); if (b.open) was.toggle(); };
+    return { ...b, fold: fold(b.fold, () => {}, close), open: true };
+  });
+}
+function foldBlocks(f, rows, register) {
+  const bodies = enclosingBodies(f);
   let blocks = [];
   for (const seg of importSegments(f, rows)) blocks = blocks.concat(seg.imports ? [seg] : blocksFor(seg.rows));
   blocks = mergeCollapsed(f, blocks);
@@ -200,8 +237,7 @@ function fileBlocks(f, readOnly) {
       return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: importsOpen(f, b), locked: b.rows.some(pinned) };
     }
     if (b.group) {
-      const keys = b.group.map(r => runKey(f, r));
-      return { ...b, fold: register(`${f.path}#runs:${b.group.map(r => r.index).join(',')}`, () => keys.forEach(k => state.expanded.add(k))), open: false };
+      return { ...b, fold: register(`${f.path}#runs:${rowSpan(b.rows)}`, () => state.expanded.add(rangeKey(f, b.rows))), open: false };
     }
     if (b.ctx) return contextBlock(f, blocks, bi, register, bodies);
     if (!isNoise(b.run)) return { ...b, fold: null, open: true };
@@ -209,8 +245,8 @@ function fileBlocks(f, readOnly) {
     return { ...b, fold: register(k, () => state.expanded.add(k), toggleIn(state.expanded, k)), open: !isCollapsed(f, b), locked: b.rows.some(pinned) };
   }), register);
 }
-// Closed folds with no row drawn between them read as one fold, so they join into one fold row that opens them
-// all. A context block in the join gives it the rows it folds and keeps the rows it shows.
+// Closed folds with no row drawn between them read as one fold, so they join into one fold, which opens to all
+// the rows they hide. A context block in the join gives it the rows it folds and keeps the rows it shows.
 function joinFolds(f, blocks, register) {
   const closed = (b) => b.fold && !b.open;
   const shown = (rows) => ({ ctx: true, rows, head: rows, mid: [], tail: [], fold: null, open: true });
@@ -218,16 +254,16 @@ function joinFolds(f, blocks, register) {
   for (let i = 0; i < blocks.length;) {
     let j = i;
     if (closed(blocks[i]) && !(blocks[i].ctx && blocks[i].tail.length)) {
-      while (j + 1 < blocks.length && closed(blocks[j + 1]) && !(blocks[j + 1].ctx && blocks[j + 1].head.length)) {
+      while (j + 1 < blocks.length && closed(blocks[j + 1]) && heldBy(blocks[j + 1]) === heldBy(blocks[i]) && !(blocks[j + 1].ctx && blocks[j + 1].head.length)) {
         j++;
         if (blocks[j].ctx && blocks[j].tail.length) break;
       }
     }
     if (j === i) { joined.push(blocks[i++]); continue; }
     const parts = blocks.slice(i, j + 1), first = parts[0], last = parts[parts.length - 1];
-    const rows = parts.flatMap(p => p.ctx ? p.mid : p.rows), keys = rows.map(rowKeyOf);
+    const rows = parts.flatMap(p => p.ctx ? p.mid : p.rows);
     if (first.ctx && first.head.length) joined.push(shown(first.head));
-    joined.push({ joined: true, parts, rows, fold: register(parts.map(p => p.fold).join('+'), () => revealRows(f, keys)), open: false });
+    joined.push({ joined: true, parts, rows, fold: register(`${f.path}#joined:${rowSpan(rows)}`, () => state.expanded.add(rangeKey(f, rows))), open: false });
     if (last.ctx && last.tail.length) joined.push(shown(last.tail));
     i = j + 1;
   }
@@ -248,8 +284,7 @@ const shownRows = (f) => f.runs.length ? fileBlocks(f, true).flatMap(rowsDrawn) 
 // Open whatever hides the row with this key, so the next render shows it; false when the file has no such row.
 const reveal = (f, key) => revealRows(f, [key]);
 // Open whatever hides the rows with these keys; false when the file has none of them. Opening one fold can fold
-// another (a grouped run's context folds on its own, and a context block next to an opened import section shows
-// other lines), so it looks again.
+// another (a context block next to an opened import section shows other lines), so it looks again.
 function revealRows(f, keys) {
   const wanted = new Set(keys);
   for (let pass = 0; pass < 4; pass++) {
@@ -257,7 +292,7 @@ function revealRows(f, keys) {
     if (!blocks.length) return false;
     const hiding = blocks.filter(b => { const drawnRows = new Set(rowsDrawn(b)); return b.rows.some(r => wanted.has(rowKeyOf(r)) && !drawnRows.has(r)); });
     if (!hiding.length) return true;
-    for (const b of hiding) for (const p of b.parts || [b]) FOLDS.get(p.fold).open();
+    for (const b of hiding) FOLDS.get(b.fold).open();
   }
   return true;
 }
