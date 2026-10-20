@@ -272,22 +272,10 @@ def search_clear_css() -> str:
     )
 
 
-def tooltip_css() -> str:
-    """The tooltip that shell/tooltip.js draws for every title: it fades in and out quickly."""
-    return (
-        ".tooltip { position: fixed; top: 0; left: 0; z-index: 1000; max-width: 360px; padding: 4px 8px; "
-        "border-radius: var(--radius); background: var(--text); color: var(--text-on-fill); font: 12px/1.4 var(--sans); "
-        "white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; opacity: 0; transition: opacity .08s; }\n"
-        ".tooltip.on { opacity: 1; }"
-    )
-
-
 def theme_head() -> str:
-    """The theme variables, the base stylesheet, the status icons, the search clear button, the tooltip and the
-    scripts that apply the saved theme and draw the tooltip, for the head of a document so it never flashes the
-    default theme."""
-    base = (SHELL_DIR / "base.css").read_text()
-    css = "\n".join([theme_css(), base, pr_icon_css(), search_clear_css(), tooltip_css()])
+    """The theme variables, the base stylesheet, the status icons, the search clear button and the scripts that
+    apply the saved theme and draw the tooltip, for the head of a document so it never flashes the default theme."""
+    css = "\n".join([theme_css(), (SHELL_DIR / "base.css").read_text(), pr_icon_css(), search_clear_css()])
     js = "\n".join((SHELL_DIR / name).read_text() for name in ("theme.js", "tooltip.js"))
     return f"<style>{css}</style>\n<script>{js}</script>"
 

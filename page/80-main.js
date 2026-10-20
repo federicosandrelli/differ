@@ -71,7 +71,7 @@ function editorButton(f) {
   if (EDITOR.installed.length < 2) return button;
   const open = EDITOR.menu === f.path;
   const more = `<button class="editor-more ghost" data-editor-menu="${esc(f.path)}" title="Choose the editor" aria-haspopup="menu" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3.5" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.5" r="1.3"/></svg></button>`;
-  const menu = open ? `<div class="editor-menu" role="menu">${EDITOR.installed.map(e => `<button role="menuitemradio" aria-checked="${e === editor}" data-editor="${esc(e.id)}" class="${e === editor ? 'on' : ''}">${esc(e.name)}</button>`).join('')}</div>` : '';
+  const menu = open ? `<div class="editor-menu menu" role="menu">${EDITOR.installed.map(e => `<button role="menuitemradio" aria-checked="${e === editor}" data-editor="${esc(e.id)}" class="${e === editor ? 'on' : ''}">${esc(e.name)}</button>`).join('')}</div>` : '';
   return `<span class="editor-pick"><span class="seg">${button}${more}</span>${menu}</span>`;
 }
 const editorKey = (f) => JSON.stringify([EDITOR.installed, chosenEditor(), EDITOR.opening.has(f.path), EDITOR.menu === f.path]);

@@ -10,7 +10,7 @@ function bugFootHtml() {
   if (!b.open) return `<div class="foot">${docsButtonHtml()}<button data-bug-open class="bug ghost">${BUG_ICON}Report a bug</button></div>`;
   const note = b.copied === true ? 'Copied to the clipboard · paste it into a Claude Code session opened in the differ repository'
     : b.copied === false ? 'The clipboard refused the text · select it above and copy it' : '';
-  return `<div class="foot"><div class="form bug">
+  return `<div class="foot"><div class="form card bug">
     <div class="hint">What went wrong, and what did you expect? The prompt adds the page's state for Claude Code.</div>
     <textarea data-bug-text placeholder="Describe the issue">${esc(b.text)}</textarea>
     ${b.prompt ? `<textarea class="out" data-bug-out readonly spellcheck="false">${esc(b.prompt)}</textarea><div class="hint ${b.copied === false ? 'err' : ''}">${note}</div>` : ''}
