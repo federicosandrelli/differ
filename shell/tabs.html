@@ -2,9 +2,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Pull requests</title>
 __THEME__
 <style>
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
-body { background: var(--bg-canvas); color: var(--text); font: 13px var(--sans); display: flex; flex-direction: column; overflow: hidden; }
+html, body { height: 100%; }
+body { font-size: 13px; display: flex; flex-direction: column; overflow: hidden; }
 #tabs { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); overflow: hidden; user-select: none; -webkit-user-select: none; }
 html.app #tabs { height: 40px; padding-left: 84px; }
 .tab { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: var(--radius); color: var(--text-secondary); flex: 0 1 auto; min-width: 48px; max-width: 260px; cursor: default; }
@@ -13,7 +12,8 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 .tab.home { flex: none; padding: 0 8px; min-width: 0; }
 .tab.home svg { display: block; }
 .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
-.tab .badge { flex: none; font: 11px/18px var(--mono); min-width: 18px; text-align: center; padding: 0 4px; border-radius: var(--radius-sm); background: var(--bg-canvas); color: var(--text-secondary); border: 1px solid var(--border); }
+/* The count sits on the inset of the open tab, so it takes the canvas. */
+.tab .count { flex: none; background: var(--bg-canvas); border: 1px solid var(--border); }
 .tab.warn .label { color: var(--del-fg); }
 .tab .close { flex: none; width: 16px; height: 16px; border: 0; border-radius: var(--radius-sm); padding: 0; background: none; color: var(--text-muted); font: 15px/16px var(--sans); visibility: hidden; }
 .tab:hover .close, .tab.on .close { visibility: visible; }

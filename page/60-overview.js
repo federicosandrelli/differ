@@ -51,7 +51,7 @@ function renderMarkdown(md, ctx) {
 
 function renamesHtml() {
   if (!D.renames.length) return '';
-  let h = `<h2>Renames</h2><div class="scrollx"><table class="plain"><tr><th>From</th><th>To</th><th>Blocks</th><th>Files</th><th>Origin</th></tr>`;
+  let h = `<h2>Renames</h2><div class="scrollx"><table class="plain"><tr><th class="kind">From</th><th class="kind">To</th><th class="kind">Blocks</th><th class="kind">Files</th><th class="kind">Origin</th></tr>`;
   for (const r of D.renames) {
     const o = r.origin;
     h += `<tr><td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${r.runs}</td><td>${r.files.length}</td>

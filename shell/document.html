@@ -2,24 +2,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>__TITLE__</title>
 __THEME__
 <style>
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg-canvas); color: var(--text); font: 14px/1.5 var(--sans); }
-a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
 main { max-width: 920px; margin: 0 auto; padding: 32px 24px 64px; }
 h1 { font-size: 20px; margin: 0 0 4px; }
 h1.start { margin: 0 0 20px; line-height: 1; }
 h1.start .beg { display: block; font-size: 24px; font-weight: 300; color: var(--text-secondary); margin-bottom: 2px; }
 h1.start .differ { font-size: 64px; font-weight: 600; letter-spacing: -0.02em; color: var(--accent); }
 h1 + .log { margin-top: 20px; }
-.banner { color: var(--mod-fg); background: var(--mod-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 9px 12px; margin: 12px 0 16px; }
+.banner { margin: 12px 0 16px; }
 .banner code { font-family: var(--mono); font-size: 13px; }
 form { display: flex; gap: 8px; margin: 0 0 20px; }
-input { flex: 1; font: 14px var(--sans); color: var(--text); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 9px 12px; outline: none; }
-input:focus { border-color: var(--accent); }
-/* The Open button stretches to the height of the field beside it and takes its corners. */
-form button { padding: 0 16px; border-radius: var(--radius-lg); }
+input { flex: 1; }
 .prs h2 { font-size: 15px; margin: 24px 0 8px; }
-.list { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.list { overflow: hidden; }
 .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text); }
 .item:first-child { border-top: 0; } .item:hover { background: var(--bg-panel); text-decoration: none; }
 .item .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

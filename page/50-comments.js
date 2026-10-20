@@ -87,21 +87,21 @@ function bodyHtml(c, ctx) {
 }
 function commentHtml(c, ctx) {
   return `<div class="comment ${c.pending ? 'pending' : ''}"><div class="chead"><b>${esc(c.author)}</b><span class="hint">${ago(c.created)}</span>
-    ${c.pending ? '<span class="pend">pending</span>' : ''}<span class="spacer"></span>
+    ${c.pending ? '<span class="tag pending">pending</span>' : ''}<span class="spacer"></span>
     ${c.pending ? `<a href="#" data-delete="${esc(c.id)}">delete</a>` : ''}<a href="${c.url}" target="_blank" title="Open on GitHub">↗</a></div>
     <div class="cbody">${bodyHtml(c, ctx)}</div></div>`;
 }
 function threadHtml(f, t) {
   const n = t.comments.length, first = t.comments[0];
   if (t.resolved && !state.openThreads.has(t.id)) {
-    return `<div class="thread folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
+    return `<div class="thread card folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
   }
   const head = t.outdated ? `<div class="thead">Outdated · was on line${t.original_start_line && t.original_start_line !== t.original_line ? 's' : ''} ${lineRange(t.original_start_line, t.original_line)}${t.side === 'LEFT' ? ' of the old file' : ''}</div>`
     : t.start_line && t.start_line !== t.line ? `<div class="thead">Lines ${lineRange(t.start_line, t.line)}</div>` : '';
   const reply = state.replyOpen.has(t.id) ? replyHtml(t) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
     ${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
-  return `<div class="thread ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
+  return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
 }
 function replyHtml(t) {
   return `<div class="form reply"><textarea data-reply-text="${esc(t.id)}" placeholder="Reply">${esc(state.replyOpen.get(t.id) || '')}</textarea>
@@ -110,7 +110,7 @@ function replyHtml(t) {
 }
 function composeHtml(f, c) {
   const where = `line${c.startLine !== c.line ? 's' : ''} ${lineRange(c.startLine, c.line)}${c.side === 'LEFT' ? ' of the old file' : ''}`;
-  return `<div class="form compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
+  return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
     <textarea data-compose-text placeholder="Leave a comment">${esc(c.text)}</textarea>
     <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
     ${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
@@ -147,7 +147,7 @@ function commentNotices() {
 }
 function reviewPanelHtml() {
   const n = pendingCount();
-  return `<div class="form review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
+  return `<div class="form card review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
     <div class="actions">${submitBtn('APPROVE', 'Approve')}${submitBtn('REQUEST_CHANGES', 'Request changes')}${btn('data-submit="COMMENT"', 'Comment')}
     <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
     <div class="hint">${n ? `${plural(n, 'pending comment')} ${n === 1 ? 'goes' : 'go'} out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
@@ -162,10 +162,10 @@ function conversationHtml() {
   if (!C.loaded) h += '<p class="hint">Loading…</p>';
   else if (!items.length) h += '<p class="hint">No comments yet.</p>';
   for (const it of items) {
-    h += `<div class="comment ${it.state === 'APPROVED' ? 'approved' : it.state === 'CHANGES_REQUESTED' ? 'changes' : ''}"><div class="chead"><b>${esc(it.author)}</b> ${esc(it.verb)}<span class="hint">${ago(it.created)}</span><span class="spacer"></span><a href="${it.url}" target="_blank" title="Open on GitHub">↗</a></div>
+    h += `<div class="comment card ${it.state === 'APPROVED' ? 'approved' : it.state === 'CHANGES_REQUESTED' ? 'changes' : ''}"><div class="chead"><b>${esc(it.author)}</b> ${esc(it.verb)}<span class="hint">${ago(it.created)}</span><span class="spacer"></span><a href="${it.url}" target="_blank" title="Open on GitHub">↗</a></div>
       ${it.body ? `<div class="cbody">${bodyHtml(it)}</div>` : ''}</div>`;
   }
-  h += `<div class="form conv"><textarea data-conv-text placeholder="Leave a comment on the pull request">${esc(state.convText)}</textarea>
+  h += `<div class="form card conv"><textarea data-conv-text placeholder="Leave a comment on the pull request">${esc(state.convText)}</textarea>
     <div class="actions"><span class="spacer"></span>${btn('data-conv-send', 'Comment', true)}</div></div>`;
   const threads = C.threads;
   if (threads.length) {
