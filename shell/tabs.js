@@ -20,7 +20,7 @@
     return tab.frame;
   }
   function draw() {
-    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}">${t.status && !t.warning ? `<span class="pr-icon st-${esc(t.status)}" aria-hidden="true"></span>` : ''}<span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.badge ? `<span class="badge" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" aria-label="Close tab">×</button></div>`;
+    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}">${t.status && !t.warning ? `<span class="pr-icon st-${esc(t.status)}" aria-hidden="true"></span>` : ''}<span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.badge ? `<span class="count" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" aria-label="Close tab">×</button></div>`;
     bar.innerHTML = `<div class="tab home ${active === home ? 'on' : ''}" data-key="home" title="Pull requests">${HOME_ICON}</div>` + tabs.map(pill).join('');
     document.title = active.title;
   }

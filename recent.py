@@ -145,7 +145,7 @@ def items_html() -> str:
         items = "".join(item_html(p) for p in recent["pages"] if section_of(p, recent["viewer"]) == key)
         sections.append(
             f'<section class="prs {key}"><h2>{heading}</h2>'
-            f'<div class="list">{items or '<div class="empty">None opened yet.</div>'}</div></section>'
+            f'<div class="list card">{items or '<div class="empty">None opened yet.</div>'}</div></section>'
         )
     return "".join(sections)
 
