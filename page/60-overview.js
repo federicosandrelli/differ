@@ -19,7 +19,7 @@ function renderMarkdown(md, ctx) {
         return `\uE000${images.length - 1}\uE000`;
       })
       .replace(/\[([^\]]+)\]\((https?:[^)\s\uE000]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-      .replace(/(^|[\s(])(https?:\/\/[^\s<)"\uE000]+)/g, '$1<a href="$2" target="_blank">$2</a>')
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)\uE000]+)/g, '$1<a href="$2" target="_blank">$2</a>')
       .replace(/\uE000(\d+)\uE000/g, (m, i) => images[i] ?? '');
   };
   const out = []; let para = [], list = null;

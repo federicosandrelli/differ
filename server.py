@@ -68,6 +68,8 @@ IMAGE_TYPES = {
     ".gif": "image/gif",
     ".webp": "image/webp",
     ".avif": "image/avif",
+    ".bmp": "image/bmp",
+    ".ico": "image/x-icon",
     ".svg": "image/svg+xml",
 }
 # An SVG file can hold scripts, and the reader may open an image's address on its own.
