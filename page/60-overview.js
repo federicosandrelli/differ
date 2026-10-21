@@ -1,10 +1,15 @@
 // The overview at the top of the main pane: the PR description, the renames and the conversation.
 
-// Enough markdown for a PR description: headings, bullets, paragraphs, links, bold, inline code.
+// GitHub sends a file of a private repository only to a signed-in browser, so the server reads such an image with gh.
+const REPO_FILE = /^https:\/\/(github\.com\/[^/]+\/[^/]+\/(blob|raw)\/|raw\.githubusercontent\.com\/)/;
+const imageSrc = (url) => REPO_FILE.test(url) ? `/image?src=${encodeURIComponent(url)}` : url;
+
+// Enough markdown for a PR description: headings, bullets, paragraphs, images, links, bold, inline code.
 function renderMarkdown(md, ctx) {
   const inline = (t) => esc(t)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g, (m, alt, src) => `<img src="${esc(imageSrc(unesc(src)))}" alt="${alt}">`)
     .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>')
     .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>');
   const out = []; let para = [], list = null;

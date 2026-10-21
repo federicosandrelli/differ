@@ -16,6 +16,9 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /open?pr=<url or owner/repo#n>     redirects to the page above
                                      (the page, /open and /status refuse a request a browser marks
                                      Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
+  /image?src=<link>                  the image a link to a file of a GitHub repository names, read with gh, since
+                                     GitHub sends a file of a private repository only to a signed-in browser
+                                     (refused cross-site, as the page is)
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
   /api/<owner>/<repo>/<number>/editors    GET: the editors installed (GitHub always is), and the names of all the editors
                                      the app knows
@@ -58,6 +61,17 @@ PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
 STATUS = re.compile(rf"^/status/{SLUG}/(?P<number>\d+)$")
 API = re.compile(rf"^/api/{SLUG}/(?P<number>\d+)/(?P<action>\w+)$")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
+IMAGE_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".svg": "image/svg+xml",
+}
+# An SVG file can hold scripts, and the reader may open an image's address on its own.
+IMAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 GH_TTL = 60
 LOG_MAX = 5 * 1024 * 1024
 
@@ -142,6 +156,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_image(self, body: bytes, ctype: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.send_header("Content-Security-Policy", IMAGE_POLICY)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
+
     def redirect(self, location: str) -> None:
         self.send_response(303)
         self.send_header("Location", location)
@@ -175,7 +199,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/recent":
                 recent.refresh()
                 return self.send(200, recent.items_html().encode())
-            if url.path == "/open" or STATUS.match(url.path) or PAGE.match(url.path):
+            if url.path in ("/open", "/image") or STATUS.match(url.path) or PAGE.match(url.path):
                 if why := self.cross_site():
                     return self.send(403, error_page(f"Forbidden: {why}"))
             if url.path == "/open":
@@ -183,6 +207,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.redirect(PullRef.parse((query.get("pr") or [""])[0]).path)
                 except ValueError as exc:
                     return self.send(400, error_page(str(exc)))
+            if url.path == "/image":
+                src = (query.get("src") or [""])[0]
+                if not (ctype := IMAGE_TYPES.get(Path(urlparse(src).path).suffix.lower())):
+                    return self.send(404, error_page(f"{src} is not an image"))
+                try:
+                    return self.send_image(github.repo_file(src), ctype)
+                except ValueError as exc:
+                    return self.send(404, error_page(str(exc)))
             if m := STATUS.match(url.path):
                 job = build.job_of(PullRef.from_match(m))
                 return self.send_json(asdict(job) if job else {"state": "none", "log": [], "error": ""})
@@ -226,7 +258,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def cross_site(self) -> str | None:
         """Why this GET is refused, or None: a page on another site must not start a clone or a build with the
-        user's gh identity, which a GET to a page path or to /open does, nor read a build's progress at /status.
+        user's gh identity, which a GET to a page path or to /open does, nor read a build's progress at /status, nor
+        load a file of a private repository through /image.
 
         Browsers send Sec-Fetch-Site with every request: same-origin, same-site, none (a typed address or a
         bookmark) or cross-site. A request without the header (an old browser, curl) passes.

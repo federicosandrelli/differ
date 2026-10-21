@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -16,6 +17,15 @@ REPO = r"(?!-)(?!\.+(?![\w.-]))[\w.-]+"
 # The owner and repo of a pull request, for a pattern that adds its number as the group "number".
 SLUG = rf"(?P<owner>{OWNER})/(?P<repo>{REPO})"
 REFERENCE = re.compile(rf"(?:https?://github\.com/)?(?<![\w.-]){SLUG}(?:/pull/|/pulls/|#)(?P<number>\d+)")
+
+# A link to a file of a repository: github.com/<owner>/<repo>/blob/<ref>/<path> or .../raw/..., or
+# raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>. A ref may hold slashes, so the rest holds the ref and the path.
+REPO_FILES = (
+    re.compile(rf"^https://github\.com/{SLUG}/(?:blob|raw)/(?P<rest>[^?#]+)"),
+    re.compile(rf"^https://raw\.githubusercontent\.com/{SLUG}/(?P<rest>[^?#]+)"),
+)
+# A ref of up to this many parts, such as feature/x/y, splits from the path in a link to a repository file.
+REF_PARTS = 4
 
 Status = Literal["open", "draft", "merged", "closed"]
 STATUSES: dict[str, Status] = {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}
@@ -189,3 +199,22 @@ def ask(query: str, variables: dict[str, object], timeout: float) -> tuple[int, 
     except ValueError:
         out = {}
     return r.returncode, r.stderr.decode(errors="replace").strip(), out
+
+
+def repo_file(url: str) -> bytes:
+    """The content of the repository file a link names (see REPO_FILES), read through the API with gh's sign-in, which
+    a private repository needs. Raises ValueError for a link to anything else, and CommandError when GitHub has no
+    such file or gh fails."""
+    m = next((m for pattern in REPO_FILES if (m := pattern.match(url))), None)
+    parts = urllib.parse.unquote(m["rest"]).split("/") if m else []
+    if not m or len(parts) < 2 or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"{url} is not a link to a file of a GitHub repository")
+    stderr = ""
+    for cut in range(1, min(len(parts), REF_PARTS + 1)):
+        ref, path = "/".join(parts[:cut]), "/".join(parts[cut:])
+        endpoint = f"repos/{m['owner']}/{m['repo']}/contents/{urllib.parse.quote(path)}?ref={urllib.parse.quote(ref)}"
+        r = commands.call(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
+        if not r.returncode:
+            return r.stdout
+        stderr = r.stderr.decode(errors="replace").strip()
+    raise commands.CommandError(f"GitHub has no file at {url}: {commands.tail(stderr)}")
