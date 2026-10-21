@@ -143,3 +143,47 @@ def test_pr_standings_returns_nothing_when_gh_fails(monkeypatch: pytest.MonkeyPa
         lambda args, **kwargs: subprocess.CompletedProcess(args, 1, b"", b"gh: not logged in"),
     )
     assert github.pr_standings([PullRef("o", "r", 1)]) == ("", {})
+
+
+def test_repo_file_moves_parts_from_the_path_to_the_ref_until_github_finds_the_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    endpoints = []
+
+    def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        endpoints.append(args[-1])
+        found = args[-1].endswith("?ref=feature/shots")
+        return subprocess.CompletedProcess(args, 0 if found else 1, b"PNG" if found else b"", b"HTTP 404: Not Found")
+
+    monkeypatch.setattr(commands.subprocess, "run", run)
+    assert github.repo_file("https://github.com/o/r/blob/feature/shots/a%20b/c.png?raw=true") == b"PNG"
+    assert endpoints == [
+        "repos/o/r/contents/shots/a%20b/c.png?ref=feature",
+        "repos/o/r/contents/a%20b/c.png?ref=feature/shots",
+    ]
+
+
+def test_repo_file_names_the_link_when_github_has_no_such_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        commands.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 1, b"", b"gh: Not Found (HTTP 404)"),
+    )
+    with pytest.raises(commands.CommandError, match=r"GitHub has no file at https://raw\..*: gh: Not Found"):
+        github.repo_file("https://raw.githubusercontent.com/o/r/main/a.png")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/o/r/blob/main/a.png",
+        "https://github.com/o/r/issues/1.png",
+        "https://github.com/o/r/blob/main",
+        "https://github.com/o/r/blob/main/../../../user.png",
+        "https://github.com/o/r/raw/main//a.png",
+    ],
+)
+def test_repo_file_refuses_a_link_to_anything_but_a_repository_file(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(commands.subprocess, "run", lambda args, **kwargs: pytest.fail("ran gh"))
+    with pytest.raises(ValueError, match="is not a link to a file of a GitHub repository"):
+        github.repo_file(url)

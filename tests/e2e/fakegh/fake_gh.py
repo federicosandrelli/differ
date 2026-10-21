@@ -11,6 +11,8 @@ folder as its `headRefName`, or fails when it finds none.
 gh 2.86.0 runs, and fails with git's error when one fails.
 `gh repo clone o/r <dest> [-- --bare ...]` clones the repo named in repo.txt, bare when asked; `gh repo set-default`
 does nothing.
+`gh api -H <accept> repos/o/r/contents/<path>?ref=<ref>` prints the file at that ref of the repo named in repo.txt,
+or fails when it has none.
 `gh api graphql --input -` answers a read query from comments.json; a mutation is appended to mutations.log,
 and a review posted with threads adds them to comments.json, so the page sees what it sent.
 """
@@ -19,6 +21,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -84,6 +87,17 @@ def repo_clone(args: list[str]) -> None:
     source = (state_dir() / "repo.txt").read_text().strip()
     bare = ["--bare"] if "--bare" in args else []
     subprocess.run(["git", "clone", *bare, "--quiet", source, args[1]], check=True)
+
+
+def contents(endpoint: str) -> None:
+    path, ref = urllib.parse.urlsplit(endpoint).path.split("/contents/", 1)[1], endpoint.split("?ref=", 1)[1]
+    source = (state_dir() / "repo.txt").read_text().strip()
+    r = subprocess.run(
+        ["git", "-C", source, "show", f"{urllib.parse.unquote(ref)}:{urllib.parse.unquote(path)}"], capture_output=True
+    )
+    if r.returncode:
+        sys.exit("gh: Not Found (HTTP 404)")
+    sys.stdout.buffer.write(r.stdout)
 
 
 def thread_node(tid: str, draft: dict) -> dict:
@@ -178,6 +192,8 @@ def main() -> None:
         pass
     elif args[:2] == ["api", "graphql"]:
         graphql()
+    elif args[:3] == ["api", "-H", "Accept: application/vnd.github.raw"]:
+        contents(args[3])
     else:
         sys.exit(f"fake gh: unsupported command {' '.join(args)}")
 

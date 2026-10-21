@@ -2,6 +2,7 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from playwright.sync_api import Locator, Page, Position, expect
@@ -74,6 +75,35 @@ def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_
     section.scroll_into_view_if_needed()
     expect(section.locator(".fhead .counts")).to_have_text("4.9 KB")
     expect(section.locator(".code > .empty")).to_have_text("Binary file added · 4.9 KB")
+
+
+def test_an_image_of_a_private_repository_in_the_description_loads_through_the_server(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    pixel = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\rIDATx\x9cc\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    path = add_pr({}, {"docs/shot.png": pixel})
+    meta_file = gh_state / f"pr{path.rsplit('/', 1)[1]}.json"
+    meta = json.loads(meta_file.read_text())
+    src = f"https://github.com/acme/widgets/blob/{meta['headRefOid']}/docs/shot.png?raw=true"
+    body = (
+        f"Before:\n![The new page]({src})\n\n"
+        f"![see https://x/x/onerror=document.title='pwned'// z]({src.replace('shot', 'gone')})\n\n"
+        "![A tracker](https://example.com/pixel.png)\n\n"
+        "see https://e.com/![x](https:x/onmouseover=document.title='pwned'//) and "
+        f"[t](https:![x](https:x/onmouseover=document.title='pwned'//)) and [t](https://a\ue0000\ue000)![y]({src})"
+    )
+    meta_file.write_text(json.dumps({**meta, "body": body}))
+    open_pr(page, server_url, path)
+    image = page.locator(".prbody img[alt='The new page']")
+    expect(image).to_have_attribute("src", f"/image?src={quote(src, safe='')}")
+    page.wait_for_function("document.querySelector('.prbody img').complete")
+    assert image.evaluate("img => img.naturalWidth") == 1
+    expect(page.locator(".prbody img")).to_have_count(3)
+    expect(page.locator(".prbody [onerror], .prbody [onmouseover]")).to_have_count(0)
+    expect(page.locator(".prbody a[href='https://example.com/pixel.png']")).to_have_text("A tracker")
 
 
 def test_a_file_the_pull_request_empties_shows_its_removed_lines(page: Page, server_url: str, add_pr: AddPr) -> None:

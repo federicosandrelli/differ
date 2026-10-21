@@ -82,7 +82,8 @@ const btn = (attrs, label, primary, off) => `<button ${attrs} class="${primary ?
 // GitHub's own rendering of a body, when it has one, except for suggestions: the page draws those against the file.
 function bodyHtml(c, ctx) {
   if (!c.html || /^\s*```suggestion/m.test(c.body)) return renderMarkdown(c.body, ctx);
-  return c.html.replace(/<a\b(?![^>]*\btarget=)/g, '<a target="_blank"');
+  return c.html.replace(/<a\b(?![^>]*\btarget=)/g, '<a target="_blank"')
+    .replace(/(<img\b[^>]*?\ssrc=")([^"]*)"/g, (m, head, src) => `${head}${esc(imageSrc(unesc(src)))}"`);
 }
 function commentHtml(c, ctx) {
   return `<div class="comment ${c.pending ? 'pending' : ''}"><div class="chead"><b>${esc(c.author)}</b><span class="hint">${ago(c.created)}</span>

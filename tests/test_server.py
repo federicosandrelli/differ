@@ -3,6 +3,7 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import quote
 
 import pytest
 
@@ -360,3 +361,37 @@ def test_try_again_after_a_failed_build_starts_a_new_build_and_shows_its_progres
     status, body = get("/o/r/pull/1")
     assert status == 200 and b"Building o/r#1" in body
     assert build.job_of(ref) is job
+
+
+def test_image_serves_a_repository_image_read_with_gh(monkeypatch: pytest.MonkeyPatch) -> None:
+    src = "https://github.com/o/r/blob/abc/shot.PNG?raw=true"
+    monkeypatch.setattr(server.github, "repo_file", lambda url: b"PNG" if url == src else pytest.fail(url))
+    h = request("GET", "/image?src=" + quote(src, safe=""))
+    h.do_GET()
+    raw = cast(io.BytesIO, h.wfile).getvalue()
+    assert response(h) == (200, b"PNG")
+    assert b"Content-Type: image/png\r\n" in raw
+    assert b"Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox\r\n" in raw
+
+
+@pytest.mark.parametrize(
+    "src", ["https://github.com/o/r/blob/abc/page.html", "https://github.com/o/r/blob/abc/Makefile"]
+)
+def test_image_refuses_a_file_that_is_not_an_image(src: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.github, "repo_file", lambda url: pytest.fail("read the file"))
+    h = request("GET", "/image?src=" + quote(src, safe=""))
+    h.do_GET()
+    assert response(h)[0] == 404
+
+
+def test_image_refuses_a_link_to_anything_but_a_repository_file() -> None:
+    h = request("GET", "/image?src=" + quote("https://example.com/a.png", safe=""))
+    h.do_GET()
+    code, body = response(h)
+    assert code == 404 and b"is not a link to a file of a GitHub repository" in body
+
+
+def test_a_cross_site_get_to_image_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.github, "repo_file", lambda url: pytest.fail("a cross-site GET read a file"))
+    status, body = get("/image?src=" + quote("https://github.com/o/r/blob/abc/a.png", safe=""), "cross-site")
+    assert status == 403 and b"Sec-Fetch-Site: cross-site" in body
