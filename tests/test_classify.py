@@ -625,3 +625,56 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
 def test_python_structure_finds_the_imports_in_an_except_block() -> None:
     imports, _ = classify.python_structure("try:\n    import ujson as json\nexcept ImportError:\n    import json\n")
     assert imports == {2, 4}
+
+
+def test_java_imports_finds_the_imports_in_the_header() -> None:
+    source = """/*
+ * import not.this;
+ */
+package com.example;
+
+import java.util.List; // a list
+import static java.util.Map
+    .entry;
+
+// import not.this.either;
+/* a */ import com.example.util.*;
+
+public class App {
+}
+"""
+    assert classify.java_imports(source) == {6, 7, 8, 11}
+
+
+def test_java_imports_stops_at_code_after_a_comment() -> None:
+    source = """import a.B; /* off
+import c.D;
+*/
+/* generated */ final class App {
+    String text = \"\"\"
+import x.Y;
+\"\"\";
+}
+"""
+    assert classify.java_imports(source) == {1}
+
+
+def test_java_imports_stops_at_a_type_after_an_import_without_a_semicolon() -> None:
+    assert classify.java_imports("import java.util.List\n\nclass App {\n    int x = 1;\n}\n") == {1}
+    assert classify.java_imports("import java.util.List\nclass App\n{\n}\n") == {1}
+    assert classify.java_imports("import static\n    java.util.Map.entry;\nclass App {}\n") == {1, 2}
+
+
+def test_java_imports_counts_lines_like_git() -> None:
+    source = "\ufeffpackage app;\r\nimport a.B;\r\n\f\r\nimport c.D;\r\nclass App {\r\n}\r\n"
+    assert classify.java_imports(source) == {2, 4}
+
+
+def test_classify_folds_a_changed_java_import(tmp_path: Path) -> None:
+    old = "package app;\n\nimport java.util.List;\n\nclass App {\n    int x = 1;\n}\n"
+    new = "package app;\n\nimport java.util.ArrayList;\nimport java.util.List;\n\nclass App {\n    int x = 1;\n}\n"
+    diff = make_diff(tmp_path, old={"App.java": old}, new={"App.java": new})
+    (app,) = classify.classify(diff)["files"]
+    assert [r["class"] for r in app["runs"]] == ["import"]
+    assert app["import_lines"] == [3, 4] and app["old_import_lines"] == [3]
+    assert app["noise_only"] is True

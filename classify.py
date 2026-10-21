@@ -312,6 +312,56 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
     return imports, symbols
 
 
+JAVA_IMPORT_RE = re.compile(r"import(?:\s+static)?(?:\s+[\w.*]+)?\s*;?")
+JAVA_IMPORT_TAIL_RE = re.compile(r"[\w.*]+\s*;?")
+JAVA_PACKAGE_RE = re.compile(r"package\s+[\w.\s]+;")
+
+
+def java_code(line: str, in_comment: bool) -> tuple[str, bool]:
+    """Return a Java line with its comments removed, and whether a block comment is still open at its end."""
+    code = []
+    i = 0
+    while i < len(line):
+        if in_comment:
+            end = line.find("*/", i)
+            if end < 0:
+                break
+            i, in_comment = end + 2, False
+            continue
+        block, rest = line.find("/*", i), line.find("//", i)
+        if rest >= 0 and (block < 0 or rest < block):
+            code.append(line[i:rest])
+            break
+        if block < 0:
+            code.append(line[i:])
+            break
+        code.append(line[i:block] + " ")
+        i, in_comment = block + 2, True
+    return "".join(code).strip(), in_comment
+
+
+def java_imports(source: str) -> set[int]:
+    """Return the import line numbers of a Java source: the import statements in the header before the first
+    type declaration, where only comments, blank lines and the package statement may sit between them."""
+    imports: set[int] = set()
+    in_comment = in_import = False
+    for no, line in enumerate(source.removeprefix("﻿").split("\n"), 1):
+        code, in_comment = java_code(line, in_comment)
+        if not code:
+            continue
+        if in_import and JAVA_IMPORT_TAIL_RE.fullmatch(code):
+            imports.add(no)
+            in_import = not code.endswith(";")
+        elif JAVA_IMPORT_RE.fullmatch(code):
+            imports.add(no)
+            in_import = not code.endswith(";")
+        elif JAVA_PACKAGE_RE.fullmatch(code):
+            in_import = False
+        else:
+            break
+    return imports
+
+
 # ---------------------------------------------------------------- renames
 
 
@@ -591,6 +641,8 @@ def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | 
         if fd.path.endswith(".py"):
             old_imports, _ = python_structure(old_src)
             imports, symbols = python_structure(content)
+        elif fd.path.endswith(".java"):
+            old_imports, imports, symbols = java_imports(old_src), java_imports(content), []
         else:
             old_imports, imports, symbols = set(), set(), []
         for run in fd.runs:

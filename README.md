@@ -233,8 +233,8 @@ editors open, stay too.
 
 - `classify.py` parses the diff and classifies every change block. A block is
   folded only when the classifier can prove what it is: an import statement
-  (Python, through `ast`), or a line that becomes its replacement exactly by
-  applying a rename that recurs elsewhere in the PR. It also emits the classes,
+  (Python through `ast`, Java from the header before the first type), or a
+  line that becomes its replacement exactly by applying a rename that recurs elsewhere in the PR. It also emits the classes,
   functions and multi-line calls of every Python file, and flags generated
   files: those marked `linguist-generated` in `.gitattributes`, lock files,
   and files with a generator's header in the first five lines ("DO NOT EDIT",
