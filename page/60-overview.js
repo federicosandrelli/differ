@@ -10,7 +10,7 @@ function renderMarkdown(md, ctx) {
   // from outside GitHub stays a link: GitHub's own rendering loads it through its proxy, which hides the reader.
   const inline = (t) => {
     const images = [];
-    return esc(t)
+    return esc(t.replace(/\uE000/g, ''))
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g, (m, alt, src) => {
@@ -18,8 +18,8 @@ function renderMarkdown(md, ctx) {
           : `<a href="${src}" target="_blank">${alt || src}</a>`);
         return `\uE000${images.length - 1}\uE000`;
       })
-      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-      .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>')
+      .replace(/\[([^\]]+)\]\((https?:[^)\s\uE000]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)"\uE000]+)/g, '$1<a href="$2" target="_blank">$2</a>')
       .replace(/\uE000(\d+)\uE000/g, (m, i) => images[i] ?? '');
   };
   const out = []; let para = [], list = null;

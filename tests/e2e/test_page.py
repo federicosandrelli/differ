@@ -91,7 +91,9 @@ def test_an_image_of_a_private_repository_in_the_description_loads_through_the_s
     body = (
         f"Before:\n![The new page]({src})\n\n"
         f"![see https://x/x/onerror=document.title='pwned'// z]({src.replace('shot', 'gone')})\n\n"
-        "![A tracker](https://example.com/pixel.png)"
+        "![A tracker](https://example.com/pixel.png)\n\n"
+        "see https://e.com/![x](https:x/onmouseover=document.title='pwned'//) and "
+        f"[t](https:![x](https:x/onmouseover=document.title='pwned'//)) and [t](https://a\ue0000\ue000)![y]({src})"
     )
     meta_file.write_text(json.dumps({**meta, "body": body}))
     open_pr(page, server_url, path)
@@ -99,8 +101,8 @@ def test_an_image_of_a_private_repository_in_the_description_loads_through_the_s
     expect(image).to_have_attribute("src", f"/image?src={quote(src, safe='')}")
     page.wait_for_function("document.querySelector('.prbody img').complete")
     assert image.evaluate("img => img.naturalWidth") == 1
-    expect(page.locator(".prbody img")).to_have_count(2)
-    expect(page.locator(".prbody [onerror]")).to_have_count(0)
+    expect(page.locator(".prbody img")).to_have_count(3)
+    expect(page.locator(".prbody [onerror], .prbody [onmouseover]")).to_have_count(0)
     expect(page.locator(".prbody a[href='https://example.com/pixel.png']")).to_have_text("A tracker")
 
 
