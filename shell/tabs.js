@@ -23,6 +23,7 @@
     const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}">${t.status && !t.warning ? `<span class="pr-icon st-${esc(t.status)}" aria-hidden="true"></span>` : ''}<span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.badge ? `<span class="badge" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" aria-label="Close tab">×</button></div>`;
     bar.innerHTML = `<div class="tab home ${active === home ? 'on' : ''}" data-key="home" title="Pull requests">${HOME_ICON}</div>` + tabs.map(pill).join('');
     document.title = active.title;
+    drawUpdate();
   }
   function activate(tab) {
     active = tab;
@@ -118,7 +119,7 @@
     if (!tab) return;
     if (m.type === 'badge') { tab.badge = m.n; draw(); save(); }
     if (m.type === 'status') { tab.status = m.status; draw(); save(); }
-    if (m.type === 'draft') tab.draft = !!m.on;
+    if (m.type === 'draft') { tab.draft = !!m.on; drawUpdate(); }
     if (m.type === 'page') {
       tab.url = m.url; tab.title = m.title; tab.status = m.status || ''; tab.draft = false;
       const key = keyOf(m.url), twin = tabs.find(t => t !== tab && t.key === key);
@@ -126,6 +127,46 @@
       tab.key = key; draw(); save();
     }
   });
+
+  // The bar that offers a newer version in the desktop app. Update and Relaunch quits the app, and a page's
+  // unsent text would go with it, so the button waits while a tab holds a draft.
+  const invoke = APP && window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+  const updateBar = document.getElementById('update');
+  let update = null, updating = false, updateError = '';
+  const seenVersion = () => { try { return localStorage.getItem('dr:updateSeen'); } catch { return null; } };
+  function drawUpdate() {
+    updateBar.hidden = !(update && update.newer && seenVersion() !== update.latest);
+    if (updateBar.hidden) return;
+    let sub = `You have ${update.current}. Homebrew will install and relaunch differ.`, label = 'Update and Relaunch', disabled = false;
+    if (updating) { sub = 'Homebrew is installing it. differ will quit and reopen.'; label = 'Updating…'; disabled = true; }
+    else if (!update.managed) { sub = `You have ${update.current}. This copy did not come from Homebrew.`; label = 'Download'; }
+    else if (tabs.some(t => t.draft)) { sub = 'A tab has unsent text. Send or discard it first.'; disabled = true; }
+    else if (updateError) sub = updateError;
+    updateBar.querySelector('.title').textContent = `differ ${update.latest} is available`;
+    const subEl = updateBar.querySelector('.sub'), act = updateBar.querySelector('.act');
+    subEl.textContent = sub;
+    subEl.classList.toggle('err', sub === updateError);
+    act.textContent = label;
+    act.disabled = disabled;
+    updateBar.querySelector('.later').disabled = updating;
+  }
+  function checkUpdate() {
+    if (invoke) invoke('update_check').then((status) => { update = status; drawUpdate(); }).catch(() => {});
+  }
+  updateBar.addEventListener('click', (e) => {
+    if (!update) return;
+    if (e.target.closest('.later')) {
+      try { localStorage.setItem('dr:updateSeen', update.latest); } catch {}
+      drawUpdate();
+      return;
+    }
+    if (!e.target.closest('.act')) return;
+    if (!update.managed) { location.href = update.url; return; }
+    updating = true; updateError = ''; drawUpdate();
+    invoke('update_run').catch((err) => { updating = false; updateError = `Update failed: ${err}`; drawUpdate(); });
+  });
+  checkUpdate();
+  setInterval(checkUpdate, 60 * 60 * 1000);
 
   const savedZoom = (() => { try { return parseFloat(localStorage.getItem('dr:zoom')); } catch { return NaN; } })();
   if (savedZoom > 0 && savedZoom !== 1) setZoom(savedZoom);

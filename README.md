@@ -124,6 +124,17 @@ and `python3` on the login shell's PATH. When none is found, or the one found
 is older than 3.13, the app shows an error dialog and quits. The Homebrew cask
 pulls in `python@3.13` and `gh`; `git` stays external.
 
+### Updates
+
+Homebrew owns the install, so the app never replaces itself. Once a day, it
+reads the version in `Casks/differ.rb` in the tap, and when that version is
+newer, a small card at the bottom of the window offers it. "Update and Relaunch"
+quits the app and leaves a helper script to run
+`brew upgrade --cask federicosandrelli/tap/differ` and reopen the app. The
+script logs to `~/Library/Logs/differ/upgrade.log`, and shows an alert with
+Homebrew's reason when the upgrade fails. A copy that did not come from
+Homebrew gets a link to the release instead.
+
 ## Releasing
 
 The app is signed ad hoc (`signingIdentity` `"-"` in `tauri.conf.json`),

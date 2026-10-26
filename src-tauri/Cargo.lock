@@ -725,6 +725,8 @@ version = "0.1.0"
 dependencies = [
  "fix-path-env",
  "rfd",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
