@@ -533,16 +533,53 @@ def test_the_tree_cursor_passes_a_closed_section_and_enter_opens_it_at_its_first
     page.fill("#side .search", "re")
     page.click("#side .leaf[data-path='src/config.py'] .check")
     expect(config).to_have_class(re.compile(r"\bclosed\b"))
-    expect(meta).to_have_text("4 files · 7 lines")
+    expect(meta).to_have_text("4 files · 9 lines")
     page.click("#side .leaf[data-path='src/jobs.py']")
-    expect(meta).to_have_text("4 files · 1 / 7")
+    expect(meta).to_have_text("4 files · 3 / 9")
     page.keyboard.press("ArrowUp")
     expect(page.locator("#side .leaf.cursor")).to_have_attribute("data-path", "src/config.py")
     expect(config).to_have_class(re.compile(r"\bclosed\b"))
-    expect(meta).to_have_text("4 files · 1 / 7")
+    expect(meta).to_have_text("4 files · 3 / 9")
     page.keyboard.press("Enter")
     expect(config).not_to_have_class(re.compile(r"\bclosed\b"))
     expect(meta).to_have_text("4 files · 1 / 9")
+
+
+def test_enter_in_the_search_box_opens_a_reviewed_file_at_its_hit(page: Page, server_url: str, config_pr: str) -> None:
+    open_pr(page, server_url, config_pr)
+    config = page.locator("section[data-file='src/config.py']")
+    page.click("#side .leaf[data-path='src/config.py'] .check")
+    expect(config).to_have_class(re.compile(r"\bclosed\b"))
+    page.fill("#side .search", "re")
+    page.press("#side .search", "Enter")
+    expect(page.locator("#searchmeta")).to_have_text("4 files · 1 / 9")
+    expect(config).not_to_have_class(re.compile(r"\bclosed\b"))
+    expect(config.locator(f"#{hit_row(page)}")).to_have_count(1)
+
+
+def test_enter_and_shift_enter_go_on_into_a_closed_section_and_open_it(
+    page: Page, server_url: str, config_pr: str
+) -> None:
+    open_pr(page, server_url, config_pr)
+    meta = page.locator("#searchmeta")
+    config = page.locator("section[data-file='src/config.py']")
+    page.fill("#side .search", "re")
+    page.press("#side .search", "Enter")
+    expect(meta).to_have_text("4 files · 1 / 9")
+    config.locator(".fhead .chev").click()
+    expect(config).to_have_class(re.compile(r"\bclosed\b"))
+    expect(meta).to_have_text("4 files · 1 / 9")
+    page.press("#side .search", "Enter")
+    expect(meta).to_have_text("4 files · 2 / 9")
+    expect(config).not_to_have_class(re.compile(r"\bclosed\b"))
+    page.press("#side .search", "Enter")
+    expect(meta).to_have_text("4 files · 3 / 9")
+    config.locator(".fhead .chev").click()
+    expect(config).to_have_class(re.compile(r"\bclosed\b"))
+    page.press("#side .search", "Shift+Enter")
+    expect(meta).to_have_text("4 files · 2 / 9")
+    expect(config).not_to_have_class(re.compile(r"\bclosed\b"))
+    expect(config.locator(f"#{hit_row(page)}")).to_have_count(1)
 
 
 def test_enter_in_the_tree_goes_on_when_the_hit_is_in_a_collapsed_folder(
@@ -621,7 +658,7 @@ def test_typing_a_space_in_the_search_keeps_it(page: Page, server_url: str) -> N
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
 
 
-def test_search_counts_the_lines_on_screen_and_skips_closed_folds_and_sections(page: Page, server_url: str) -> None:
+def test_search_skips_closed_folds_and_counts_closed_sections(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
     page.fill("#side .search", "i")
@@ -634,9 +671,9 @@ def test_search_counts_the_lines_on_screen_and_skips_closed_folds_and_sections(p
     expect(page.locator("#searchmeta")).to_have_text("2 files · 8 lines")
     expect(page.locator("#main tr:has(mark)")).to_have_count(8)
     section.locator(".fhead .chev").click()
-    expect(page.locator("#searchmeta")).to_have_text("2 files · 2 lines")
-    expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_count(1)
-    expect(page.locator("#side .leaf[data-path='src/app.py'] .hits")).to_have_count(0)
+    expect(section).to_have_class(re.compile(r"\bclosed\b"))
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 8 lines")
+    expect(page.locator("#side .leaf[data-path='src/app.py'] .hits")).to_have_text("6")
 
 
 def test_cmd_f_fills_the_search_with_the_selected_code(page: Page, server_url: str) -> None:

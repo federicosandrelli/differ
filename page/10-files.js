@@ -32,8 +32,6 @@ function viewHits(f) {
   if (c.q !== q) { c.q = q; c.hits = c.rows.filter(([, t]) => t.includes(q)).map(([k]) => k); }
   return c.hits;
 }
-// The number of rows of the file the reader can see that hold the query: 0 while its section is closed.
-const hits = (f) => sectionOpen(f) ? viewHits(f).length : 0;
 
 function buildTree(files) {
   const root = { name: '', dirs: new Map(), files: [] };
@@ -86,12 +84,12 @@ function shownAtOrBefore(path) {
   return 'overview';
 }
 
-// ---------- search hits, for Enter to step through: every hit the reader can see as { path, key } of its row, or
-// in file search every file it finds, without a row
+// ---------- search hits, for Enter to step through: every hit of the shown files as { path, key } of its row, open
+// section or closed, or in file search every file it finds, without a row
 function allHits() {
   if (state.fileSearch) return state.q ? visibleFiles().map(f => ({ path: f.path, key: null })) : [];
   const out = [];
-  for (const f of visibleFiles()) if (sectionOpen(f)) for (const key of viewHits(f)) out.push({ path: f.path, key });
+  for (const f of visibleFiles()) for (const key of viewHits(f)) out.push({ path: f.path, key });
   return out;
 }
 // The position of the hit Enter last went to, or -1 when it is no longer among the hits.
