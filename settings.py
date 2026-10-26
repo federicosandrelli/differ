@@ -78,8 +78,9 @@ def test_rules() -> str:
 
 def editor_list() -> str:
     installed = {e.id for e in editors.installed()}
-    names = lambda present: ", ".join(html.escape(e.name) for e in editors.known() if (e.id in installed) == present)  # noqa: E731
-    return f"<dt>Installed</dt><dd>{names(True)}</dd><dt>Not installed</dt><dd>{names(False) or 'none'}</dd>"
+    present = ", ".join(html.escape(e.name) for e in editors.known() if e.id in installed)
+    absent = ", ".join(html.escape(e.name) for e in editors.known() if e.id not in installed)
+    return f"<dt>Installed</dt><dd>{present}</dd><dt>Not installed</dt><dd>{absent or 'none'}</dd>"
 
 
 def cache_rows() -> str:

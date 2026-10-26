@@ -1,5 +1,5 @@
 <section>
-  <h2>Keyboard shortcuts</h2>
+  <h2>Shortcuts</h2>
   <div>
     <table class="keys">
       <tr><td><kbd>Cmd</kbd>+<kbd>F</kbd></td><td>Search the lines, starting from the selected text.</td></tr>
@@ -10,8 +10,8 @@
       <tr><td><kbd>o</kbd></td><td>Back to the overview.</td></tr>
       <tr><td><kbd>Escape</kbd></td><td>Leave the box or the tree, and end the search. In a comment box, only leave the box.</td></tr>
       <tr><td><kbd>Cmd</kbd>+<kbd>Option</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Previous or next tab.</td></tr>
-      <tr><td><kbd>Cmd</kbd>+<kbd>W</kbd> / <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>Close the tab, or the window.</td></tr>
-      <tr><td><kbd>Cmd</kbd>+<kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>Zoom in, zoom out, or back to normal.</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>W</kbd> / <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>Close the tab, or the window (desktop app).</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>Zoom in, zoom out, or back to normal (desktop app).</td></tr>
       <tr><td><kbd>Cmd</kbd>+<kbd>,</kbd></td><td>These settings.</td></tr>
     </table>
     <p class="hint">To comment on several lines, drag the <kbd>+</kbd> from the first line to the last, or click the first
@@ -23,12 +23,14 @@
   <h2>File types</h2>
   <div>
     <p>The filters above the tree sort every file into one type.</p>
-    <h3>Documentation</h3>
-    <ul>__DOCS_RULES__</ul>
-    <h3>Tests</h3>
-    <ul>__TEST_RULES__</ul>
-    <h3>Implementation</h3>
-    <p>Every other file.</p>
+    <dl>
+      <dt>Documentation</dt>
+      <dd><ul>__DOCS_RULES__</ul></dd>
+      <dt>Tests</dt>
+      <dd>Any other file that is:<ul>__TEST_RULES__</ul></dd>
+      <dt>Implementation</dt>
+      <dd>Every other file.</dd>
+    </dl>
   </div>
 </section>
 
@@ -47,17 +49,17 @@
       <dd>A change that only adds or removes spaces, tabs or line breaks.</dd>
       <dt>Rename fallout</dt>
       <dd>A change that only follows a rename: the same word changing the same way in at least two places, or a
-        renamed file. The line that defines the new name stays open.</dd>
+        renamed file. The line that defines the new name stays open. Inside a real change, such a line shows pale
+        with a <span class="chip">rename</span> mark.</dd>
       <dt>Moved code</dt>
-      <dd>A block of 4 lines or more that appears again, unchanged, elsewhere in the pull request. The row names the
-        other place.</dd>
+      <dd>A block of 4 non-blank lines or more that appears again, unchanged, elsewhere in the pull request. The row
+        names the other place.</dd>
       <dt>Folds close together</dt>
       <dd>Folds of one kind with only a few unchanged lines between them join into one row, which says how many
         places it covers.</dd>
     </dl>
-    <p>Inside a change, a line that only follows a rename shows pale with a <span class="chip">rename</span> mark.
-    A fold stays open while it holds a comment thread or the comment you are writing, or while a button under the
-    overview shows its kind; its row then names the fold and takes no clicks.</p>
+    <p>A fold stays open while it holds a comment thread or the comment you are writing, or while a button under
+    the overview shows its kind; its row then names the fold and takes no clicks.</p>
 
     <h3>The class or function above a change</h3>
     <p>A change in a Python file also shows the lines above it, up to the start of the class, function or call it
@@ -71,7 +73,7 @@
       <tr class="add"><td class="n">58</td><td class="c">            volume.recognised = not dry_run</td></tr>
     </table>
     <p class="hint">The signature, the chip that holds the 14 lines of the body, the 2 lines before the change, and
-    the added line. Click the chip to show the lines, and again to fold them.</p>
+    the added line.</p>
   </div>
 </section>
 
@@ -111,4 +113,4 @@
   </div>
 </section>
 
-<p class="about hint"><span data-version></span>__COMMIT__<a href="https://github.com/federicosandrelli/differ" target="_blank">github.com/federicosandrelli/differ</a> · made by Federico Sandrelli</p>
+<p class="about hint"><span data-version></span>__COMMIT__<a href="https://github.com/federicosandrelli/differ" target="_blank">federicosandrelli/differ</a> · made by Federico Sandrelli</p>
