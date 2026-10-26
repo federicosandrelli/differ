@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import ast
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, TypedDict
+
+import file_types
+from languages import LanguageSupport, Symbol
 
 TOKEN = re.compile(r"[\w.]")
 IDENT = re.compile(r"^[\w.]+$")
@@ -91,17 +93,6 @@ class FileDiff:
     @property
     def path(self) -> str:
         return self.new_path or self.old_path or ""
-
-
-class Symbol(TypedDict):
-    """A class, a function, or a call statement that spans several lines, in a Python file. It starts on `start`
-    (at its first decorator), its body on `body`, and it ends on `end`."""
-
-    name: str
-    kind: Literal["class", "def", "call"]
-    start: int
-    body: int
-    end: int
 
 
 class Origin(TypedDict):
@@ -258,160 +249,6 @@ def build_runs(fd: FileDiff) -> None:
             i = j
 
 
-# ---------------------------------------------------------------- python structure
-
-
-def first_line(node: ast.stmt) -> int:
-    """Return the line a statement starts on, counting its decorators."""
-    decorators = getattr(node, "decorator_list", None)
-    return decorators[0].lineno if decorators else node.lineno
-
-
-def last_line(node: ast.stmt) -> int:
-    return node.end_lineno or node.lineno
-
-
-def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
-    """Return (import line numbers, symbols) for a Python source; both empty when it does not parse."""
-    imports: set[int] = set()
-    symbols: list[Symbol] = []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return imports, symbols
-
-    def visit(node: ast.AST) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.Import | ast.ImportFrom):
-                imports.update(range(child.lineno, last_line(child) + 1))
-            elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                kind = "class" if isinstance(child, ast.ClassDef) else "def"
-                symbols.append(
-                    Symbol(
-                        name=child.name,
-                        kind=kind,
-                        start=first_line(child),
-                        body=first_line(child.body[0]),
-                        end=last_line(child),
-                    )
-                )
-                visit(child)
-            elif (
-                isinstance(child, ast.Expr | ast.Assign | ast.AnnAssign | ast.AugAssign)
-                and isinstance(child.value, ast.Call)
-                and last_line(child) != child.lineno
-            ):
-                callee = ast.unparse(child.value.func).rsplit(".", 1)[-1]
-                symbols.append(
-                    Symbol(name=callee, kind="call", start=child.lineno, body=child.lineno + 1, end=last_line(child))
-                )
-            elif isinstance(child, ast.stmt | ast.excepthandler | ast.match_case):
-                visit(child)
-
-    visit(tree)
-    return imports, symbols
-
-
-JAVA_IMPORT_RE = re.compile(r"import(?:\s+static)?(?:\s+[\w.*]+)?\s*;?")
-JAVA_IMPORT_TAIL_RE = re.compile(r"[\w.*]+\s*;?")
-JAVA_PACKAGE_RE = re.compile(r"package\s+[\w.\s]+;")
-COMMENT_OR_STRING_RE = re.compile(r"""//|/\*|'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?""")
-
-
-def java_code(line: str, in_comment: bool) -> tuple[str, bool]:
-    """Return a Java or JavaScript line with its comments removed, and whether a block comment is still open at its
-    end. Comment markers inside a quoted string stay."""
-    code = []
-    i = 0
-    while i < len(line):
-        if in_comment:
-            end = line.find("*/", i)
-            if end < 0:
-                break
-            i, in_comment = end + 2, False
-            continue
-        m = COMMENT_OR_STRING_RE.search(line, i)
-        if m is None:
-            code.append(line[i:])
-            break
-        if m[0] == "//":
-            code.append(line[i : m.start()])
-            break
-        if m[0] == "/*":
-            code.append(line[i : m.start()] + " ")
-            i, in_comment = m.end(), True
-        else:
-            code.append(line[i : m.end()])
-            i = m.end()
-    return "".join(code).strip(), in_comment
-
-
-def java_imports(source: str) -> set[int]:
-    """Return the import line numbers of a Java source: the import statements in the header before the first
-    type declaration, where only comments, blank lines and the package statement may sit between them."""
-    imports: set[int] = set()
-    in_comment = in_import = False
-    for no, line in enumerate(source.removeprefix("﻿").split("\n"), 1):
-        code, in_comment = java_code(line, in_comment)
-        if not code:
-            continue
-        if in_import and JAVA_IMPORT_TAIL_RE.fullmatch(code):
-            imports.add(no)
-            in_import = not code.endswith(";")
-        elif JAVA_IMPORT_RE.fullmatch(code):
-            imports.add(no)
-            in_import = not code.endswith(";")
-        elif JAVA_PACKAGE_RE.fullmatch(code):
-            in_import = False
-        else:
-            break
-    return imports
-
-
-JS_IMPORT_RE = re.compile(r"""import(?![\w$])[\w$\s,*{}]*(['"])[^'"]*\1\s*;?""")
-JS_IMPORT_HEAD_RE = re.compile(r"import(?![\w$])[\w$\s,*{}]*")
-JS_IMPORT_MIDDLE_RE = re.compile(r"[\w$\s,*{}]+")
-JS_IMPORT_TAIL_RE = re.compile(r"""[\w$\s,*{}]*(?<![\w$])from\s*(['"])[^'"]*\1\s*;?""")
-JS_LINE_BREAK_RE = re.compile("[\r\u2028\u2029]")
-JS_DIRECTIVE_RE = re.compile(r"""(['"])[\w\s-]*\1\s*;?""")
-JS_IMPORT_CONTINUATION_RE = re.compile(r"with(?![\w$])|;")
-
-
-def js_imports(source: str) -> set[int]:
-    """Return the import line numbers of a JavaScript or TypeScript source: the import statements in the header before
-    the first other statement, where only comments, blank lines, a shebang and directives such as "use client" may sit
-    between them, and comments may also sit inside a statement. A statement counts only once its module path closes
-    it, and only when the next line does not continue it. The scan stops at a line break that git does not count."""
-    imports: set[int] = set()
-    statement: list[int] = []
-    closed: list[int] = []
-    in_comment = False
-    for no, line in enumerate(source.removeprefix("\ufeff").replace("\ufeff", " ").split("\n"), 1):
-        if JS_LINE_BREAK_RE.search(line.removesuffix("\r")):
-            imports.difference_update(closed)
-            break
-        if no == 1 and line.startswith("#!"):
-            continue
-        code, in_comment = java_code(line, in_comment)
-        if not code:
-            if statement and line.strip():
-                statement.append(no)
-            continue
-        if JS_IMPORT_RE.fullmatch(code) or (statement and JS_IMPORT_TAIL_RE.fullmatch(code)):
-            imports.update(statement, [no])
-            closed = [] if code.endswith(";") else [*statement, no]
-            statement = []
-        elif (JS_IMPORT_MIDDLE_RE if statement else JS_IMPORT_HEAD_RE).fullmatch(code):
-            statement.append(no)
-        elif not statement and JS_DIRECTIVE_RE.fullmatch(code):
-            continue
-        else:
-            if not statement and JS_IMPORT_CONTINUATION_RE.match(code):
-                imports.difference_update(closed)
-            break
-    return imports
-
-
 # ---------------------------------------------------------------- renames
 
 
@@ -452,10 +289,6 @@ def strip_common_segments(a: str, b: str) -> Pair:
     return ".".join(sa), ".".join(sb)
 
 
-def module_path(path: str) -> str:
-    return re.sub(r"\.py$", "", path).replace("/", ".")
-
-
 def collect_renames(files: list[FileDiff]) -> dict[Pair, str | None]:
     """Every rename of the pull request, with the path of the renamed file it follows, if any. A rename is a name
     that changes the same way in at least two runs, or the module or file name of a renamed file."""
@@ -463,7 +296,9 @@ def collect_renames(files: list[FileDiff]) -> dict[Pair, str | None]:
     of_files: dict[Pair, str] = {}
     for fd in files:
         if fd.status == "R" and fd.old_path and fd.new_path:
-            of_files[(module_path(fd.old_path), module_path(fd.new_path))] = fd.path
+            old_module = file_types.language_support_of(fd.old_path).module_name(fd.old_path)
+            new_module = file_types.language_support_of(fd.new_path).module_name(fd.new_path)
+            of_files[(old_module, new_module)] = fd.path
             ob, nb = Path(fd.old_path).stem, Path(fd.new_path).stem
             if ob != nb:
                 of_files[(ob, nb)] = fd.path
@@ -480,20 +315,12 @@ def apply_renames(line: str, renames: list[Pair]) -> str:
     return line
 
 
-# A definition is a class, a def, an annotation, or an assignment with spaces round the equals sign.
-# A keyword argument (name=value) has none, so it does not match.
-DEF_RE = r"^\s*(?:class|async def|def)\s+{name}\b|^\s*{name}(?::|\s=\s)"
-
-
-def is_definition(line: str, name: str) -> bool:
-    short = name.rsplit(".", 1)[-1]
-    return re.match(DEF_RE.format(name=re.escape(short)), line) is not None
-
-
 # ---------------------------------------------------------------- classification
 
 
-def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames: list[Pair]) -> None:
+def classify_run(
+    run: Run, old_imports: set[int], new_imports: set[int], renames: list[Pair], language: LanguageSupport
+) -> None:
     """Classify the run, with the renames applied longest name first. A run link_moves linked is moved."""
     if run.moved_to:
         run.cls = "moved"
@@ -528,7 +355,7 @@ def classify_run(run: Run, old_imports: set[int], new_imports: set[int], renames
                 run.rename = pairs.most_common(1)[0][0]
             run.cls = "rename"
             run.origin = any(
-                is_definition(o, a) or is_definition(n, b)
+                language.is_definition(o, a) or language.is_definition(n, b)
                 for a, b in pairs
                 for o, n in zip(removed, added, strict=True)
             )
@@ -558,25 +385,18 @@ def link_moves(files: list[FileDiff]) -> None:
 
 TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
 TEST_DIRS = {"__tests__", "__snapshots__", "test_helpers"}
-JS_EXT = r"(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)"
-JS_PATH = re.compile(rf"\.{JS_EXT}$")
-TEST_NAME = re.compile(
-    r"^test_|^conftest\.py$"
-    r"|_test\.(?:py|go|rb|dart|exs)$|_spec\.rb$"
-    rf"|\.(?:test|spec|cy)\.{JS_EXT}$|-test\.{JS_EXT}$"
-    r"|\wTests?\.(?:java|kt|cs|swift|php)$|[a-z0-9]IT\.(?:java|kt)$"
-)
 
 
 def file_kind(path: str) -> Literal["docs", "test", "implementation"]:
-    if path.startswith((".claude/", "docs/")) or path.endswith(".md"):
+    if path.startswith((".claude/", "docs/")) or file_types.support_of(path).docs:
         return "docs"
     *dirs, name = path.split("/")
     if (
         (dirs and dirs[0] in TOP_LEVEL_TEST_DIRS)
         or any(d in TEST_DIRS or d.endswith("Tests") for d in dirs)
         or "/src/test/" in f"/{path}"
-        or TEST_NAME.search(name)
+        or name.startswith("test_")
+        or file_types.language_support_of(path).is_test_name(name.rsplit(".", 1)[0])
     ):
         return "test"
     return "implementation"
@@ -595,7 +415,6 @@ GENERATED_NAMES = {
     "composer.lock",
     "go.sum",
 }
-GENERATED_SUFFIXES = (".min.js", ".min.css", ".pb.go", "_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
 GENERATED_MARKER = re.compile(
     r"@generated|do not (hand[- ])?edit|(file|code) (is|was|has been) (auto(matically)?[- ]?)?generated"
     r"|auto(matically)?[- ]?generated (by|from|at|on|with|using)\b",
@@ -606,63 +425,10 @@ GENERATED_MARKER = re.compile(
 def is_generated(path: str, source: str, marked: set[str]) -> bool:
     """Generated by a tool: marked linguist-generated, a lock file, or headed by a generator's warning."""
     name = path.rsplit("/", 1)[-1]
-    if path in marked or name in GENERATED_NAMES or name.endswith(GENERATED_SUFFIXES):
+    generated_suffixes = file_types.support_of(path).generated_suffixes
+    if path in marked or name in GENERATED_NAMES or name.lower().endswith(generated_suffixes):
         return True
     return any(GENERATED_MARKER.search(line) for line in source.splitlines()[:5])
-
-
-LANGUAGES = {
-    ".py": "python",
-    ".pyi": "python",
-    ".js": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".rs": "rust",
-    ".go": "go",
-    ".rb": "ruby",
-    ".java": "java",
-    ".kt": "kotlin",
-    ".swift": "swift",
-    ".c": "c",
-    ".h": "c",
-    ".cpp": "cpp",
-    ".hpp": "cpp",
-    ".cs": "csharp",
-    ".php": "php",
-    ".lua": "lua",
-    ".sh": "bash",
-    ".bash": "bash",
-    ".zsh": "bash",
-    ".sql": "sql",
-    ".json": "json",
-    ".yml": "yaml",
-    ".yaml": "yaml",
-    ".toml": "ini",
-    ".ini": "ini",
-    ".cfg": "ini",
-    ".css": "css",
-    ".scss": "scss",
-    ".html": "xml",
-    ".xml": "xml",
-    ".svg": "xml",
-    ".md": "markdown",
-    ".diff": "diff",
-    ".patch": "diff",
-    ".graphql": "graphql",
-    ".r": "r",
-    ".pl": "perl",
-}
-SPECIAL_FILES = {"Makefile": "makefile", "Dockerfile": "dockerfile"}
-
-
-def language(path: str) -> str:
-    """The highlight.js language name for a path, or "text"."""
-    name = path.rsplit("/", 1)[-1]
-    suffix = name[name.rfind(".") :].lower() if "." in name else ""
-    return SPECIAL_FILES.get(name) or LANGUAGES.get(suffix, "text")
 
 
 def decoded(content: bytes | None) -> str:
@@ -689,17 +455,11 @@ def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | 
         old_src = decoded(diff.old.get(fd.old_path)) if fd.old_path else ""
         new_src = decoded(diff.new.get(fd.new_path)) if fd.new_path else ""
         content, content_side = (new_src, "new") if fd.new_path else (old_src, "old")
-        if fd.path.endswith(".py"):
-            old_imports, _ = python_structure(old_src)
-            imports, symbols = python_structure(content)
-        elif fd.path.endswith(".java"):
-            old_imports, imports, symbols = java_imports(old_src), java_imports(content), []
-        elif JS_PATH.search(fd.path):
-            old_imports, imports, symbols = js_imports(old_src), js_imports(content), []
-        else:
-            old_imports, imports, symbols = set(), set(), []
+        language = file_types.language_support_of(fd.path)
+        old_imports = language.structure(old_src).import_lines
+        imports, symbols = language.structure(content)
         for run in fd.runs:
-            classify_run(run, old_imports, imports, longest_first)
+            classify_run(run, old_imports, imports, longest_first, language)
         generated = is_generated(fd.path, content, diff.generated)
         classified.append(ClassifiedFile(fd, content, content_side, symbols, imports, old_imports, generated))
     return classified
@@ -713,17 +473,18 @@ def find_origins(files: list[ClassifiedFile], renames: dict[Pair, str | None]) -
         for pair, renamed_file in renames.items():
             if renamed_file == fd.path and origins[pair] is None:
                 origins[pair] = Origin(path=fd.path, line=1, side="new", text=f"renamed from {fd.old_path}")
+        language = file_types.language_support_of(fd.path)
         for run in fd.runs:
             for (a, b), origin in origins.items():
                 if origin is not None:
                     continue
                 for no, line in run.added:
-                    if is_definition(line, b):
+                    if language.is_definition(line, b):
                         origins[(a, b)] = Origin(path=fd.path, line=no, side="new", text=line.strip())
                         break
                 else:
                     for no, line in run.removed:
-                        if is_definition(line, a):
+                        if language.is_definition(line, a):
                             origins[(a, b)] = Origin(path=fd.path, line=no, side="old", text=line.strip())
                             break
     return origins
@@ -740,7 +501,7 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
         "kind": file_kind(fd.path),
         "generated": f.generated,
         "noise_only": f.noise_only,
-        "lang": language(fd.path),
+        "lang": file_types.support_of(fd.path).highlight,
         "content": f.content,
         "content_side": f.content_side,
         "binary": binary_sizes(diff, fd),

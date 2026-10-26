@@ -134,7 +134,9 @@ def test_prune_all_on_an_empty_cache_is_a_no_op(tmp_path: Path, monkeypatch: pyt
 
 
 def test_a_page_is_stale_once_any_module_that_shapes_it_changes() -> None:
-    assert {"build.py", "classify.py", "github.py", "render.py"} <= {p.name for p in build.sources()}
+    assert {"build.py", "classify.py", "github.py", "render.py", "file_types.py", "languages.py"} <= {
+        p.name for p in build.sources()
+    }
 
 
 class AtOnce:
