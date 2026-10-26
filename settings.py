@@ -77,10 +77,7 @@ def test_rules() -> str:
 
 
 def editor_list() -> str:
-    installed = {e.id for e in editors.installed()}
-    present = ", ".join(html.escape(e.name) for e in editors.known() if e.id in installed)
-    absent = ", ".join(html.escape(e.name) for e in editors.known() if e.id not in installed)
-    return f"<dt>Installed</dt><dd>{present}</dd><dt>Not installed</dt><dd>{absent or 'none'}</dd>"
+    return f"<dt>Supported</dt><dd>{', '.join(html.escape(e.name) for e in editors.known())}</dd>"
 
 
 def cache_rows() -> str:

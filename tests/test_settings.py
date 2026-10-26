@@ -5,12 +5,10 @@ import pytest
 
 import build
 import classify
-import editors
 import file_types
 import languages
 import render
 import settings
-from editors import Editor
 
 
 def test_folder_size_sums_every_file_and_is_zero_for_a_missing_folder(tmp_path: Path) -> None:
@@ -36,19 +34,15 @@ def test_human_size(n: int, text: str) -> None:
     assert settings.human_size(n) == text
 
 
-def test_the_settings_show_the_installed_editors_the_language_patterns_the_cache_sizes_and_the_commit(
+def test_the_settings_show_the_editors_the_language_patterns_the_cache_sizes_and_the_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(build, "CACHE", tmp_path)
     (tmp_path / "pages").mkdir()
     (tmp_path / "pages" / "p.html").write_bytes(b"x" * 2500)
-    monkeypatch.setattr(
-        editors, "installed", lambda: [Editor("cursor", "Cursor"), Editor("github", "GitHub", local=False)]
-    )
     monkeypatch.setattr(render, "app_info", lambda: {"commit": "abc1234", "dirty": True, "built": ""})
     html = settings.settings_html()
-    assert "<dt>Installed</dt><dd>Cursor, GitHub</dd>" in html
-    assert "<dt>Not installed</dt><dd>VS Code, PyCharm, IntelliJ IDEA, WebStorm, GoLand</dd>" in html
+    assert "<dd>VS Code, Cursor, PyCharm, IntelliJ IDEA, WebStorm, GoLand, GitHub</dd>" in html
     for language in languages.Language:
         pattern = languages.support(language).test_name_pattern
         shown = re.search(rf"<td>{re.escape(languages.name(language))}</td><td><code>([^<]*)</code>", html)
