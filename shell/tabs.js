@@ -137,7 +137,7 @@
   function drawUpdate() {
     updateBar.hidden = !(update && update.newer && seenVersion() !== update.latest);
     if (updateBar.hidden) return;
-    let sub = `You have ${update.current}. Homebrew installs it and reopens differ.`, label = 'Update and Relaunch', disabled = false;
+    let sub = `You have ${update.current}. Homebrew will install and relaunch differ.`, label = 'Update and Relaunch', disabled = false;
     if (updating) { sub = 'Homebrew is installing it. differ will quit and reopen.'; label = 'Updating…'; disabled = true; }
     else if (!update.managed) { sub = `You have ${update.current}. This copy did not come from Homebrew.`; label = 'Download'; }
     else if (tabs.some(t => t.draft)) { sub = 'A tab has unsent text. Send or discard it first.'; disabled = true; }
