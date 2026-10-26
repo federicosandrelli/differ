@@ -1,0 +1,98 @@
+/* The design system's shared stylesheet, in the head of every document (theme_head in render.py) next to the colour
+   tokens: the non-colour tokens, the page basics and the components. A document's own stylesheet says where a
+   component goes (margin, flex, width) and what colour a verdict or a status gives it, never a component's size,
+   radius or text colour; the one colour a document may set is the canvas on a count or a field that sits on the
+   inset or panel surface, so it stays visible. CONTEXT.md lists the tokens and the components. */
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --dim: 0.45;
+  --radius-sm: 4px; --radius: 6px; --radius-lg: 8px; --radius-pill: 999px;
+  --control-font: 13px; --control-line: 20px;
+}
+
+/* Page basics. */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg-canvas); color: var(--text); font: 14px/1.45 var(--sans); }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.spacer { flex: 1; }
+/* A hint is a line of quiet text under or beside a control; a kind is a small label in capitals, such as a column
+   heading or a file's kind; .err marks text that reports an error. */
+.hint { color: var(--text-muted); font-size: 12px; }
+.kind { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.err { color: var(--del-fg); }
+
+/* A button is a control: control-sized text in a bordered box, 24px tall. .primary fills it with the accent, .on
+   tints it for a toggle that is on, .ghost drops the border and quietens it for icon buttons and side actions. */
+button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: var(--control-font)/var(--control-line) var(--sans); color: inherit; background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 1px 10px; white-space: nowrap; cursor: pointer; }
+button:enabled:hover { background: var(--bg-hover); }
+button.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-fill); }
+button.primary:enabled:hover { background: var(--accent-hover); }
+button.ghost { border-color: transparent; color: var(--text-secondary); }
+button.ghost:enabled:hover { color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+/* A segmented control: buttons side by side in one bordered box. */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button + button { border-left: 1px solid var(--border); }
+/* A menu: a column of borderless buttons on a panel, opened by a button. */
+.menu { display: flex; flex-direction: column; min-width: 140px; padding: 4px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.menu button { border: 0; justify-content: flex-start; }
+
+/* A field: a text input or a textarea on the panel surface, with the accent as its focus ring. A textarea takes
+   code and comments, so it is mono. .big is the start page's one field and its button. */
+input, textarea { font: var(--control-font) var(--sans); color: var(--text); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 9px; outline: none; min-width: 0; }
+input:focus, textarea:focus { border-color: var(--accent); }
+textarea { display: block; width: 100%; font-family: var(--mono); line-height: 1.45; padding: 8px 10px; resize: vertical; }
+input.big, button.big { font-size: 14px; border-radius: var(--radius-lg); }
+input.big { padding: 9px 12px; } button.big { padding: 0 16px; }
+
+/* A card: a bordered box on the canvas, for a thread, a form, a comment, a dialog or a list. A banner: a notice
+   that something needs the reader. */
+.card { background: var(--bg-canvas); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.banner { color: var(--mod-fg); background: var(--mod-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 9px 12px; }
+
+/* A count is a number in a rounded pill next to a label, with an icon before it at times; .hits is the count of
+   search hits. Inside a button that is on or primary, it swaps colours with the button. A split is a count of
+   added and removed lines. */
+.count { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-size: 11px; line-height: 16px; min-width: 16px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--bg-inset); color: var(--text-secondary); white-space: nowrap; }
+.count.hits { background: var(--accent-bg); color: var(--accent); }
+button.on .count { background: var(--accent); color: var(--text-on-fill); }
+button.primary .count { background: var(--text-on-fill); color: var(--accent); }
+.split { display: inline-flex; font-size: 11px; line-height: 16px; border-radius: var(--radius-pill); overflow: hidden; }
+.split span { padding: 0 3px; }
+.split .a { background: var(--add-num); color: var(--add-fg); } .split .d { background: var(--del-num); color: var(--del-fg); }
+
+/* A status pill names a pull request's status in its colour, with its icon. */
+.status { display: inline-flex; align-items: center; gap: 4px; font: var(--control-font)/var(--control-line) var(--sans); padding: 2px 10px 2px 8px; border-radius: var(--radius-pill); color: var(--text-on-fill); }
+.status.st-open { background: var(--add-fg); } .status.st-draft { background: var(--text-muted); }
+.status.st-merged { background: var(--ren-fg); } .status.st-closed { background: var(--del-fg); }
+.status .pr-icon { color: inherit; }
+
+/* A pill names a file or a folder in the colour of its change (added, modified, deleted, renamed or moved);
+   a badge is the letter of that change. */
+.pill { display: inline-flex; font-family: var(--mono); font-size: 12px; padding: 1px 7px; border-radius: var(--radius-sm); background: var(--bg-inset); color: var(--text); }
+.pill .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pill s { opacity: .6; margin-right: 6px; flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill.st-A { background: var(--add-num); color: var(--add-fg); } .pill.st-M { background: var(--mod-bg); color: var(--mod-fg); }
+.pill.st-D { background: var(--del-num); color: var(--del-fg); text-decoration: line-through; }
+.pill.st-R, .pill.st-V { background: var(--ren-bg); color: var(--ren-fg); }
+.pill.test { font-style: italic; }
+.badge { font: 10px/16px var(--mono); padding: 0 5px; border-radius: var(--radius-sm); background: var(--bg-inset); color: var(--text-secondary); flex: none; min-width: 16px; text-align: center; }
+.badge.A { background: var(--add-num); color: var(--add-fg); } .badge.D { background: var(--del-num); color: var(--del-fg); }
+.badge.M { background: var(--mod-bg); color: var(--mod-fg); } .badge.R, .badge.V { background: var(--ren-bg); color: var(--ren-fg); }
+
+/* A chip is a small bordered note inside content, such as a fold or a rename marker; .action makes it a control,
+   lit when open. A tag is a word in capitals in an outline, such as a pending comment's. A key cap. */
+.chip { display: inline-block; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-inset); color: var(--text-muted); font: 11px/1.5 var(--sans); }
+.chip.action { cursor: pointer; user-select: none; }
+.chip.action:hover, .chip.open { color: var(--accent); border-color: var(--accent); }
+.tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; border: 1px solid currentColor; border-radius: var(--radius-sm); padding: 0 5px; }
+.tag.pending { color: var(--mod-fg); }
+kbd { font: 11px var(--mono); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; }
+
+/* The tooltip that shell/tooltip.js draws for every title: it fades in and out quickly. */
+.tooltip { position: fixed; top: 0; left: 0; z-index: 1000; max-width: 360px; padding: 4px 8px; border-radius: var(--radius); background: var(--text); color: var(--text-on-fill); font: 12px/1.4 var(--sans); white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; opacity: 0; transition: opacity .08s; }
+.tooltip.on { opacity: 1; }

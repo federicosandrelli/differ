@@ -11,7 +11,7 @@ Every change to the page must follow the design system. Before you style anythin
 styles the same kind of thing (pills, counts, notices, buttons), and reuse it.
 
 - Name a token, never a value: a colour token from `palette()` in `render.py`, or a custom property from `:root` in
-  `page/page.css`, such as `--dim` for content the reader can see but should skip. If none fits, add one there and
+  `shell/base.css`, such as `--dim` for content the reader can see but should skip. If none fits, add one there and
   list it in `CONTEXT.md`.
 - Tooltips: give the element a `title`. Never draw a tooltip of your own.
 

@@ -23,8 +23,8 @@ function leafHtml(f, depth) {
       <span class="ico"></span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}">${k === 'R' ? `<s title="${esc(f.old_path.split('/').pop())}">${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
       ${k === 'V' ? `<span class="from" title="${esc(oldDir)}">← ${esc(oldDir)}</span>` : ''}
-      ${hitCount ? `<span class="cnt hits">${hitCount}</span>` : ''}
-      ${threads ? `<span class="cnt bubble">${BUBBLE}${threads}</span>` : ''}
+      ${hitCount ? `<span class="count hits">${hitCount}</span>` : ''}
+      ${threads ? `<span class="count bubble">${BUBBLE}${threads}</span>` : ''}
       <span class="spacer"></span><span class="check" data-review="${esc(f.path)}">✓</span></div>`;
 }
 function renderTreeNode(node, depth, out) {
@@ -97,7 +97,7 @@ function renderSide() {
       ${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}</span></div>
     <div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
-      ${state.fileSearch ? '<span class="mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
+      ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
     <div class="list" tabindex="0">${renderList()}</div>${bugFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;

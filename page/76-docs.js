@@ -129,14 +129,14 @@ also contains the state of the page, your last clicks and keys, and any errors. 
 opened in the differ repository.</p>
 `;
 
-function docsButtonHtml() { return `<button data-docs-open class="docs">${DOCS_ICON}Docs</button>`; }
+function docsButtonHtml() { return `<button data-docs-open class="docs ghost">${DOCS_ICON}Docs</button>`; }
 
 function openDocs() {
   let dialog = document.getElementById('docs');
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'docs';
-    dialog.innerHTML = `<div class="box"><div class="top"><h1>How to use differ</h1><button data-docs-close aria-label="Close">✕</button></div>
+    dialog.innerHTML = `<div class="box card"><div class="top"><h1>How to use differ</h1><button data-docs-close class="ghost" aria-label="Close">✕</button></div>
       <div class="body">${DOCS_HTML}</div></div>`;
     // A click on the dialog itself, outside its box, is a click on the backdrop.
     dialog.addEventListener('click', (e) => { if (e.target === dialog || e.target.closest('[data-docs-close]')) dialog.close(); });

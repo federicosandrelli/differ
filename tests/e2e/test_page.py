@@ -960,7 +960,7 @@ def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: s
     expect(tab).to_have_class(re.compile(r"\bon\b"))
     expect(tab.locator(".label")).to_have_text(f"#1 {TITLE}", timeout=30000)
     unresolved = sum(not t["isResolved"] for t in json.loads((gh_state / "comments.json").read_text())["threads"])
-    expect(tab.locator(".badge")).to_have_text(str(unresolved))
+    expect(tab.locator(".count")).to_have_text(str(unresolved))
     expect(page.frame_locator("#panes iframe.on").locator("#side .tree")).to_be_visible()
 
     page.reload()

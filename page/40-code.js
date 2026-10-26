@@ -13,7 +13,7 @@ function rowHtml(f, r) {
 function renderRow(f, r, out, index) {
   const key = rowKeyOf(r);
   const cls = [r.type, r.dim ? 'dim' : '', r.sel ? 'sel' : '', r.between ? 'between' : ''].join(' ');
-  const tag = r.dim ? '<span class="tag">rename</span>' : '';
+  const tag = r.dim ? '<span class="chip">rename</span>' : '';
   index.set(key, out.length);
   const old = r.type === 'del';
   out.push(`<tr class="${cls}" id="${rowId(f, key)}"><td class="n${old ? ' key' : ''}">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n${old ? '' : ' key'}">${old ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
@@ -25,7 +25,7 @@ function renderRow(f, r, out, index) {
 function inlineFoldRow(b) {
   const title = `${b.open ? 'Fold' : 'Show'} ${plural(b.mid.length, 'unchanged line')}`;
   const indent = b.mid[0].text.match(/^\s*/)[0];
-  return `<tr class="inline-fold-row"><td class="n"></td><td class="n"></td><td class="m"></td><td class="c">${esc(indent)}<span class="inline-fold${b.open ? ' open' : ''}" data-fold="${esc(b.fold)}" title="${title}">⋯</span></td></tr>`;
+  return `<tr class="inline-fold-row"><td class="n"></td><td class="n"></td><td class="m"></td><td class="c">${esc(indent)}<span class="inline-fold chip action${b.open ? ' open' : ''}" data-fold="${esc(b.fold)}" title="${title}">⋯</span></td></tr>`;
 }
 
 function runSummary(r) {

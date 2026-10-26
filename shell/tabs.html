@@ -2,41 +2,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Pull requests</title>
 __THEME__
 <style>
-:root { --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; --mono: "SF Mono", ui-monospace, Menlo, monospace; }
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
-body { background: var(--bg-canvas); color: var(--text); font: 13px var(--sans); display: flex; flex-direction: column; overflow: hidden; }
+html, body { height: 100%; }
+body { font-size: 13px; display: flex; flex-direction: column; overflow: hidden; }
 #tabs { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); overflow: hidden; user-select: none; -webkit-user-select: none; }
 html.app #tabs { height: 40px; padding-left: 84px; }
-.tab { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: 7px; color: var(--text-secondary); flex: 0 1 auto; min-width: 48px; max-width: 260px; cursor: default; }
+.tab { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: var(--radius); color: var(--text-secondary); flex: 0 1 auto; min-width: 48px; max-width: 260px; cursor: default; }
 .tab:hover { background: var(--bg-hover); }
 .tab.on { background: var(--bg-inset); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
 .tab.home { flex: none; padding: 0 8px; min-width: 0; }
 .tab.home svg { display: block; }
 .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
-.tab .badge { flex: none; font: 11px/18px var(--mono); min-width: 18px; text-align: center; padding: 0 4px; border-radius: 4px; background: var(--bg-canvas); color: var(--text-secondary); border: 1px solid var(--border); }
+/* The count sits on the inset of the open tab, so it takes the canvas. */
+.tab .count { flex: none; background: var(--bg-canvas); border: 1px solid var(--border); }
 .tab.warn .label { color: var(--del-fg); }
-.tab .close { flex: none; width: 16px; height: 16px; border: 0; border-radius: 4px; padding: 0; background: none; color: var(--text-muted); font: 15px/16px var(--sans); cursor: pointer; visibility: hidden; }
+.tab .close { flex: none; width: 16px; height: 16px; border: 0; border-radius: var(--radius-sm); padding: 0; background: none; color: var(--text-muted); font: 15px/16px var(--sans); visibility: hidden; }
 .tab:hover .close, .tab.on .close { visibility: visible; }
 .tab .close:hover { background: var(--bg-hover-strong); color: var(--text); }
 #panes { flex: 1; position: relative; min-height: 0; }
 #panes iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg-canvas); visibility: hidden; }
 #panes iframe.on { visibility: visible; }
-#update { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: max-content; max-width: min(680px, calc(100vw - 40px)); display: flex; align-items: center; gap: 48px; padding: 10px 12px 10px 16px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; }
+#update { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: max-content; max-width: min(680px, calc(100vw - 40px)); display: flex; align-items: center; gap: 48px; padding: 10px 12px 10px 16px; }
 #update[hidden] { display: none; }
 #update .text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 #update .title { font-weight: 600; }
 #update .sub { color: var(--text-secondary); }
-#update .sub.err { color: var(--del-fg); }
 #update .actions { flex: none; display: flex; gap: 8px; }
-#update button { font: inherit; color: inherit; background: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
-#update button:hover { background: var(--bg-hover); }
-#update button.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
-#update button.primary:hover { background: var(--accent-hover); }
-#update button:disabled { opacity: .5; cursor: default; }
 </style>
 </head><body><div id="tabs" data-tauri-drag-region></div><div id="panes"></div>
-<div id="update" role="status" hidden><div class="text"><span class="title"></span><span class="sub"></span></div><div class="actions"><button class="later">Later</button><button class="primary act"></button></div></div>
+<div id="update" class="card" role="status" hidden><div class="text"><span class="title"></span><span class="sub"></span></div><div class="actions"><button class="later">Later</button><button class="primary act"></button></div></div>
 <script>
 __SCRIPT__
 </script></body></html>
