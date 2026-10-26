@@ -135,8 +135,15 @@ fn fresh(checked_at: u64) -> bool {
     checked_at <= now && now - checked_at < INTERVAL
 }
 
-/// Looks for a newer version. Fetches the cask when the last successful check is a day old, and otherwise, or
-/// when the fetch fails, answers from the cache.
+/// Whether the cache can answer for the running `current` version: the check is fresh and names a version no
+/// older than `current`. An older version means the app was upgraded after the check, so the cask may name a
+/// newer version by now.
+fn usable(cache: &Cache, current: &str) -> bool {
+    fresh(cache.checked_at) && !is_newer(current, &cache.version)
+}
+
+/// Looks for a newer version. Fetches the cask when the last successful check is a day old or names a version
+/// older than the running app, and otherwise, or when the fetch fails, answers from the cache.
 #[tauri::command(async)]
 pub fn update_check(app: AppHandle) -> UpdateStatus {
     let current = app.package_info().version.to_string();
@@ -145,7 +152,7 @@ pub fn update_check(app: AppHandle) -> UpdateStatus {
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok());
-    if !cache.as_ref().is_some_and(|c| fresh(c.checked_at)) {
+    if !cache.as_ref().is_some_and(|c| usable(c, &current)) {
         if let Some(version) = fetch() {
             let next = Cache {
                 checked_at: now(),
@@ -268,7 +275,7 @@ pub fn update_run(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{cask_version, fresh, helper_script, is_newer, now};
+    use super::{cask_version, fresh, helper_script, is_newer, now, usable, Cache};
     use std::path::Path;
 
     #[test]
@@ -291,6 +298,17 @@ mod tests {
         assert!(fresh(now - 10));
         assert!(!fresh(now - 2 * 24 * 60 * 60));
         assert!(!fresh(now + 3600));
+    }
+
+    #[test]
+    fn a_cache_naming_a_version_older_than_the_app_is_not_usable() {
+        let cache = |version: &str| Cache {
+            checked_at: now() - 10,
+            version: version.to_string(),
+        };
+        assert!(usable(&cache("0.1.40"), "0.1.40"));
+        assert!(usable(&cache("0.1.42"), "0.1.40"));
+        assert!(!usable(&cache("0.1.39"), "0.1.40"));
     }
 
     #[test]
