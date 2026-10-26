@@ -26,12 +26,10 @@ def folder_size(folder: Path) -> int:
 
 
 def human_size(n: int) -> str:
-    size = float(n)
-    for unit in ("B", "kB", "MB"):
-        if size < 1000:
-            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
-        size /= 1000
-    return f"{size:.1f} GB"
+    """The size as the page shows a binary file's: bytes under a kilobyte, then KB, then MB."""
+    if n < 1024:
+        return f"{n} byte{'' if n == 1 else 's'}"
+    return f"{n / 1024:.1f} KB" if n < 1024**2 else f"{n / 1024**2:.1f} MB"
 
 
 def items(values: list[str]) -> str:
@@ -44,12 +42,10 @@ def code(value: str) -> str:
 
 def docs_rules() -> str:
     folders = " or ".join(code(d) for d in classify.DOCS_DIRS)
-    types = ", ".join(
-        f"{t.name.capitalize()} ({', '.join(code(s) for s in file_types.support(t).suffixes)})"
-        for t in file_types.FileType
-        if file_types.support(t).docs
+    suffixes = ", ".join(
+        code(s) for t in file_types.FileType if file_types.support(t).docs for s in file_types.support(t).suffixes
     )
-    return items([f"A path under {folders}.", f"A file of a documentation type: {types}."])
+    return items([f"A path under {folders}.", f"A file with the suffix {suffixes}."])
 
 
 def test_rules() -> str:
@@ -75,8 +71,7 @@ def test_rules() -> str:
 def editor_list() -> str:
     installed = {e.id for e in editors.installed()}
     return "".join(
-        f'<li data-editor="{html.escape(e.id)}"{" data-installed" if e.id in installed else ""}>{html.escape(e.name)}'
-        f'<span class="hint">{"installed" if e.id in installed else "not installed"}</span></li>'
+        f'<li>{html.escape(e.name)}<span class="hint">{"installed" if e.id in installed else "not installed"}</span></li>'
         for e in editors.known()
     )
 

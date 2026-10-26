@@ -135,15 +135,11 @@
   // The settings: a modal in the middle of the window, opened by the gear in the bottom left, by Cmd+, (a page
   // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker is
   // the shell's own; the rest of the body comes from /settings on each open, so the editors, the cache and the
-  // version are current. The shell adds what only it knows: the chosen editor, and the app's version.
+  // version are current. The shell adds the app's version, which only it knows.
   const settings = document.getElementById('settings');
   function openSettings() {
-    fetch('/settings').then(r => r.text()).then((body) => {
+    fetch('/settings').then(r => r.ok ? r.text() : Promise.reject(r.status)).then((body) => {
       settings.querySelector('.state').innerHTML = body;
-      const editors = [...settings.querySelectorAll('[data-editor][data-installed]')];
-      const saved = (() => { try { return localStorage.getItem('dr:editor'); } catch { return null; } })();
-      const chosen = editors.find(li => li.dataset.editor === saved) || editors[0];
-      if (chosen) chosen.querySelector('.hint').textContent += ' · chosen';
       if (update) settings.querySelector('[data-version]').textContent = `${update.current}${update.managed ? ' from Homebrew' : ''} · `;
     }).catch(() => {});
     if (!settings.open) settings.showModal();

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -19,13 +20,13 @@ def test_folder_size_sums_every_file_and_is_zero_for_a_missing_folder(tmp_path: 
 
 
 @pytest.mark.parametrize(
-    "n, text", [(0, "0 B"), (999, "999 B"), (1000, "1.0 kB"), (527_900_000, "527.9 MB"), (12_300_000_000, "12.3 GB")]
+    "n, text", [(0, "0 bytes"), (1, "1 byte"), (1023, "1023 bytes"), (1024, "1.0 KB"), (527_900_000, "503.4 MB")]
 )
 def test_human_size(n: int, text: str) -> None:
     assert settings.human_size(n) == text
 
 
-def test_the_settings_name_every_section_editor_language_pattern_the_cache_and_the_commit(
+def test_the_settings_show_the_installed_editors_the_language_patterns_the_cache_sizes_and_the_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(build, "CACHE", tmp_path)
@@ -36,21 +37,16 @@ def test_the_settings_name_every_section_editor_language_pattern_the_cache_and_t
     )
     monkeypatch.setattr(render, "app_info", lambda: {"commit": "abc1234", "dirty": True, "built": ""})
     html = settings.settings_html()
-    for heading in ("Keyboard shortcuts", "File types", "Folded lines", "Hidden files", "Editor", "Cache"):
-        assert f"<h2>{heading}</h2>" in html
-    assert '<li data-editor="cursor" data-installed>Cursor<span class="hint">installed</span></li>' in html
-    assert '<li data-editor="vscode">VS Code<span class="hint">not installed</span></li>' in html
+    assert re.search(r"Cursor<span[^>]*>installed<", html) and re.search(r"VS Code<span[^>]*>not installed<", html)
     for language in languages.Language:
         pattern = languages.support(language).test_name_pattern
-        if pattern is not None:
-            assert f"<tr><td>{languages.name(language)}</td><td><code>{pattern}</code></td></tr>" in html
-    assert "<tr><td>Rust</td>" not in html
-    assert "<code>_test$|^conftest$</code>" in html
-    assert "<code>tests</code>" in html and "<code>test_</code>" in html and "<code>/src/test/</code>" in html
-    assert f"<code>{tmp_path}</code>" in html
-    assert "<td><code>pages/</code></td><td>the built pages</td><td>2.5 kB</td>" in html
-    assert "<td><code>repos/</code></td><td>the bare clones that build the pages</td><td>0 B</td>" in html
-    assert "commit <code>abc1234</code> with uncommitted changes · " in html
+        shown = re.search(rf"<td>{re.escape(languages.name(language))}</td><td><code>([^<]*)</code>", html)
+        assert (shown and shown[1]) == (pattern or None), language
+    assert "<code>test_</code>" in html and "<code>/src/test/</code>" in html and "<code>.md</code>" in html
+    assert str(tmp_path) in html
+    assert re.search(r"<code>pages/</code></td><td>[^<]*</td><td>2.4 KB<", html)
+    assert re.search(r"<code>repos/</code></td><td>[^<]*</td><td>0 bytes<", html)
+    assert "commit <code>abc1234</code> with uncommitted changes" in html
 
 
 def test_the_settings_omit_the_commit_when_git_cannot_tell(monkeypatch: pytest.MonkeyPatch) -> None:

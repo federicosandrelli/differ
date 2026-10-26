@@ -19,6 +19,7 @@ const SHELL = window.parent === window ? null : {
 };
 
 if (SHELL) {
+  document.documentElement.classList.add('framed');
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
     if (!a || (a.getAttribute('href') || '').startsWith('#')) return;
