@@ -38,15 +38,15 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 #settings .top h1 { font-size: 17px; margin: 0; }
 #settings .body { overflow-y: auto; padding: 0 24px 20px; font-size: 13.5px; line-height: 1.5; }
 /* A section is a label on the left and its content on the right: the content is phi cubed (about 4.24) times the
-   label column with its gap, so the 632px of body width split into 100 + 20 and 512. */
+   label column with its gap, so the 630px of body width split into 100 + 20 and 510. */
 #settings section { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 0 20px; padding: 22px 0; border-top: 1px solid var(--border); }
 #settings .body > section:first-child { border-top: 0; }
 #settings h2 { font-size: inherit; font-weight: 600; margin: 0; }
 #settings h3 { font-size: inherit; font-weight: 600; margin: 16px 0 4px; }
 #settings p { margin: 0 0 10px; } #settings section > div > :last-child { margin-bottom: 0; }
 #settings ul { margin: 2px 0 0; padding-left: 18px; } #settings li { margin: 3px 0; }
-#settings dl { margin: 0 0 10px; } #settings dt { font-weight: 600; margin-top: 10px; } #settings dd { margin: 0; color: var(--text-secondary); }
-#settings .editors { display: grid; grid-template-columns: max-content 1fr; gap: 2px 8px; } #settings .editors dt { margin-top: 0; }
+#settings dl { margin: 0 0 10px; } #settings dt { font-weight: 600; margin-top: 10px; } #settings dl > dt:first-child { margin-top: 0; } #settings dd { margin: 0; color: var(--text-secondary); }
+#settings .editors { display: grid; grid-template-columns: max-content 1fr; gap: 2px 8px; }
 #settings table { border-collapse: collapse; }
 #settings .keys { width: 100%; margin-bottom: 10px; }
 #settings .keys td { padding: 5px 10px 5px 0; border-bottom: 1px solid var(--border); vertical-align: top; }

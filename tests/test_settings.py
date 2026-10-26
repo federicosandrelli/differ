@@ -49,6 +49,11 @@ def test_the_settings_show_the_editors_the_language_patterns_the_cache_sizes_and
         shown = re.search(rf"<td>{re.escape(languages.name(language))}</td><td><code>([^<]*)</code>", html)
         assert (shown and shown[1]) == (pattern or None), language
     for literal in (
+        *sorted(classify.GENERATED_NAMES),
+        *file_types.support(file_types.FileType.PYTHON).generated_suffixes,
+    ):
+        assert f"<code>{literal}</code>" in html
+    for literal in (
         classify.TEST_NAME_PREFIX,
         classify.TEST_PATH_PART,
         *file_types.support(file_types.FileType.MARKDOWN).suffixes,

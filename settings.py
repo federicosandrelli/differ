@@ -77,6 +77,19 @@ def test_rules() -> str:
     )
 
 
+def generated_rules() -> str:
+    names = ", ".join(code(n) for n in sorted(classify.GENERATED_NAMES))
+    suffixes = sorted({s for t in file_types.FileType for s in file_types.support(t).generated_suffixes})
+    return items(
+        [
+            f"The name {names}.",
+            f"A name ending in {', '.join(code(s) for s in suffixes)}.",
+            f"The {code('linguist-generated')} mark in {code('.gitattributes')}.",
+            'A line near the top that says a tool wrote it, such as "DO NOT EDIT" or "@generated".',
+        ]
+    )
+
+
 def editor_list() -> str:
     return f"<dt>Supported</dt><dd>{', '.join(html.escape(e.name) for e in editors.known())}</dd>"
 
@@ -101,6 +114,7 @@ def settings_html() -> str:
         (render.SHELL_DIR / "settings.html").read_text(),
         DOCS_RULES=docs_rules(),
         TEST_RULES=test_rules(),
+        GENERATED_RULES=generated_rules(),
         EDITORS=editor_list(),
         CACHE=html.escape(str(build.CACHE)),
         CACHE_ROWS=cache_rows(),
