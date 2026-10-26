@@ -13,6 +13,7 @@ import file_types
 import languages
 import render
 
+REPOSITORY = "https://github.com/federicosandrelli/differ"
 CACHE_FOLDERS = (
     ("repos", "the bare clones that build the pages"),
     ("checkouts", "the clones your editor opens"),
@@ -91,7 +92,8 @@ def commit_line() -> str:
     info = render.app_info()
     if not info["commit"]:
         return ""
-    return f"commit {code(info['commit'])}{' with uncommitted changes' if info['dirty'] else ''} · "
+    link = f'<a href="{REPOSITORY}/commit/{info["commit"]}" target="_blank">{code(info["commit"])}</a>'
+    return f"commit {link}{' with uncommitted changes' if info['dirty'] else ''} · "
 
 
 def settings_html() -> str:
@@ -103,4 +105,5 @@ def settings_html() -> str:
         CACHE=html.escape(str(build.CACHE)),
         CACHE_ROWS=cache_rows(),
         COMMIT=commit_line(),
+        REPOSITORY=REPOSITORY,
     )

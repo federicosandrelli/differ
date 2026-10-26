@@ -57,7 +57,10 @@ def test_the_settings_show_the_editors_the_language_patterns_the_cache_sizes_and
     assert str(tmp_path) in html
     assert re.search(r"<code>pages/</code></td><td>[^<]*</td><td>2.4 KB<", html)
     assert re.search(r"<code>repos/</code></td><td>[^<]*</td><td>0 bytes<", html)
-    assert "commit <code>abc1234</code> with uncommitted changes" in html
+    assert (
+        'commit <a href="https://github.com/federicosandrelli/differ/commit/abc1234" target="_blank">'
+        "<code>abc1234</code></a> with uncommitted changes" in html
+    )
 
 
 def test_the_settings_omit_the_commit_when_git_cannot_tell(monkeypatch: pytest.MonkeyPatch) -> None:
