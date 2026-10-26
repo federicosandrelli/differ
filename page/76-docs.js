@@ -24,8 +24,8 @@ differ folds lines in these cases:</p>
   <li><b>Unchanged lines.</b> Between two changes, differ shows the 4 unchanged lines next to each change and folds
     the rest. It shows a block of 10 unchanged lines or fewer in full. The fold row lists the Python functions and
     classes that start inside it.</li>
-  <li><b>Import sections.</b> In Python and Java files, every import section folds to one row, even when nothing in it
-    changed. The row says how many lines were added and removed.</li>
+  <li><b>Import sections.</b> In Python, Java, JavaScript and TypeScript files, every import section folds to one row,
+    even when nothing in it changed. The row says how many lines were added and removed.</li>
   <li><b>Whitespace.</b> A change where every line is blank, or where each removed line equals its added line once
     all spaces, tabs and line breaks are removed.</li>
   <li><b>Rename fallout.</b> A change where each removed line becomes its added line exactly by applying a rename. A

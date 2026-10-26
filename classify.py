@@ -315,10 +315,12 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
 JAVA_IMPORT_RE = re.compile(r"import(?:\s+static)?(?:\s+[\w.*]+)?\s*;?")
 JAVA_IMPORT_TAIL_RE = re.compile(r"[\w.*]+\s*;?")
 JAVA_PACKAGE_RE = re.compile(r"package\s+[\w.\s]+;")
+COMMENT_OR_STRING_RE = re.compile(r"""//|/\*|'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?""")
 
 
 def java_code(line: str, in_comment: bool) -> tuple[str, bool]:
-    """Return a Java line with its comments removed, and whether a block comment is still open at its end."""
+    """Return a Java or JavaScript line with its comments removed, and whether a block comment is still open at its
+    end. Comment markers inside a quoted string stay."""
     code = []
     i = 0
     while i < len(line):
@@ -328,15 +330,19 @@ def java_code(line: str, in_comment: bool) -> tuple[str, bool]:
                 break
             i, in_comment = end + 2, False
             continue
-        block, rest = line.find("/*", i), line.find("//", i)
-        if rest >= 0 and (block < 0 or rest < block):
-            code.append(line[i:rest])
-            break
-        if block < 0:
+        m = COMMENT_OR_STRING_RE.search(line, i)
+        if m is None:
             code.append(line[i:])
             break
-        code.append(line[i:block] + " ")
-        i, in_comment = block + 2, True
+        if m[0] == "//":
+            code.append(line[i : m.start()])
+            break
+        if m[0] == "/*":
+            code.append(line[i : m.start()] + " ")
+            i, in_comment = m.end(), True
+        else:
+            code.append(line[i : m.end()])
+            i = m.end()
     return "".join(code).strip(), in_comment
 
 
@@ -358,6 +364,50 @@ def java_imports(source: str) -> set[int]:
         elif JAVA_PACKAGE_RE.fullmatch(code):
             in_import = False
         else:
+            break
+    return imports
+
+
+JS_IMPORT_RE = re.compile(r"""import(?![\w$])[\w$\s,*{}]*(['"])[^'"]*\1\s*;?""")
+JS_IMPORT_HEAD_RE = re.compile(r"import(?![\w$])[\w$\s,*{}]*")
+JS_IMPORT_MIDDLE_RE = re.compile(r"[\w$\s,*{}]+")
+JS_IMPORT_TAIL_RE = re.compile(r"""[\w$\s,*{}]*(?<![\w$])from\s*(['"])[^'"]*\1\s*;?""")
+JS_LINE_BREAK_RE = re.compile("[\r\u2028\u2029]")
+JS_DIRECTIVE_RE = re.compile(r"""(['"])[\w\s-]*\1\s*;?""")
+JS_IMPORT_CONTINUATION_RE = re.compile(r"with(?![\w$])|;")
+
+
+def js_imports(source: str) -> set[int]:
+    """Return the import line numbers of a JavaScript or TypeScript source: the import statements in the header before
+    the first other statement, where only comments, blank lines, a shebang and directives such as "use client" may sit
+    between them, and comments may also sit inside a statement. A statement counts only once its module path closes
+    it, and only when the next line does not continue it. The scan stops at a line break that git does not count."""
+    imports: set[int] = set()
+    statement: list[int] = []
+    closed: list[int] = []
+    in_comment = False
+    for no, line in enumerate(source.removeprefix("\ufeff").replace("\ufeff", " ").split("\n"), 1):
+        if JS_LINE_BREAK_RE.search(line.removesuffix("\r")):
+            imports.difference_update(closed)
+            break
+        if no == 1 and line.startswith("#!"):
+            continue
+        code, in_comment = java_code(line, in_comment)
+        if not code:
+            if statement and line.strip():
+                statement.append(no)
+            continue
+        if JS_IMPORT_RE.fullmatch(code) or (statement and JS_IMPORT_TAIL_RE.fullmatch(code)):
+            imports.update(statement, [no])
+            closed = [] if code.endswith(";") else [*statement, no]
+            statement = []
+        elif (JS_IMPORT_MIDDLE_RE if statement else JS_IMPORT_HEAD_RE).fullmatch(code):
+            statement.append(no)
+        elif not statement and JS_DIRECTIVE_RE.fullmatch(code):
+            continue
+        else:
+            if not statement and JS_IMPORT_CONTINUATION_RE.match(code):
+                imports.difference_update(closed)
             break
     return imports
 
@@ -509,6 +559,7 @@ def link_moves(files: list[FileDiff]) -> None:
 TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
 TEST_DIRS = {"__tests__", "__snapshots__", "test_helpers"}
 JS_EXT = r"(?:js|jsx|mjs|cjs|ts|tsx|mts|cts)"
+JS_PATH = re.compile(rf"\.{JS_EXT}$")
 TEST_NAME = re.compile(
     r"^test_|^conftest\.py$"
     r"|_test\.(?:py|go|rb|dart|exs)$|_spec\.rb$"
@@ -643,6 +694,8 @@ def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | 
             imports, symbols = python_structure(content)
         elif fd.path.endswith(".java"):
             old_imports, imports, symbols = java_imports(old_src), java_imports(content), []
+        elif JS_PATH.search(fd.path):
+            old_imports, imports, symbols = js_imports(old_src), js_imports(content), []
         else:
             old_imports, imports, symbols = set(), set(), []
         for run in fd.runs:
