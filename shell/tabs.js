@@ -84,8 +84,10 @@
   }
   const zoomDir = (e) => !e.metaKey || e.altKey || e.ctrlKey ? null : e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
   window.addEventListener('keydown', (e) => {
-    // An Escape left alone would make the macOS window leave full screen.
-    if (e.key === 'Escape') { e.preventDefault(); return; }
+    // An Escape left alone would make the macOS window leave full screen. Cancelling it also stops the open
+    // dialog from closing on its own, so the shell closes it.
+    if (e.key === 'Escape') { e.preventDefault(); settings.close(); return; }
+    if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
     if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
       step(e.key === 'ArrowLeft' ? -1 : 1);
@@ -95,8 +97,9 @@
     if (dir !== null && webview) { e.preventDefault(); zoomStep(dir); }
   });
 
-  // The desktop app's Cmd+W menu item sends 'close-tab'.
+  // The desktop app's Cmd+W menu item sends 'close-tab', and its "Settings…" menu item 'open-settings'.
   window.addEventListener('close-tab', () => closeAsked(active));
+  window.addEventListener('open-settings', openSettings);
 
   bar.addEventListener('click', (e) => {
     const c = e.target.closest('[data-close]');
@@ -114,6 +117,7 @@
     if (m.type === 'open') { open(m.url); return; }
     if (m.type === 'step') { step(m.dir === -1 ? -1 : 1); return; }
     if (m.type === 'zoom') { if ([-1, 0, 1].includes(m.dir)) zoomStep(m.dir); return; }
+    if (m.type === 'settings') { openSettings(); return; }
     if (m.type === 'external') { if (APP) location.href = m.url; else window.open(m.url, '_blank', 'noopener'); return; }
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
@@ -127,6 +131,28 @@
       tab.key = key; draw(); save();
     }
   });
+
+  // The settings: a modal in the middle of the window, opened by the gear in the bottom left, by Cmd+, (a page
+  // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker is
+  // the shell's own; the rest of the body comes from /settings on each open, so the editors, the cache and the
+  // version are current. The shell adds what only it knows: the chosen editor, and the app's version.
+  const settings = document.getElementById('settings');
+  function openSettings() {
+    fetch('/settings').then(r => r.text()).then((body) => {
+      settings.querySelector('.state').innerHTML = body;
+      const editors = [...settings.querySelectorAll('[data-editor][data-installed]')];
+      const saved = (() => { try { return localStorage.getItem('dr:editor'); } catch { return null; } })();
+      const chosen = editors.find(li => li.dataset.editor === saved) || editors[0];
+      if (chosen) chosen.querySelector('.hint').textContent += ' · chosen';
+      if (update) settings.querySelector('[data-version]').textContent = `${update.current}${update.managed ? ' from Homebrew' : ''} · `;
+    }).catch(() => {});
+    if (!settings.open) settings.showModal();
+    settings.querySelector('.body').scrollTop = 0;
+  }
+  document.getElementById('gear').addEventListener('click', openSettings);
+  // A click on the dialog itself, outside its box, is a click on the backdrop.
+  settings.addEventListener('click', (e) => { if (e.target === settings || e.target.closest('.close')) settings.close(); });
+  settings.addEventListener('close', () => { const frame = active.frame; if (frame && frame.contentWindow) frame.contentWindow.focus(); });
 
   // The bar that offers a newer version in the desktop app. Update and Relaunch quits the app, and a page's
   // unsent text would go with it, so the button waits while a tab holds a draft.

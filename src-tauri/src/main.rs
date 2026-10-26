@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 mod update;
 
-use tauri::menu::{Menu, MenuItem, MenuItemKind};
+use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::{
     AppHandle, LogicalPosition, Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl,
     WebviewWindowBuilder, Wry,
@@ -171,15 +171,26 @@ fn wait_for(port: u16, limit: Duration) -> bool {
 
 const CLOSE_TAB: &str = "close-tab";
 const CLOSE_WINDOW: &str = "close-window";
+const OPEN_SETTINGS: &str = "open-settings";
 
 // Tauri's default menu binds Cmd+W to "Close Window", and closing the only window quits the app. This is the default
-// menu with Cmd+W on "Close Tab", which tells the tab shell to close its active tab, and "Close Window" on Cmd+Shift+W.
+// menu with Cmd+W on "Close Tab", which tells the tab shell to close its active tab, and "Close Window" on Cmd+Shift+W,
+// and with "Settings…" (Cmd+,) in the app menu after "About", which tells the shell to open its settings.
 fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let menu = Menu::default(app)?;
-    for item in menu.items()? {
+    for (n, item) in menu.items()?.into_iter().enumerate() {
         let MenuItemKind::Submenu(submenu) = item else {
             continue;
         };
+        if n == 0 {
+            submenu.insert_items(
+                &[
+                    &MenuItem::with_id(app, OPEN_SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?,
+                    &PredefinedMenuItem::separator(app)?,
+                ],
+                2,
+            )?;
+        }
         let entries = submenu.items()?;
         for (i, entry) in entries.iter().enumerate() {
             let MenuItemKind::Predefined(close) = entry else {
@@ -228,6 +239,8 @@ fn main() {
             };
             if event.id() == CLOSE_TAB {
                 let _ = window.eval("window.dispatchEvent(new Event('close-tab'))");
+            } else if event.id() == OPEN_SETTINGS {
+                let _ = window.eval("window.dispatchEvent(new Event('open-settings'))");
             } else if event.id() == CLOSE_WINDOW {
                 let _ = window.close();
             }

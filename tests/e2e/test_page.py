@@ -972,7 +972,9 @@ def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: s
     expect(page.frame_locator("#panes iframe.on").locator("input[name=pr]")).to_be_visible()
 
 
-def test_the_shell_cancels_escape_and_still_closes_the_docs(page: Page, server_url: str) -> None:
+def test_the_shell_opens_the_settings_on_cmd_comma_and_closes_them_on_escape_and_the_backdrop(
+    page: Page, server_url: str
+) -> None:
     page.goto(server_url + "/")
     home = page.frame_locator("#panes iframe.on")
     home.locator("input[name=pr]").fill("acme/widgets#1")
@@ -986,22 +988,25 @@ def test_the_shell_cancels_escape_and_still_closes_the_docs(page: Page, server_u
         "window.cancelled = [];"
         "window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelled.push(e.defaultPrevented); })"
     )
-    frame.click("button[data-docs-open]")
-    expect(frame.locator("#docs")).to_be_visible()
+    # Focus sits inside the page, which forwards the chord to the shell.
+    frame.click("#side .list")
+    page.keyboard.press("Meta+,")
+    dialog = page.locator("#settings")
+    expect(dialog).to_be_visible()
+    expect(dialog.locator("h2", has_text="Cache")).to_be_visible()
+    expect(dialog.locator(".editors li[data-editor=github] .hint")).to_contain_text("installed")
+    expect(dialog.locator(".editors li", has_text="chosen")).to_have_count(1)
+    # The shell cancels every Escape, so that the macOS window keeps full screen, and closes the dialog itself.
     page.keyboard.press("Escape")
-    expect(frame.locator("#docs")).to_be_hidden()
+    expect(dialog).to_be_hidden()
     frame.fill("#side .search", "hello")
     page.keyboard.press("Escape")
     expect(frame.locator("#side .search")).to_have_value("")
-    assert frame.evaluate("cancelled") == [True, True]
-
-    page.evaluate(
-        "document.activeElement.blur();"
-        "window.cancelled = [];"
-        "window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelled.push(e.defaultPrevented); })"
-    )
-    page.keyboard.press("Escape")
-    assert page.evaluate("cancelled") == [True]
+    assert frame.evaluate("cancelled") == [True]
+    page.click("#gear")
+    expect(dialog).to_be_visible()
+    page.mouse.click(4, 4)
+    expect(dialog).to_be_hidden()
 
 
 def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, server_url: str, gh_state: Path) -> None:
@@ -1106,14 +1111,14 @@ def test_a_folder_row_shows_a_tooltip_only_while_its_name_is_cut_off(page: Page,
     expect(page.locator(".tooltip")).to_have_text("src/")
 
 
-def test_a_tooltip_in_the_docs_window_shows_above_the_dialog(page: Page, server_url: str) -> None:
-    open_pr(page, server_url)
-    page.click("button[data-docs-open]")
-    heading = page.locator("#docs h1")
+def test_a_tooltip_in_the_settings_shows_above_the_dialog(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.click("#gear")
+    heading = page.locator("#settings h1")
     heading.evaluate("e => e.title = 'What differ does'")
     heading.hover()
-    expect(page.locator("#docs .tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
-    expect(page.locator("#docs .tooltip")).to_have_text("What differ does")
+    expect(page.locator("#settings .tooltip")).to_have_class(re.compile(r"\bon\b"), timeout=600)
+    expect(page.locator("#settings .tooltip")).to_have_text("What differ does")
 
 
 def test_a_tooltip_shows_on_an_element_reached_by_scrolling(page: Page, server_url: str) -> None:

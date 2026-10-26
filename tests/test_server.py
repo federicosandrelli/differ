@@ -70,6 +70,12 @@ def test_the_home_page_serves_a_cross_site_get(tmp_path: Path, monkeypatch: pyte
     assert body.count(b"None opened yet.") == 3
 
 
+def test_settings_serves_the_settings_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.settings, "settings_html", lambda: "<h2>Cache</h2>")
+    status, body = get("/settings")
+    assert status == 200 and body == b"<h2>Cache</h2>"
+
+
 def test_refused_accepts_a_loopback_origin_with_json() -> None:
     assert handler("http://localhost:8765", "application/json").refused() is None
     assert handler("http://127.0.0.1:8765", "application/json; charset=utf-8").refused() is None

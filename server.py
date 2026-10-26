@@ -11,6 +11,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      three sections of up to twenty: yours, other people's, and merged
   /recent                            the list of pull requests opened last, as an HTML fragment, with each
                                      status and author fetched from GitHub
+  /settings                          the body of the settings modal, as an HTML fragment: the shortcuts, the
+                                     file type rules, the folds, the editors, the cache and the version
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
@@ -56,6 +58,7 @@ import file_types
 import github
 import recent
 import render
+import settings
 from github import SLUG, PullRef
 
 PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
@@ -191,6 +194,8 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/recent":
                 recent.refresh()
                 return self.send(200, recent.items_html().encode())
+            if url.path == "/settings":
+                return self.send(200, settings.settings_html().encode())
             if url.path in ("/open", "/image") or STATUS.match(url.path) or PAGE.match(url.path):
                 if why := self.cross_site():
                     return self.send(403, error_page(f"Forbidden: {why}"))

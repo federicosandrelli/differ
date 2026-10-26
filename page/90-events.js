@@ -36,8 +36,6 @@ function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); ren
 document.addEventListener('click', (e) => {
   const bug = e.target.closest(BUG_ATTRS);
   if (bug) { e.preventDefault(); bugClick(bug); return; }
-  if (e.target.closest('[data-docs-open]')) { openDocs(); return; }
-  if (e.target.closest('#docs')) return;
   // A click anywhere but on the open editor menu or its button closes the menu, and does what it would do anyway.
   if (EDITOR.menu !== null && !e.target.closest('.editor-pick')) { EDITOR.menu = null; render(); }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
@@ -145,7 +143,6 @@ function stepFile(dir) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.closest && e.target.closest('#docs')) return;
   if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? switchSearch() : openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.key === 'Escape' && EDITOR.menu !== null) { EDITOR.menu = null; render(); return; }

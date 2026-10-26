@@ -10,6 +10,7 @@ const SHELL = window.parent === window ? null : {
   external(url) { this.tell({ type: 'external', url }); },
   step(dir) { this.tell({ type: 'step', dir }); },
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
+  settings() { this.tell({ type: 'settings' }); },
   badge(n) { this.tell({ type: 'badge', n }); },
   status(status) { this.tell({ type: 'status', status }); },
   page(url, title, status) { this.tell({ type: 'page', url, title, status }); },
@@ -55,6 +56,12 @@ if (SHELL) {
     if (!e.metaKey || e.altKey || e.ctrlKey) return;
     const dir = e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
     if (dir !== null) SHELL.zoom(dir);
+  }, true);
+  // Cmd+, opens the shell's settings. Focus sits inside the page, so the page forwards the chord.
+  document.addEventListener('keydown', (e) => {
+    if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.key !== ',') return;
+    e.preventDefault();
+    SHELL.settings();
   }, true);
   // The shell says when the tab comes to the front; pages listen for 'tab-shown' on the document.
   window.addEventListener('message', (e) => {
