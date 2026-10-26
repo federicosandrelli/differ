@@ -178,19 +178,19 @@ const OPEN_SETTINGS: &str = "open-settings";
 // and with "Settings…" (Cmd+,) in the app menu after "About", which tells the shell to open its settings.
 fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let menu = Menu::default(app)?;
-    for (n, item) in menu.items()?.into_iter().enumerate() {
+    if let Some(MenuItemKind::Submenu(app_submenu)) = menu.items()?.first() {
+        app_submenu.insert_items(
+            &[
+                &MenuItem::with_id(app, OPEN_SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?,
+                &PredefinedMenuItem::separator(app)?,
+            ],
+            2,
+        )?;
+    }
+    for item in menu.items()? {
         let MenuItemKind::Submenu(submenu) = item else {
             continue;
         };
-        if n == 0 {
-            submenu.insert_items(
-                &[
-                    &MenuItem::with_id(app, OPEN_SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?,
-                    &PredefinedMenuItem::separator(app)?,
-                ],
-                2,
-            )?;
-        }
         let entries = submenu.items()?;
         for (i, entry) in entries.iter().enumerate() {
             let MenuItemKind::Predefined(close) = entry else {

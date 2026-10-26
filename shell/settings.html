@@ -1,103 +1,114 @@
-<h2>Keyboard shortcuts</h2>
-<table class="keys">
-  <tr><td><kbd>Cmd</kbd>+<kbd>F</kbd></td><td>Search the lines, starting from the selected text.</td></tr>
-  <tr><td><kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>F</kbd></td><td>Search the file paths instead of the lines; press it again to go back
-    to the lines.</td></tr>
-  <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Go to the next or the previous match, in the search box or in the
-    tree. A closed file opens when a match lands in it.</td></tr>
-  <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Move through the file tree, and close or open folders (click the
-    tree first).</td></tr>
-  <tr><td><kbd>Option</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>Go to the previous or the next file on the page.</td></tr>
-  <tr><td><kbd>o</kbd></td><td>Go back to the overview.</td></tr>
-  <tr><td><kbd>Escape</kbd></td><td>Leave the box or the tree that has focus, and end the search. In a comment box, only
-    leave the box.</td></tr>
-  <tr><td><kbd>Cmd</kbd>+<kbd>Option</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Go to the previous or the next tab.</td></tr>
-  <tr><td><kbd>Cmd</kbd>+<kbd>W</kbd> / <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>Close the tab, or the window
-    (desktop app).</td></tr>
-  <tr><td><kbd>Cmd</kbd>+<kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>Zoom in, zoom out, or back to the normal size
-    (desktop app).</td></tr>
-  <tr><td><kbd>Cmd</kbd>+<kbd>,</kbd></td><td>Open these settings.</td></tr>
-</table>
-<p>To comment on several lines, press the <kbd>+</kbd> on the first line and drag to the last one, or click the first
-line number, then hold <kbd>Shift</kbd> and click the last one.</p>
+<section>
+  <h2>Keyboard shortcuts</h2>
+  <div>
+    <table class="keys">
+      <tr><td><kbd>Cmd</kbd>+<kbd>F</kbd></td><td>Search the lines, starting from the selected text.</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>F</kbd></td><td>Search the file paths. Press it again to search the lines.</td></tr>
+      <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Next or previous match. A closed file opens when a match lands in it.</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Move through the file tree, open or close a folder.</td></tr>
+      <tr><td><kbd>Option</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>Previous or next file.</td></tr>
+      <tr><td><kbd>o</kbd></td><td>Back to the overview.</td></tr>
+      <tr><td><kbd>Escape</kbd></td><td>Leave the box or the tree, and end the search. In a comment box, only leave the box.</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>Option</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Previous or next tab.</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>W</kbd> / <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>Close the tab, or the window.</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>Zoom in, zoom out, or back to normal.</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>,</kbd></td><td>These settings.</td></tr>
+    </table>
+    <p class="hint">To comment on several lines, drag the <kbd>+</kbd> from the first line to the last, or click the first
+    line number and <kbd>Shift</kbd>+click the last.</p>
+  </div>
+</section>
 
-<h2>File types</h2>
-<p>The filters above the tree sort every file into one of three types. A file is <b>documentation</b> when it is:</p>
-<ul>__DOCS_RULES__</ul>
-<p>Any other file is a <b>test</b> when it is:</p>
-<ul>__TEST_RULES__</ul>
-<p>Every other file is <b>implementation</b>.</p>
+<section>
+  <h2>File types</h2>
+  <div>
+    <p>The filters above the tree sort every file into one type.</p>
+    <h3>Documentation</h3>
+    <ul>__DOCS_RULES__</ul>
+    <h3>Tests</h3>
+    <ul>__TEST_RULES__</ul>
+    <h3>Implementation</h3>
+    <p>Every other file.</p>
+  </div>
+</section>
 
-<h2>Folded lines</h2>
-<p>differ folds some lines into a single row. Click the row to open it, and click it again to fold the lines back.
-differ folds lines in these cases:</p>
-<ul>
-  <li><b>Unchanged lines.</b> Between two changes, differ shows the 4 unchanged lines next to each change and folds
-    the rest. It shows a block of 10 unchanged lines or fewer in full. The fold row lists the Python functions and
-    classes that start inside it.</li>
-  <li><b>Import sections.</b> In Python, Java, JavaScript and TypeScript files, every import section folds to one row,
-    even when nothing in it changed. The row says how many lines were added and removed.</li>
-  <li><b>Whitespace.</b> A change where every line is blank, or where each removed line equals its added line once
-    all spaces, tabs and line breaks are removed.</li>
-  <li><b>Rename fallout.</b> A change where each removed line becomes its added line exactly by applying a rename. A
-    rename counts when the same word changes the same way in at least two places in the pull request, or when it
-    follows a renamed file. The change that renames the definition itself (the <code>class</code>,
-    <code>def</code>, or assignment) stays open.</li>
-  <li><b>Moved code.</b> A block of removed lines that appears again, unchanged, as a block of added lines
-    somewhere else in the pull request, in the same file or another one. The block needs 4 lines or more that are
-    not blank. The fold row names the other place.</li>
-  <li><b>Several folds close together.</b> When folds of the same kind are separated only by a few unchanged lines,
-    they fold into one row that says how many places it covers. Opening it gives each place its own row.</li>
-</ul>
-<p>Inside a real change, a line that only follows a rename appears pale, with a "rename" tag.</p>
-<p>A fold always stays open when it holds a comment thread or the comment you are writing. The numbers in the
-overview count the lines of every file but the generated ones, and the buttons under them show or hide each kind of
-noise in every file at once. While a comment or one of these buttons keeps a fold open, its row only names the fold,
-and clicking it does nothing.</p>
+<section>
+  <h2>Folded lines</h2>
+  <div>
+    <p>A fold is one row in place of lines you can skip. Click it to open the lines, and again to fold them.</p>
+    <dl>
+      <dt>Unchanged lines</dt>
+      <dd>The 4 lines next to each change stay; the rest fold. A block of 10 lines or fewer stays whole. The row
+        names the Python classes and functions that start inside it.</dd>
+      <dt>Import sections</dt>
+      <dd>In Python, Java, JavaScript and TypeScript, every import section folds, even unchanged. The row counts the
+        lines added and removed.</dd>
+      <dt>Whitespace</dt>
+      <dd>A change that only adds or removes spaces, tabs or line breaks.</dd>
+      <dt>Rename fallout</dt>
+      <dd>A change that only follows a rename: the same word changing the same way in at least two places, or a
+        renamed file. The line that defines the new name stays open.</dd>
+      <dt>Moved code</dt>
+      <dd>A block of 4 lines or more that appears again, unchanged, elsewhere in the pull request. The row names the
+        other place.</dd>
+      <dt>Folds close together</dt>
+      <dd>Folds of one kind with only a few unchanged lines between them join into one row, which says how many
+        places it covers.</dd>
+    </dl>
+    <p>Inside a change, a line that only follows a rename shows pale with a <span class="chip">rename</span> mark.
+    A fold stays open while it holds a comment thread or the comment you are writing, or while a button under the
+    overview shows its kind; its row then names the fold and takes no clicks.</p>
 
-<h3>The class or function above a change</h3>
-<p>differ also shows the lines above each change, up to the start of the innermost class or function that holds it.
-Outside any class or function, it shows the lines up to the start of the call that holds the change, such as a
-long <code>setup(...)</code>. You can then read the class line, the signature or the call without opening a fold.
-This works in Python files, for changes that add lines and are not noise.</p>
-<p>When the body above the change is long, differ shows the class line, the signature or the first line of the call,
-and the 2 lines before the change. The lines between them fold into a chip on its own line. Click the chip to show
-the lines, and click it again to fold them.</p>
-<table class="example">
-  <tr><td class="n">41</td><td class="c">    def recognise(self, volumes, *, dry_run=False):</td></tr>
-  <tr><td class="n"></td><td class="c">        <span class="chip" title="Show 14 unchanged lines">⋯</span></td></tr>
-  <tr><td class="n">56</td><td class="c">            if volume.quantity == 0:</td></tr>
-  <tr><td class="n">57</td><td class="c">                continue</td></tr>
-  <tr class="add"><td class="n">58</td><td class="c">            volume.recognised = not dry_run</td></tr>
-</table>
-<p class="hint">The signature of the method, the chip that holds the 14 lines of its body, the 2 lines next to the
-change, and the added line.</p>
+    <h3>The class or function above a change</h3>
+    <p>A change in a Python file also shows the lines above it, up to the start of the class, function or call it
+    sits in, so you can read the signature without opening a fold. When that body is long, the lines between the
+    signature and the 2 lines before the change fold into a chip:</p>
+    <table class="example">
+      <tr><td class="n">41</td><td class="c">    def recognise(self, volumes, *, dry_run=False):</td></tr>
+      <tr><td class="n"></td><td class="c">        <span class="chip">⋯</span></td></tr>
+      <tr><td class="n">56</td><td class="c">            if volume.quantity == 0:</td></tr>
+      <tr><td class="n">57</td><td class="c">                continue</td></tr>
+      <tr class="add"><td class="n">58</td><td class="c">            volume.recognised = not dry_run</td></tr>
+    </table>
+    <p class="hint">The signature, the chip that holds the 14 lines of the body, the 2 lines before the change, and
+    the added line. Click the chip to show the lines, and again to fold them.</p>
+  </div>
+</section>
 
-<h2>Hidden files</h2>
-<p>By default, differ hides two kinds of files:</p>
-<ul>
-  <li><b>Generated files.</b> These are lock files, files marked as generated in <code>.gitattributes</code>, and
-    files that say near the top that a tool generated them (for example "DO NOT EDIT").</li>
-  <li><b>Files with only noise.</b> These are files whose only changes are imports, lines that follow a rename,
-    whitespace, or code that moved without other changes.</li>
-</ul>
-<p>A notice above the file tree says how many files are hidden. Click "show" in the notice to show them.</p>
+<section>
+  <h2>Hidden files</h2>
+  <div>
+    <p>The tree hides two kinds of files. The notice above it counts them; click "show" to list them.</p>
+    <dl>
+      <dt>Generated files</dt>
+      <dd>Lock files, files marked <code>linguist-generated</code> in <code>.gitattributes</code>, and files that say
+        near the top that a tool wrote them, such as "DO NOT EDIT".</dd>
+      <dt>Files with only noise</dt>
+      <dd>Files where every change is an import, rename fallout, whitespace or moved code.</dd>
+    </dl>
+  </div>
+</section>
 
-<h2>Editor</h2>
-<p>The <code>&lt;/&gt;</code> button in a file's header opens the whole repository in a new window of your editor, on
-the pull request's branch, at the first changed line of the file. The <code>⋮</code> next to it lists the editors
-installed and GitHub, which shows the file on github.com at the pull request's head commit, at the same line, in
-your browser. Choosing one opens the file in it, and differ keeps it as the editor for every file on this computer.
-Deleted files have no button.</p>
-<ul class="editors">__EDITORS__</ul>
-<p>differ keeps one clone of each repository for this, made in the background when you open a pull request, and
-checks out the pull request's branch in it each time, with any new commits, also after a force-push, except to a
-pull request from a fork. differ never loses your work there: when the clone has uncommitted changes on another
-pull request's branch, or when bringing the branch up to date would lose your changes or commits, differ leaves the
-clone as it is and shows the error.</p>
+<section>
+  <h2>Editor</h2>
+  <div>
+    <p>The <code>&lt;/&gt;</code> button in a file's header opens the repository in your editor, on the pull
+    request's branch, at the first changed line. The <code>⋮</code> next to it picks the editor, and differ keeps
+    the choice. GitHub opens the file on github.com instead.</p>
+    <dl class="editors">__EDITORS__</dl>
+    <p>differ keeps one clone per repository, made in the background when you open a pull request, and checks out
+    the branch each time, also after a force-push, but not for a fork. It never discards your work: when the clone
+    has uncommitted changes on another branch, or when the update would lose commits, it leaves the clone alone and
+    shows the error.</p>
+  </div>
+</section>
 
-<h2>Cache</h2>
-<p>differ keeps its cache in <code>__CACHE__</code>:</p>
-<table class="cache">__CACHE_ROWS__</table>
+<section>
+  <h2>Cache</h2>
+  <div>
+    <p><code>__CACHE__</code></p>
+    <table class="cache">__CACHE_ROWS__</table>
+  </div>
+</section>
 
 <p class="about hint"><span data-version></span>__COMMIT__<a href="https://github.com/federicosandrelli/differ" target="_blank">github.com/federicosandrelli/differ</a> · made by Federico Sandrelli</p>

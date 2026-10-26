@@ -51,9 +51,8 @@ def code(value: str) -> str:
 
 def docs_rules() -> str:
     folders = " or ".join(code(d) for d in classify.DOCS_DIRS)
-    suffixes = ", ".join(
-        code(s) for t in file_types.FileType if file_types.support(t).docs for s in file_types.support(t).suffixes
-    )
+    docs_types = (file_types.support(t) for t in file_types.FileType)
+    suffixes = ", ".join(code(suffix) for t in docs_types if t.docs for suffix in t.suffixes)
     return items([f"A path under {folders}.", f"A file with the suffix {suffixes}."])
 
 
@@ -79,10 +78,8 @@ def test_rules() -> str:
 
 def editor_list() -> str:
     installed = {e.id for e in editors.installed()}
-    return "".join(
-        f'<li>{html.escape(e.name)}<span class="hint">{"installed" if e.id in installed else "not installed"}</span></li>'
-        for e in editors.known()
-    )
+    names = lambda present: ", ".join(html.escape(e.name) for e in editors.known() if (e.id in installed) == present)  # noqa: E731
+    return f"<dt>Installed</dt><dd>{names(True)}</dd><dt>Not installed</dt><dd>{names(False) or 'none'}</dd>"
 
 
 def cache_rows() -> str:

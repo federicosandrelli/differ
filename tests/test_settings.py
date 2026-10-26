@@ -47,7 +47,8 @@ def test_the_settings_show_the_installed_editors_the_language_patterns_the_cache
     )
     monkeypatch.setattr(render, "app_info", lambda: {"commit": "abc1234", "dirty": True, "built": ""})
     html = settings.settings_html()
-    assert re.search(r"Cursor<span[^>]*>installed<", html) and re.search(r"VS Code<span[^>]*>not installed<", html)
+    assert re.search(r"<dt>Installed</dt><dd>Cursor, GitHub</dd>", html)
+    assert re.search(r"<dt>Not installed</dt><dd>VS Code, [^<]*</dd>", html)
     for language in languages.Language:
         pattern = languages.support(language).test_name_pattern
         shown = re.search(rf"<td>{re.escape(languages.name(language))}</td><td><code>([^<]*)</code>", html)
