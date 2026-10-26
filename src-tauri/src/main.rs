@@ -53,7 +53,6 @@ fn server_script(app: &tauri::App) -> tauri::Result<PathBuf> {
     Ok(app.path().resource_dir()?.join("python/server.py"))
 }
 
-// `~/Library/Logs/differ`, created when missing.
 fn log_dir() -> Option<PathBuf> {
     let dir = PathBuf::from(std::env::var_os("HOME")?).join("Library/Logs/differ");
     std::fs::create_dir_all(&dir).ok()?;

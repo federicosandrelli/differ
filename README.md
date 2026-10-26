@@ -126,17 +126,14 @@ pulls in `python@3.13` and `gh`; `git` stays external.
 
 ### Updates
 
-Homebrew owns the install, so the app never replaces itself. Once a day
-(`src-tauri/src/update.rs`), the app reads `Casks/differ.rb` in the tap and
-keeps the answer in `~/.cache/differ/update.json`. When the cask names a newer
-version, a bar at the bottom of the window offers it. "Later" hides that version until the
-next one. "Update and Relaunch" quits the app, and a helper script written to
-`~/.cache/differ/upgrade.sh` waits for it to go, runs
-`brew upgrade --cask federicosandrelli/tap/differ` and reopens the app; its
-output goes to `~/Library/Logs/differ/upgrade.log`, and a failure shows an
-alert with Homebrew's reason. The button waits while a tab holds unsent text,
-since that text would go with the app. A copy that did not come from Homebrew
-gets a link to the release instead.
+Homebrew owns the install, so the app never replaces itself. Once a day, it
+reads the version in `Casks/differ.rb` in the tap, and when that version is
+newer, a bar at the bottom of the window offers it. "Update and Relaunch"
+quits the app and leaves a helper script to run
+`brew upgrade --cask federicosandrelli/tap/differ` and reopen the app. The
+script logs to `~/Library/Logs/differ/upgrade.log`, and shows an alert with
+Homebrew's reason when the upgrade fails. A copy that did not come from
+Homebrew gets a link to the release instead.
 
 ## Releasing
 

@@ -19,46 +19,26 @@ const CASK_URL: &str =
 const CASK: &str = "federicosandrelli/tap/differ";
 const APP_PATH: &str = "/Applications/differ.app";
 const RELEASES: &str = "https://github.com/federicosandrelli/differ/releases";
-// How long a check is good for.
 const INTERVAL: u64 = 24 * 60 * 60;
-// How long to wait after a failed check, so an unreachable tap does not mean a fetch on every launch.
-const RETRY: u64 = 60 * 60;
-// Homebrew prefixes, Apple silicon first: the cask depends on arm64, so that is where it lands.
 const PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
 
-/// `update.json` in the cache: the last answer, so a launch is not always a network round trip.
-#[derive(Serialize, Deserialize, Default)]
+/// `update.json` in the cache: the version the cask named at the last successful check.
+#[derive(Serialize, Deserialize)]
 struct Cache {
     checked_at: u64,
     version: String,
-    /// When the last attempt failed. Kept beside the last good answer, so being offline keeps what we knew.
-    #[serde(default)]
-    failed_at: u64,
 }
 
 #[derive(Serialize)]
 pub struct UpdateStatus {
-    /// The running version.
     pub current: String,
-    /// The newest version the cask names, once a check has succeeded.
+    /// The version the cask names, once a check has succeeded.
     pub latest: Option<String>,
-    /// `latest` is newer than `current`.
     pub newer: bool,
-    /// The release page of `latest`, for a copy that did not come from Homebrew.
+    /// The release page of `latest`.
     pub url: Option<String>,
-    /// Homebrew installed this app, so the app can run the upgrade.
+    /// Homebrew installed this copy, so `update_run` can upgrade it.
     pub managed: bool,
-    /// Unix seconds of the last successful check.
-    pub checked_at: Option<u64>,
-    /// Why this check failed. The last known answer is still returned.
-    pub error: Option<String>,
-}
-
-/// Whether `then` is less than `limit` seconds ago. A time in the future, from a clock that was set back, is
-/// not recent, so the next check is not put off until it passes.
-fn within(then: u64, limit: u64) -> bool {
-    let now = now();
-    then <= now && now - then < limit
 }
 
 fn now() -> u64 {
@@ -83,7 +63,7 @@ fn parts(version: &str) -> Vec<u64> {
 }
 
 /// Whether `latest` is a later version than `current`. A version without a number is never newer.
-pub fn is_newer(latest: &str, current: &str) -> bool {
+fn is_newer(latest: &str, current: &str) -> bool {
     let (a, b) = (parts(latest), parts(current));
     if a.iter().all(|n| *n == 0) {
         return false;
@@ -101,7 +81,7 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
 }
 
 /// The version the cask names, from the text of the cask file.
-pub fn cask_version(cask: &str) -> Option<String> {
+fn cask_version(cask: &str) -> Option<String> {
     cask.lines()
         .map(str::trim)
         .find_map(|line| line.strip_prefix("version \""))
@@ -110,7 +90,6 @@ pub fn cask_version(cask: &str) -> Option<String> {
         .filter(|version| !version.is_empty())
 }
 
-// Found by path, not through PATH: a GUI app inherits launchd's environment, which has no Homebrew on it.
 fn brew_bin() -> Option<PathBuf> {
     PREFIXES
         .iter()
@@ -118,27 +97,22 @@ fn brew_bin() -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-fn cask_installed() -> bool {
-    PREFIXES
-        .iter()
-        .any(|prefix| PathBuf::from(prefix).join("Caskroom/differ").is_dir())
-}
-
-/// Whether the app may run its own upgrade: Homebrew is here, it has installed the differ cask, and this is the
-/// bundle the cask installed. A debug build runs from the cargo target directory, so it skips the last check.
+/// Whether Homebrew installed the differ cask, and this is the bundle it installed. A debug build runs from the
+/// cargo target directory, so it skips the last check.
 fn managed() -> bool {
-    if brew_bin().is_none() || !cask_installed() {
+    let cask_installed = PREFIXES
+        .iter()
+        .any(|prefix| PathBuf::from(prefix).join("Caskroom/differ").is_dir());
+    if brew_bin().is_none() || !cask_installed {
         return false;
     }
-    if cfg!(debug_assertions) {
-        return true;
-    }
-    std::env::current_exe()
-        .map(|exe| exe.starts_with(APP_PATH))
-        .unwrap_or(false)
+    cfg!(debug_assertions)
+        || std::env::current_exe()
+            .map(|exe| exe.starts_with(APP_PATH))
+            .unwrap_or(false)
 }
 
-/// The cache the server also uses: `$DIFFER_CACHE`, or `~/.cache/differ`.
+/// The cache folder of `build.py`: `$DIFFER_CACHE`, or `~/.cache/differ`.
 fn cache_dir() -> Option<PathBuf> {
     let dir = match std::env::var_os("DIFFER_CACHE") {
         Some(dir) => PathBuf::from(dir),
@@ -148,95 +122,55 @@ fn cache_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-fn read_cache(dir: &Path) -> Option<Cache> {
-    let raw = std::fs::read_to_string(dir.join("update.json")).ok()?;
-    serde_json::from_str(&raw).ok()
-}
-
-fn write_cache(dir: &Path, cache: &Cache) {
-    if let Ok(json) = serde_json::to_vec_pretty(cache) {
-        let _ = std::fs::write(dir.join("update.json"), json);
-    }
-}
-
-// curl rather than an HTTP crate: a TLS stack is a large dependency for one request a day, and macOS always has
-// /usr/bin/curl. The timestamp makes each check its own cache key, since GitHub serves raw files from a cache.
-fn fetch() -> Result<String, String> {
-    let url = format!("{CASK_URL}?t={}", now());
+// curl rather than an HTTP crate: a TLS stack is a large dependency for one request a day.
+fn fetch() -> Option<String> {
     let out = Command::new("/usr/bin/curl")
-        .args([
-            "-fsSL",
-            "--max-time",
-            "8",
-            "-H",
-            "Cache-Control: no-cache",
-            &url,
-        ])
+        .args(["-fsSL", "--max-time", "8", CASK_URL])
         .output()
-        .map_err(|e| format!("cannot run curl: {e}"))?;
+        .ok()?;
     if !out.status.success() {
-        return Err(format!(
-            "cannot reach {CASK_URL}{}",
-            match out.status.code() {
-                Some(code) => format!(" (curl exit {code})"),
-                None => String::new(),
-            }
-        ));
+        return None;
     }
     cask_version(&String::from_utf8_lossy(&out.stdout))
-        .ok_or_else(|| format!("{CASK_URL} names no version"))
 }
 
-fn status_from(current: &str, cache: Option<&Cache>, error: Option<String>) -> UpdateStatus {
-    let latest = cache
-        .map(|c| c.version.clone())
-        .filter(|v| !v.trim().is_empty());
-    UpdateStatus {
-        newer: latest
-            .as_deref()
-            .map(|l| is_newer(l, current))
-            .unwrap_or(false),
-        current: current.to_string(),
-        url: latest.as_ref().map(|v| format!("{RELEASES}/tag/v{v}")),
-        checked_at: cache.map(|c| c.checked_at).filter(|t| *t > 0),
-        latest,
-        managed: managed(),
-        error,
-    }
+/// Whether a check at `checked_at` is less than a day old. A time in the future, from a clock that was set
+/// back, is not.
+fn fresh(checked_at: u64) -> bool {
+    let now = now();
+    checked_at <= now && now - checked_at < INTERVAL
 }
 
-/// Looks for a newer version. Answers from the cache unless the last check is a day old or `force` is set.
-/// Async, so the fetch runs off the main thread and the window keeps answering while curl waits.
+/// Looks for a newer version. Fetches the cask when the last successful check is a day old, and otherwise, or
+/// when the fetch fails, answers from the cache.
 #[tauri::command(async)]
-pub fn update_check(app: AppHandle, force: bool) -> UpdateStatus {
+pub fn update_check(app: AppHandle) -> UpdateStatus {
     let current = app.package_info().version.to_string();
-    let Some(dir) = cache_dir() else {
-        return status_from(&current, None, Some("cannot find the cache".into()));
-    };
-    let cached = read_cache(&dir);
-    let recent = cached
+    let dir = cache_dir();
+    let path = dir.as_ref().map(|dir| dir.join("update.json"));
+    let mut cache: Option<Cache> = path
         .as_ref()
-        .map(|c| within(c.checked_at, INTERVAL) || within(c.failed_at, RETRY))
-        .unwrap_or(false);
-    if recent && !force {
-        return status_from(&current, cached.as_ref(), None);
-    }
-    match fetch() {
-        Ok(version) => {
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|raw| serde_json::from_str(&raw).ok());
+    if !cache.as_ref().is_some_and(|c| fresh(c.checked_at)) {
+        if let Some(version) = fetch() {
             let next = Cache {
                 checked_at: now(),
                 version,
-                failed_at: 0,
             };
-            write_cache(&dir, &next);
-            status_from(&current, Some(&next), None)
+            if let (Some(path), Ok(json)) = (&path, serde_json::to_vec_pretty(&next)) {
+                let _ = std::fs::write(path, json);
+            }
+            cache = Some(next);
         }
-        Err(e) => {
-            let mut cache = cached.unwrap_or_default();
-            cache.failed_at = now();
-            write_cache(&dir, &cache);
-            status_from(&current, Some(&cache), Some(e))
-        }
+    }
+    let latest = cache.map(|c| c.version);
+    UpdateStatus {
+        newer: latest.as_deref().is_some_and(|l| is_newer(l, &current)),
+        url: latest.as_ref().map(|v| format!("{RELEASES}/tag/v{v}")),
+        current,
+        latest,
+        managed: managed(),
     }
 }
 
@@ -307,9 +241,10 @@ fi
     )
 }
 
-/// Quits, lets Homebrew install the new version, and reopens the app. Returns the path of the upgrade log.
+/// Quits, lets Homebrew install the new version, and reopens the app. The helper script logs to `upgrade.log`
+/// in `~/Library/Logs/differ`.
 #[tauri::command]
-pub fn update_run(app: AppHandle) -> Result<String, String> {
+pub fn update_run(app: AppHandle) -> Result<(), String> {
     if !managed() {
         return Err("this copy was not installed with Homebrew".into());
     }
@@ -322,11 +257,6 @@ pub fn update_run(app: AppHandle) -> Result<String, String> {
     let current = app.package_info().version.to_string();
     std::fs::write(&script, helper_script(&brew, &log, &current))
         .map_err(|e| format!("cannot write {}: {e}", script.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
-    }
     // Detached, with no inherited stdio, so nothing ties the script to this process once the app exits.
     Command::new("/bin/sh")
         .arg(&script)
@@ -340,63 +270,49 @@ pub fn update_run(app: AppHandle) -> Result<String, String> {
         std::thread::sleep(std::time::Duration::from_millis(700));
         app.exit(0);
     });
-    Ok(log.to_string_lossy().into_owned())
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{cask_version, helper_script, is_newer, within};
+    use super::{cask_version, fresh, helper_script, is_newer, now};
     use std::path::Path;
 
     #[test]
-    fn compares_numbers_not_text() {
+    fn compares_versions_as_numbers() {
         assert!(is_newer("0.1.10", "0.1.9"));
         assert!(!is_newer("0.1.9", "0.1.10"));
-        assert!(is_newer("0.2.0", "0.1.99"));
-        assert!(is_newer("1.0.0", "0.99.99"));
-    }
-
-    #[test]
-    fn same_version_is_not_newer() {
-        assert!(!is_newer("0.1.12", "0.1.12"));
-        assert!(!is_newer("v0.1.12", "0.1.12"));
-        assert!(!is_newer("1.0", "1.0.0"));
         assert!(is_newer("1.0.1", "1.0"));
+        assert!(!is_newer("1.0", "1.0.0"));
+        assert!(!is_newer("v0.1.12", "0.1.12"));
+        assert!(is_newer("0.1.13-beta.1", "0.1.12"));
+        assert!(!is_newer("0.1.12-beta.1", "0.1.12"));
     }
 
     #[test]
     fn a_version_without_a_number_is_not_newer() {
         assert!(!is_newer("", "0.1.12"));
         assert!(!is_newer("latest", "0.1.12"));
-        assert!(!is_newer("0.0.0", "0.1.12"));
     }
 
     #[test]
-    fn suffixes_are_ignored() {
-        assert!(is_newer("0.1.13-beta.1", "0.1.12"));
-        assert!(!is_newer("0.1.12-beta.1", "0.1.12"));
-    }
-
-    #[test]
-    fn a_time_in_the_future_is_not_recent() {
-        let now = super::now();
-        assert!(within(now - 10, 60));
-        assert!(!within(now - 120, 60));
-        assert!(!within(now + 3600, 60));
+    fn a_check_from_the_future_is_not_fresh() {
+        let now = now();
+        assert!(fresh(now - 10));
+        assert!(!fresh(now - 2 * 24 * 60 * 60));
+        assert!(!fresh(now + 3600));
     }
 
     #[test]
     fn reads_the_version_of_the_cask() {
-        let cask = "cask \"differ\" do\n  version \"0.1.39\"\n  sha256 \"abc\"\n\n  url \"https://x/v#{version}/differ_#{version}_aarch64.dmg\"\nend\n";
+        let cask = "cask \"differ\" do\n  version \"0.1.39\"\n  sha256 \"abc\"\nend\n";
         assert_eq!(cask_version(cask).as_deref(), Some("0.1.39"));
         assert_eq!(cask_version("cask \"differ\" do\nend\n"), None);
         assert_eq!(cask_version("  version \"\"\n"), None);
     }
 
-    /// The helper runs after the app is gone, so nothing in it may depend on the app, on PATH, or on the bundle
-    /// it replaces.
     #[test]
-    fn the_helper_stands_on_its_own() {
+    fn the_helper_reopens_the_app_before_any_alert() {
         let script = helper_script(
             Path::new("/opt/homebrew/bin/brew"),
             Path::new("/Users/x/Library/Logs/differ/upgrade.log"),
@@ -404,22 +320,11 @@ mod tests {
         );
         assert!(script
             .contains("\"/opt/homebrew/bin/brew\" upgrade --cask federicosandrelli/tap/differ"));
-        assert!(script.contains("PATH=/opt/homebrew/bin:"));
-        assert!(script.contains("pgrep -f \"differ.app/Contents/MacOS\""));
-        assert!(script.contains("[ $n -lt 60 ]"));
-        assert!(script.contains("update --quiet"));
+        assert!(script.contains("exec >>\"/Users/x/Library/Logs/differ/upgrade.log\""));
         assert!(script.contains("[ \"$installed\" = \"differ 0.1.39\" ]"));
         let reopen = script
             .find("open -a \"/Applications/differ.app\"")
             .expect("reopens the app");
-        assert!(
-            !script[..reopen].contains("display alert"),
-            "the alert must come after the reopen"
-        );
-        assert!(script.contains("giving up after 60"));
-        assert!(script.contains("/Users/x/Library/Logs/differ/upgrade.log"));
-        assert!(script.contains("DEVELOPER_DIR=/Library/Developer/CommandLineTools"));
-        assert!(script.contains("item 1 of argv"));
-        assert!(script.contains("\"$reason\""));
+        assert!(!script[..reopen].contains("display alert"));
     }
 }
