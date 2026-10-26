@@ -96,4 +96,6 @@ jobs:
         working-directory: src-tauri
       - run: cargo clippy -- -D warnings
         working-directory: src-tauri
+      - run: cargo test
+        working-directory: src-tauri
       - run: npx tauri build --no-bundle

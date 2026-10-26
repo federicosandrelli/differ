@@ -6,6 +6,8 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+mod update;
+
 use tauri::menu::{Menu, MenuItem, MenuItemKind};
 use tauri::{
     AppHandle, LogicalPosition, Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl,
@@ -51,11 +53,16 @@ fn server_script(app: &tauri::App) -> tauri::Result<PathBuf> {
     Ok(app.path().resource_dir()?.join("python/server.py"))
 }
 
-// The server appends its stderr here, so a bug report from the app can point at the server side of a failure.
-fn server_log() -> Option<PathBuf> {
+// `~/Library/Logs/differ`, created when missing.
+fn log_dir() -> Option<PathBuf> {
     let dir = PathBuf::from(std::env::var_os("HOME")?).join("Library/Logs/differ");
     std::fs::create_dir_all(&dir).ok()?;
-    Some(dir.join("server.log"))
+    Some(dir)
+}
+
+// The server appends its stderr here, so a bug report from the app can point at the server side of a failure.
+fn server_log() -> Option<PathBuf> {
+    Some(log_dir()?.join("server.log"))
 }
 
 // Names the server log in every page, so the bug report can quote the path.
@@ -211,6 +218,10 @@ fn main() {
     let _ = fix_path_env::fix();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![
+            update::update_check,
+            update::update_run
+        ])
         .menu(app_menu)
         .on_menu_event(|app, event| {
             let Some(window) = app.get_webview_window("main") else {

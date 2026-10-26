@@ -28,7 +28,7 @@
     active = tab;
     const frame = frameOf(tab);
     for (const f of panes.children) f.classList.toggle('on', f === frame);
-    draw(); save();
+    draw(); save(); drawUpdate();
     if (frame.contentWindow) { frame.contentWindow.postMessage({ type: 'shown' }, location.origin); frame.contentWindow.focus(); }
   }
   function open(url) {
@@ -43,7 +43,7 @@
     if (i < 0) return;
     tabs.splice(i, 1);
     if (tab.frame) tab.frame.remove();
-    if (active === tab) activate(tabs[i] || tabs[i - 1] || home); else { draw(); save(); }
+    if (active === tab) activate(tabs[i] || tabs[i - 1] || home); else { draw(); save(); drawUpdate(); }
   }
   // A page with unsent text keeps its tab open on the first close and shows a warning in the tab instead. A second
   // close within a few seconds discards the text.
@@ -118,14 +118,58 @@
     if (!tab) return;
     if (m.type === 'badge') { tab.badge = m.n; draw(); save(); }
     if (m.type === 'status') { tab.status = m.status; draw(); save(); }
-    if (m.type === 'draft') tab.draft = !!m.on;
+    if (m.type === 'draft') { tab.draft = !!m.on; drawUpdate(); }
     if (m.type === 'page') {
       tab.url = m.url; tab.title = m.title; tab.status = m.status || ''; tab.draft = false;
       const key = keyOf(m.url), twin = tabs.find(t => t !== tab && t.key === key);
       if (twin) { close(tab); activate(twin); return; }
-      tab.key = key; draw(); save();
+      tab.key = key; draw(); save(); drawUpdate();
     }
   });
+
+  // In the desktop app, src-tauri/src/update.rs reads the version the Homebrew cask names, once a day, and this
+  // bar under the panes offers it. Later hides that version until the next one. Update and Relaunch quits the
+  // app, lets Homebrew install the new version and reopens it; a page's unsent text would go with the app, so
+  // the button waits while a tab holds a draft. A copy that did not come from Homebrew gets a link to the release.
+  const invoke = APP && window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+  const updateBar = document.getElementById('update');
+  let update = null, updating = false, updateError = '';
+  const seenVersion = () => { try { return localStorage.getItem('dr:updateSeen'); } catch { return null; } };
+  function drawUpdate() {
+    const show = !!(update && update.newer && update.latest && seenVersion() !== update.latest);
+    updateBar.hidden = !show;
+    if (!show) return;
+    const draft = tabs.some(t => t.draft);
+    const sub = updateBar.querySelector('.sub'), act = updateBar.querySelector('.act');
+    updateBar.querySelector('.title').textContent = `differ ${update.latest} is available`;
+    sub.textContent = updateError ? updateError
+      : updating ? 'Homebrew is installing it. differ will quit and reopen.'
+      : !update.managed ? `You have ${update.current}. This copy did not come from Homebrew.`
+      : draft ? 'A tab has unsent text. Send or discard it first.'
+      : `You have ${update.current}. Homebrew installs it and reopens differ.`;
+    sub.classList.toggle('err', !!updateError);
+    act.textContent = !update.managed ? 'Download' : updating ? 'Updating…' : 'Update and Relaunch';
+    act.disabled = updating || (update.managed && draft);
+    updateBar.querySelector('.later').disabled = updating;
+  }
+  function checkUpdate() {
+    if (!invoke) return;
+    invoke('update_check', { force: false }).then((status) => { update = status; drawUpdate(); }).catch(() => {});
+  }
+  updateBar.addEventListener('click', (e) => {
+    if (!update) return;
+    if (e.target.closest('.later')) {
+      try { localStorage.setItem('dr:updateSeen', update.latest); } catch {}
+      drawUpdate();
+      return;
+    }
+    if (!e.target.closest('.act')) return;
+    if (!update.managed) { location.href = update.url; return; }
+    updating = true; updateError = ''; drawUpdate();
+    invoke('update_run').catch((err) => { updating = false; updateError = `Update failed: ${err}`; drawUpdate(); });
+  });
+  checkUpdate();
+  setInterval(checkUpdate, 60 * 60 * 1000);
 
   const savedZoom = (() => { try { return parseFloat(localStorage.getItem('dr:zoom')); } catch { return NaN; } })();
   if (savedZoom > 0 && savedZoom !== 1) setZoom(savedZoom);
