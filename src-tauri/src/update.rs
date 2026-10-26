@@ -135,8 +135,8 @@ fn fresh(checked_at: u64) -> bool {
     checked_at <= now && now - checked_at < INTERVAL
 }
 
-/// Looks for a newer version. Fetches the cask when the last successful check is a day old, and otherwise, or
-/// when the fetch fails, answers from the cache.
+/// Looks for a newer version. Fetches the cask when the last successful check is a day old or names a version
+/// older than the running app, and otherwise, or when the fetch fails, answers from the cache.
 #[tauri::command(async)]
 pub fn update_check(app: AppHandle) -> UpdateStatus {
     let current = app.package_info().version.to_string();
@@ -145,7 +145,10 @@ pub fn update_check(app: AppHandle) -> UpdateStatus {
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok());
-    if !cache.as_ref().is_some_and(|c| fresh(c.checked_at)) {
+    if !cache
+        .as_ref()
+        .is_some_and(|c| fresh(c.checked_at) && !is_newer(&current, &c.version))
+    {
         if let Some(version) = fetch() {
             let next = Cache {
                 checked_at: now(),
