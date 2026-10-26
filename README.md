@@ -298,18 +298,16 @@ tree then lists only the files found, and Enter goes to the next one) and again
 to go back, `o` back to the top. Escape leaves the focused element and
 ends the search; in a comment box it only leaves the box.
 
-The search looks at the lines a reader can see: added, removed and unchanged
-lines in the open sections of the shown files. It skips the lines inside a
-closed fold, the sections closed by a review mark or the chevron, and the
-files the filters hide. A match never opens a fold. Opening or closing a fold
-or a section updates the count. A file stays on the page while its view holds
-a match, so closing its section keeps it in place, without a count. Enter
-then goes on from that file to the next hit. The matches of the hit Enter
-lands on pop for a moment (they fade instead when the system asks for less
-motion). While searching, a file opened from the tree (a click, or the arrow
-keys) opens at its first hit, and Enter, in the tree or the search box, goes
-on from there. The arrow keys pass a closed section without opening it; Enter
-on it opens it at its first hit.
+The search looks at the added, removed and unchanged lines of the shown files,
+in open and closed sections alike, so it also finds the lines of reviewed
+files. It skips the lines inside a closed fold and the files the filters hide.
+A match never opens a fold. Opening or closing a fold updates the count. When
+Enter lands on a hit in a closed section, it opens the section. The matches of
+the hit Enter lands on pop for a moment (they fade instead when the system
+asks for less motion). While searching, a file opened from the tree (a click,
+or the arrow keys) opens at its first hit, and Enter, in the tree or the
+search box, goes on from there. The arrow keys pass a closed section without
+opening it; Enter on it opens it at its first hit.
 
 ## Docs
 

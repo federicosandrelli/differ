@@ -106,7 +106,7 @@ function closeSearch() {
   if (f) renderKeepingHeader(f); else render();
 }
 
-// The hit after (or before) the one Enter last went to. When that one is gone, as when its section closed, the
+// The hit after (or before) the one Enter last went to. When that one is gone, as when a fold hid its row, the
 // first hit of its file or of the files after it (the last hit of its file or of the files before it).
 function nextHit(all, dir) {
   const at = hitPosition(all);

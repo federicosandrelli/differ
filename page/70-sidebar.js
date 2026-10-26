@@ -18,7 +18,7 @@ const FOLDER_OPEN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden
 function leafHtml(f, depth) {
   const k = changeKind(f);
   const oldDir = f.old_path ? f.old_path.slice(0, f.old_path.lastIndexOf('/') + 1) : '';
-  const hitCount = state.q ? hits(f) : 0, threads = threadCount(f);
+  const hitCount = state.q ? viewHits(f).length : 0, threads = threadCount(f);
   return `<div class="row leaf ${state.view === f.path ? 'active' : ''} ${state.cursor === 'f:' + f.path ? 'cursor' : ''} ${isReviewed(f) ? 'reviewed' : ''} ${noHit(f) ? 'nohit' : ''}" style="--d:${depth};${guides(depth)}" data-path="${esc(f.path)}" title="${esc(f.base)}">
       <span class="ico"></span>
       <span class="pill st-${k} ${f.kind === 'test' ? 'test' : ''}">${k === 'R' ? `<s title="${esc(f.old_path.split('/').pop())}">${esc(f.old_path.split('/').pop())}</s>` : ''}<span class="nm">${esc(f.base)}</span></span>
@@ -160,8 +160,8 @@ function toggleFolder(folder) {
   renderSide();
 }
 // Handle an arrow, Enter or space key in the focused tree; true when it was one. While searching, Enter steps
-// through the hits from the current one, as it does in the search box, unless the cursor is on a folder or on a
-// file without a hit on screen. The cursor is on no row when it followed the hit into a closed folder.
+// through the hits from the current one, as it does in the search box, unless the cursor is on a folder, on a
+// closed file, or on a file without a hit. The cursor is on no row when it followed the hit into a closed folder.
 function treeKey(e) {
   const rows = treeRows(); if (!rows.length) return false;
   let i = rows.findIndex(r => cursorKey(r) === state.cursor);
@@ -170,7 +170,7 @@ function treeKey(e) {
   if (e.key === 'ArrowDown') { if (i < rows.length - 1) setCursor(rows[i + 1]); return true; }
   if (e.key === 'ArrowUp') { if (i !== 0) setCursor(rows[i < 0 ? 0 : i - 1]); return true; }
   const f = cur && BY_PATH[cur.dataset.path];
-  if (e.key === 'Enter' && state.hit && (!cur || (f && hits(f)))) { stepHit(e.shiftKey ? -1 : 1); return true; }
+  if (e.key === 'Enter' && state.hit && (!cur || (f && sectionOpen(f) && viewHits(f).length))) { stepHit(e.shiftKey ? -1 : 1); return true; }
   if (!cur) return false;
   const folder = cur.dataset.folder;
   if (e.key === 'ArrowRight') {

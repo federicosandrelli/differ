@@ -84,8 +84,9 @@ editor for every file on this computer. Deleted files have no button.</p>
   <li>Click a file in the tree, or move to it with the arrow keys, to go to its first match. <kbd>Enter</kbd> goes on
     from there, in the tree as in the search box. The arrow keys pass a closed file without opening it; press
     <kbd>Enter</kbd> on it to open it at its first match.</li>
-  <li>The search only looks at lines you can see. It skips folded lines, closed files and hidden files, and it never
-    opens a fold.</li>
+  <li>The search looks at every file the filters show, closed and reviewed files too. <kbd>Enter</kbd> opens a closed
+    file when it lands on a match there. The search skips folded lines and hidden files, and it never opens a
+    fold.</li>
 </ul>
 
 <h2>Comments and reviews</h2>
