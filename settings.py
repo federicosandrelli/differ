@@ -21,15 +21,24 @@ CACHE_FOLDERS = (
 
 
 def folder_size(folder: Path) -> int:
-    """The bytes of every file under the folder; 0 for a folder that does not exist."""
-    return sum(p.stat().st_size for p in folder.rglob("*") if p.is_file()) if folder.is_dir() else 0
+    """The bytes of every file under the folder; 0 for a folder that does not exist. A file that goes away during
+    the walk, as git's temporary files do while a clone runs, counts as 0."""
+    total = 0
+    for p in folder.rglob("*"):
+        try:
+            if p.is_file():
+                total += p.stat().st_size
+        except OSError:
+            pass
+    return total
 
 
 def human_size(n: int) -> str:
     """The size as the page shows a binary file's: bytes under a kilobyte, then KB, then MB."""
     if n < 1024:
         return f"{n} byte{'' if n == 1 else 's'}"
-    return f"{n / 1024:.1f} KB" if n < 1024**2 else f"{n / 1024**2:.1f} MB"
+    kb = round(n / 1024, 1)
+    return f"{kb:.1f} KB" if kb < 1024 else f"{n / 1024**2:.1f} MB"
 
 
 def items(values: list[str]) -> str:

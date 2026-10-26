@@ -329,8 +329,9 @@ The gear in the bottom left corner of the window, Cmd+, and the desktop app's
 "Settings…" menu item open the settings in the middle of the window. The theme
 is the one setting; the sections below it show the keyboard shortcuts, the
 rules that sort files into documentation, tests and implementation, the lines
-the page folds, the files it hides, the editors it knows, the cache on disk, and the version. Escape, the close button or a click outside
-the window closes it.
+the page folds, the files it hides, the editors it knows, the cache on disk,
+and the version. Escape, the close button or a click outside the window closes
+it.
 
 ## Reporting a bug
 

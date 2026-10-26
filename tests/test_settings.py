@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 
 import build
+import classify
 import editors
+import file_types
 import languages
 import render
 import settings
@@ -20,7 +22,15 @@ def test_folder_size_sums_every_file_and_is_zero_for_a_missing_folder(tmp_path: 
 
 
 @pytest.mark.parametrize(
-    "n, text", [(0, "0 bytes"), (1, "1 byte"), (1023, "1023 bytes"), (1024, "1.0 KB"), (527_900_000, "503.4 MB")]
+    "n, text",
+    [
+        (0, "0 bytes"),
+        (1, "1 byte"),
+        (1023, "1023 bytes"),
+        (1024, "1.0 KB"),
+        (1_048_550, "1.0 MB"),
+        (527_900_000, "503.4 MB"),
+    ],
 )
 def test_human_size(n: int, text: str) -> None:
     assert settings.human_size(n) == text
@@ -42,7 +52,12 @@ def test_the_settings_show_the_installed_editors_the_language_patterns_the_cache
         pattern = languages.support(language).test_name_pattern
         shown = re.search(rf"<td>{re.escape(languages.name(language))}</td><td><code>([^<]*)</code>", html)
         assert (shown and shown[1]) == (pattern or None), language
-    assert "<code>test_</code>" in html and "<code>/src/test/</code>" in html and "<code>.md</code>" in html
+    for literal in (
+        classify.TEST_NAME_PREFIX,
+        classify.TEST_PATH_PART,
+        *file_types.support(file_types.FileType.MARKDOWN).suffixes,
+    ):
+        assert f"<code>{literal}</code>" in html
     assert str(tmp_path) in html
     assert re.search(r"<code>pages/</code></td><td>[^<]*</td><td>2.4 KB<", html)
     assert re.search(r"<code>repos/</code></td><td>[^<]*</td><td>0 bytes<", html)

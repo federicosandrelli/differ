@@ -44,13 +44,8 @@ if (SHELL) {
     SHELL.step(e.key === 'ArrowLeft' ? -1 : 1);
   }, true);
   // An Escape the page leaves alone reaches the macOS window, which then leaves full screen, so the page cancels
-  // every Escape. Cancelling it also stops a modal dialog from closing on Escape, so the page closes it.
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    e.preventDefault();
-    const dialog = document.querySelector('dialog[open]');
-    if (dialog) dialog.close();
-  }, true);
+  // every Escape.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); }, true);
   // Cmd+Plus, Cmd+Minus and Cmd+0 zoom the desktop app's window. The shell owns the zoom, so the page forwards the
   // chord; it leaves the default in place, so a browser still zooms by itself.
   document.addEventListener('keydown', (e) => {

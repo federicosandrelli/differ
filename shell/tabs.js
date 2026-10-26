@@ -138,7 +138,7 @@
   // version are current. The shell adds the app's version, which only it knows.
   const settings = document.getElementById('settings');
   function openSettings() {
-    fetch('/settings').then(r => r.ok ? r.text() : Promise.reject(r.status)).then((body) => {
+    fetch('/settings').then(r => r.ok ? r.text() : Promise.reject()).then((body) => {
       settings.querySelector('.state').innerHTML = body;
       if (update) settings.querySelector('[data-version]').textContent = `${update.current}${update.managed ? ' from Homebrew' : ''} · `;
     }).catch(() => {});

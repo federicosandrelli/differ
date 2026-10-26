@@ -73,7 +73,7 @@ html.framed #side .foot { padding-left: 44px; }
 .page p { max-width: 78ch; }
 .page h2 { font-size: 15px; margin: 28px 0 10px; }
 .prbody { max-width: 78ch; } .prbody h3, .prbody h4 { font-size: 14px; margin: 16px 0 6px; } .prbody ul { padding-left: 20px; } .prbody li { margin: 4px 0; }
-.prbody pre { margin: 8px 0; padding: 8px 10px; background: var(--bg-inset); border-radius: var(--radius); overflow-x: auto; } .prbody pre code { background: none; padding: 0; }
+.prbody pre { margin: 8px 0; padding: 8px 10px; background: var(--bg-inset); border-radius: var(--radius); overflow-x: auto; }
 .prbody details, .cbody details { margin: 6px 0; } .prbody summary, .cbody summary { cursor: pointer; }
 .prbody img, .cbody img { max-width: 100%; } .prbody blockquote, .cbody blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border); color: var(--text-secondary); }
 .prbody .contains-task-list, .cbody .contains-task-list { list-style: none; padding-left: 4px; }
@@ -137,7 +137,6 @@ tr.fold td:hover { color: var(--accent); }
 tr.collapsed td { background: var(--bg-panel); color: var(--text-secondary); font: 12px var(--sans); padding: 4px 12px; cursor: pointer; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
 tr.collapsed td:hover { color: var(--accent); }
 tr.collapsed td .cls { display: inline-block; min-width: 110px; font-weight: 600; color: var(--text-muted); }
-tr.collapsed td code { font-size: 11.5px; background: none; padding: 0; }
 tr.runhead td { background: var(--bg-panel); color: var(--text-muted); font: 11px var(--sans); padding: 2px 12px; cursor: pointer; border-top: 1px dashed var(--border); }
 tr.runhead.locked td { cursor: default; }
 
@@ -178,7 +177,6 @@ tr.thread > td > *, tr.compose > td > * { position: sticky; left: 44px; max-widt
 .comment .cbody p { margin: 4px 0; max-width: none; } .comment .cbody ul { margin: 4px 0; padding-left: 20px; }
 .comment .cbody h2, .comment .cbody h3, .comment .cbody h4 { font-size: 13px; margin: 8px 0 4px; }
 .comment .cbody pre { margin: 6px 0; padding: 8px 10px; background: var(--bg-inset); border-radius: var(--radius); overflow-x: auto; }
-.comment .cbody pre code { background: none; padding: 0; }
 .comment.pending { background: var(--comment-pending-bg); }
 .comment.approved .chead { color: var(--add-fg); } .comment.changes .chead { color: var(--del-fg); }
 .thread .tfoot { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); }

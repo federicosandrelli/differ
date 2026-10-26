@@ -994,7 +994,6 @@ def test_the_shell_opens_the_settings_on_cmd_comma_and_closes_them_on_escape_and
     dialog = page.locator("#settings")
     expect(dialog).to_be_visible()
     expect(dialog.locator("h2", has_text="Cache")).to_be_visible()
-    expect(dialog.locator(".editors li", has_text="GitHub")).to_have_text(re.compile(r"^GitHub\s*installed$"))
     # The shell cancels every Escape, so that the macOS window keeps full screen, and closes the dialog itself.
     page.keyboard.press("Escape")
     expect(dialog).to_be_hidden()
