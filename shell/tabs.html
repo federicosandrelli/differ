@@ -42,12 +42,10 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 #settings section { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 0 20px; padding: 22px 0; border-top: 1px solid var(--border); }
 #settings .body > section:first-child { border-top: 0; }
 #settings h2 { font-size: inherit; font-weight: 600; margin: 0; }
-/* The fetched content is quiet text; only its terms and sub-headings take the text colour, like the labels. */
-#settings .state section > div { color: var(--text-secondary); }
-#settings h3 { font-size: inherit; font-weight: 600; color: var(--text); margin: 16px 0 4px; }
+#settings h3 { font-size: inherit; font-weight: 600; margin: 16px 0 4px; }
 #settings p { margin: 0 0 10px; } #settings section > div > :last-child { margin-bottom: 0; }
 #settings ul { margin: 2px 0 0; padding-left: 18px; } #settings li { margin: 3px 0; }
-#settings dl { margin: 0 0 10px; } #settings dt { font-weight: 600; color: var(--text); margin-top: 10px; } #settings dd { margin: 0; }
+#settings dl { margin: 0 0 10px; } #settings dt { font-weight: 600; margin-top: 10px; } #settings dd { margin: 0; color: var(--text-secondary); }
 #settings .editors { display: grid; grid-template-columns: max-content 1fr; gap: 2px 8px; } #settings .editors dt { margin-top: 0; }
 #settings table { border-collapse: collapse; }
 #settings .keys { width: 100%; margin-bottom: 10px; }
@@ -56,7 +54,7 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 #settings .patterns { margin-top: 4px; } #settings .patterns td { padding: 2px 16px 2px 0; }
 #settings .cache td { padding: 4px 24px 4px 0; } #settings .cache td:last-child { text-align: right; font-family: var(--mono); padding-right: 0; }
 /* The live example of an inline fold draws a few rows as the diff table does, in the diff's own tokens. */
-#settings .example { width: 100%; margin: 10px 0; font: 12px/1.7 var(--mono); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); }
+#settings .example { width: 100%; margin: 10px 0; font: 12px/1.7 var(--mono); border: 1px solid var(--border); border-radius: var(--radius); }
 #settings .example td { padding: 0 8px; white-space: pre; }
 #settings .example td.n { width: 1%; text-align: right; color: var(--text-muted); user-select: none; }
 #settings .example tr.add td { background: var(--add-bg); } #settings .example tr.add td.n { background: var(--add-num); color: var(--add-fg); }
