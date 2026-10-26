@@ -678,3 +678,74 @@ def test_classify_folds_a_changed_java_import(tmp_path: Path) -> None:
     assert [r["class"] for r in app["runs"]] == ["import"]
     assert app["import_lines"] == [3, 4] and app["old_import_lines"] == [3]
     assert app["noise_only"] is True
+
+
+def test_js_imports_finds_the_imports_in_the_header() -> None:
+    source = """#!/usr/bin/env node
+// import not.this
+'use client';
+
+import React, { useState } from "react";
+import {
+  a,
+  type B,
+} from './x'
+/* a */ import type { C } from "c"; // c
+import './styles.css';
+
+export function App() {
+  return <div />;
+}
+"""
+    assert classify.js_imports(source) == {5, 6, 7, 8, 9, 10, 11}
+
+
+def test_js_imports_stops_at_the_first_other_statement() -> None:
+    assert classify.js_imports("import a from 'a';\nconst url = import.meta.url;\nimport b from 'b';\n") == {1}
+    assert classify.js_imports("import('a');\nimport b from 'b';\n") == set()
+    assert classify.js_imports("import a from 'a'; run();\nimport b from 'b';\n") == set()
+    assert classify.js_imports("import a from 'a\nimport b from 'b';\n") == set()
+    assert classify.js_imports("import\n  .meta.glob('./x');\n") == set()
+    assert classify.js_imports("import$x\nimport a from 'a';\n") == set()
+    assert classify.js_imports("import a from 'a' // x\rrun()\nimport b from 'b'\n") == set()
+    assert classify.js_imports("import a from 'a';\nimport b from 'b'\n// x\r with { type: 'json' };\n") == {1}
+    assert classify.js_imports("import {\n  'a-b'\n  as ab } from 'x';\n") == set()
+    assert classify.js_imports("#!/usr/bin/env node\r/*\nimport a from 'a'\n*/ run()\n") == set()
+    assert classify.js_imports("import a from 'a';\nimport b from 'b'\n\ufeffwith { type: 'json' };\n") == {1}
+    assert classify.js_imports("import a from 'x/*'; run('x '); '*/'\nimport c from 'c'\n") == set()
+
+
+def test_js_imports_leaves_out_an_import_without_a_closing_line() -> None:
+    assert classify.js_imports("import a from 'a';\nimport {\n  b,\n} from './b.json' with { type: 'json' };\n") == {1}
+    assert classify.js_imports("import a from 'a';\nimport {\n  b,\n} from './b.json'\n  with { type: 'json' };\n") == {
+        1
+    }
+    assert classify.js_imports("import a from 'a';\nimport b from 'b'\n;\n") == {1}
+
+
+def test_js_imports_keeps_an_import_that_a_semicolon_closes() -> None:
+    source = "import test from 'node:test';\nimport assert from 'node:assert';\n\nassert.equal(1, 1);\n;[1].map(f)\n"
+    assert classify.js_imports(source) == {1, 2}
+
+
+def test_js_imports_counts_the_comments_inside_an_import() -> None:
+    assert classify.js_imports("import {\n  // a note\n  a,\n} from 'x';\nrun()\n") == {1, 2, 3, 4}
+
+
+def test_js_imports_keeps_comment_markers_inside_a_module_path() -> None:
+    assert classify.js_imports("import a from 'https://x/a.js'; // a\nimport b from './*.css'\nrun()\n") == {1, 2}
+
+
+def test_js_imports_counts_lines_like_git() -> None:
+    source = "﻿import a from 'a';\r\n\f\r\nimport b from 'b';\r\nrun();\r\n"
+    assert classify.js_imports(source) == {1, 3}
+
+
+def test_classify_folds_a_changed_tsx_import(tmp_path: Path) -> None:
+    old = "import { a } from './a';\n\nexport const App = () => <div>{a}</div>;\n"
+    new = "import { a } from './a';\nimport { b } from './b';\n\nexport const App = () => <div>{a}</div>;\n"
+    diff = make_diff(tmp_path, old={"App.tsx": old}, new={"App.tsx": new})
+    (app,) = classify.classify(diff)["files"]
+    assert [r["class"] for r in app["runs"]] == ["import"]
+    assert app["import_lines"] == [1, 2] and app["old_import_lines"] == [1]
+    assert app["noise_only"] is True
