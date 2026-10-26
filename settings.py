@@ -53,7 +53,7 @@ def docs_rules() -> str:
     folders = " or ".join(code(d) for d in classify.DOCS_DIRS)
     docs_types = (file_types.support(t) for t in file_types.FileType)
     suffixes = ", ".join(code(suffix) for t in docs_types if t.docs for suffix in t.suffixes)
-    return items([f"A path under {folders}.", f"A file with the suffix {suffixes}."])
+    return items([f"A path under {folders}.", f"The suffix {suffixes}."])
 
 
 def test_rules() -> str:
@@ -66,7 +66,7 @@ def test_rules() -> str:
     )
     return items(
         [
-            f"A file in a top-level folder named {top}.",
+            f"A top-level folder named {top}.",
             f"A folder named {inner}, or ending in {code(classify.TEST_DIR_SUFFIX)}, anywhere in the path.",
             f"{code(classify.TEST_PATH_PART)} in the path.",
             f"A name starting with {code(classify.TEST_NAME_PREFIX)}.",

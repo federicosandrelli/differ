@@ -5,6 +5,7 @@ import pytest
 
 import build
 import classify
+import editors
 import file_types
 import languages
 import render
@@ -42,7 +43,7 @@ def test_the_settings_show_the_editors_the_language_patterns_the_cache_sizes_and
     (tmp_path / "pages" / "p.html").write_bytes(b"x" * 2500)
     monkeypatch.setattr(render, "app_info", lambda: {"commit": "abc1234", "dirty": True, "built": ""})
     html = settings.settings_html()
-    assert "<dd>VS Code, Cursor, PyCharm, IntelliJ IDEA, WebStorm, GoLand, GitHub</dd>" in html
+    assert f"<dd>{', '.join(e.name for e in editors.known())}</dd>" in html
     for language in languages.Language:
         pattern = languages.support(language).test_name_pattern
         shown = re.search(rf"<td>{re.escape(languages.name(language))}</td><td><code>([^<]*)</code>", html)
