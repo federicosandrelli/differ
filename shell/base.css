@@ -24,13 +24,14 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 .err { color: var(--del-fg); }
 
 /* A button is a control: control-sized text in a bordered box, 24px tall. .primary fills it with the accent, .on
-   tints it for a toggle that is on, .ghost drops the border and quietens it for icon buttons and side actions. */
+   tints it for a toggle that is on, .ghost drops the border, quietens it and tightens it, for icon buttons and side
+   actions. */
 button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: var(--control-font)/var(--control-line) var(--sans); color: inherit; background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 1px 10px; white-space: nowrap; cursor: pointer; }
 button:enabled:hover { background: var(--bg-hover); }
 button.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-fill); }
 button.primary:enabled:hover { background: var(--accent-hover); }
-button.ghost { border-color: transparent; color: var(--text-secondary); }
+button.ghost { border-color: transparent; color: var(--text-secondary); padding: 1px 8px; }
 button.ghost:enabled:hover { color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
 /* A segmented control: buttons side by side in one bordered box. */
