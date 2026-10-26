@@ -138,14 +138,14 @@
     updateBar.hidden = !(update && update.newer && seenVersion() !== update.latest);
     if (updateBar.hidden) return;
     let sub = `You have ${update.current}. Homebrew installs it and reopens differ.`, label = 'Update and Relaunch', disabled = false;
-    if (updateError) sub = updateError;
-    else if (updating) { sub = 'Homebrew is installing it. differ will quit and reopen.'; label = 'Updating…'; disabled = true; }
+    if (updating) { sub = 'Homebrew is installing it. differ will quit and reopen.'; label = 'Updating…'; disabled = true; }
     else if (!update.managed) { sub = `You have ${update.current}. This copy did not come from Homebrew.`; label = 'Download'; }
     else if (tabs.some(t => t.draft)) { sub = 'A tab has unsent text. Send or discard it first.'; disabled = true; }
+    else if (updateError) sub = updateError;
     updateBar.querySelector('.title').textContent = `differ ${update.latest} is available`;
     const subEl = updateBar.querySelector('.sub'), act = updateBar.querySelector('.act');
     subEl.textContent = sub;
-    subEl.classList.toggle('err', !!updateError);
+    subEl.classList.toggle('err', sub === updateError);
     act.textContent = label;
     act.disabled = disabled;
     updateBar.querySelector('.later').disabled = updating;

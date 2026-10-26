@@ -146,8 +146,7 @@ fn fresh(checked_at: u64) -> bool {
 #[tauri::command(async)]
 pub fn update_check(app: AppHandle) -> UpdateStatus {
     let current = app.package_info().version.to_string();
-    let dir = cache_dir();
-    let path = dir.as_ref().map(|dir| dir.join("update.json"));
+    let path = cache_dir().map(|dir| dir.join("update.json"));
     let mut cache: Option<Cache> = path
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
