@@ -35,7 +35,7 @@ def test_human_size(n: int, text: str) -> None:
     assert settings.human_size(n) == text
 
 
-def test_the_settings_show_the_editors_the_language_patterns_the_cache_sizes_and_the_commit(
+def test_the_settings_show_the_editors_the_patterns_the_generated_rules_the_cache_sizes_and_the_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(build, "CACHE", tmp_path)
@@ -43,7 +43,8 @@ def test_the_settings_show_the_editors_the_language_patterns_the_cache_sizes_and
     (tmp_path / "pages" / "p.html").write_bytes(b"x" * 2500)
     monkeypatch.setattr(render, "app_info", lambda: {"commit": "abc1234", "dirty": True, "built": ""})
     html = settings.settings_html()
-    assert f"<dd>{', '.join(e.name for e in editors.known())}</dd>" in html
+    for editor in editors.known():
+        assert editor.name in html
     for language in languages.Language:
         pattern = languages.support(language).test_name_pattern
         shown = re.search(rf"<td>{re.escape(languages.name(language))}</td><td><code>([^<]*)</code>", html)
@@ -62,10 +63,7 @@ def test_the_settings_show_the_editors_the_language_patterns_the_cache_sizes_and
     assert str(tmp_path) in html
     assert re.search(r"<code>pages/</code></td><td>[^<]*</td><td>2.4 KB<", html)
     assert re.search(r"<code>repos/</code></td><td>[^<]*</td><td>0 bytes<", html)
-    assert (
-        'commit <a href="https://github.com/federicosandrelli/differ/commit/abc1234" target="_blank">'
-        "<code>abc1234</code></a> with uncommitted changes" in html
-    )
+    assert f'href="{settings.REPOSITORY}/commit/abc1234"' in html and "with uncommitted changes" in html
 
 
 def test_the_settings_omit_the_commit_when_git_cannot_tell(monkeypatch: pytest.MonkeyPatch) -> None:

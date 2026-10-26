@@ -90,8 +90,8 @@ def generated_rules() -> str:
     )
 
 
-def editor_list() -> str:
-    return f"<dt>Supported</dt><dd>{', '.join(html.escape(e.name) for e in editors.known())}</dd>"
+def editor_names() -> str:
+    return ", ".join(html.escape(e.name) for e in editors.known())
 
 
 def cache_rows() -> str:
@@ -115,9 +115,8 @@ def settings_html() -> str:
         DOCS_RULES=docs_rules(),
         TEST_RULES=test_rules(),
         GENERATED_RULES=generated_rules(),
-        EDITORS=editor_list(),
+        EDITORS=editor_names(),
         CACHE=html.escape(str(build.CACHE)),
         CACHE_ROWS=cache_rows(),
         COMMIT=commit_line(),
-        REPOSITORY=REPOSITORY,
     )
