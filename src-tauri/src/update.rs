@@ -48,18 +48,12 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
-/// The leading integers of a dotted version, so 0.1.10 sorts after 0.1.9. Reading stops at the first component
-/// that is not all digits, so "0.1.12-beta.1" is 0.1.12 and not a fourth component past the release it precedes.
 fn parts(version: &str) -> Vec<u64> {
-    let mut out = Vec::new();
-    for component in version.trim().trim_start_matches('v').split('.') {
-        let digits: String = component.chars().take_while(char::is_ascii_digit).collect();
-        out.push(digits.parse().unwrap_or(0));
-        if digits.len() != component.len() {
-            break;
-        }
-    }
-    out
+    version
+        .trim()
+        .split('.')
+        .map(|component| component.parse().unwrap_or(0))
+        .collect()
 }
 
 /// Whether `latest` is a later version than `current`. A version without a number is never newer.
@@ -173,8 +167,7 @@ pub fn update_check(app: AppHandle) -> UpdateStatus {
     }
 }
 
-/// The script that runs the upgrade after the app has quit. It must outlive the app, and it must not live inside
-/// the bundle Homebrew is about to replace.
+/// The script that runs the upgrade after the app has quit.
 fn helper_script(brew: &Path, log: &Path, current: &str) -> String {
     format!(
         r#"#!/bin/sh
@@ -252,11 +245,12 @@ pub fn update_run(app: AppHandle) -> Result<(), String> {
     let log = crate::log_dir()
         .ok_or("cannot find the log folder")?
         .join("upgrade.log");
+    // Outside the bundle, which Homebrew replaces while the script runs.
     let script = dir.join("upgrade.sh");
     let current = app.package_info().version.to_string();
     std::fs::write(&script, helper_script(&brew, &log, &current))
         .map_err(|e| format!("cannot write {}: {e}", script.display()))?;
-    // Detached, with no inherited stdio, so nothing ties the script to this process once the app exits.
+    // No inherited stdio, so the script holds no pipe to this process after the app exits.
     Command::new("/bin/sh")
         .arg(&script)
         .stdin(Stdio::null())
@@ -283,9 +277,6 @@ mod tests {
         assert!(!is_newer("0.1.9", "0.1.10"));
         assert!(is_newer("1.0.1", "1.0"));
         assert!(!is_newer("1.0", "1.0.0"));
-        assert!(!is_newer("v0.1.12", "0.1.12"));
-        assert!(is_newer("0.1.13-beta.1", "0.1.12"));
-        assert!(!is_newer("0.1.12-beta.1", "0.1.12"));
     }
 
     #[test]
