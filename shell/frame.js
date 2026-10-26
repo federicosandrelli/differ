@@ -10,6 +10,7 @@ const SHELL = window.parent === window ? null : {
   external(url) { this.tell({ type: 'external', url }); },
   step(dir) { this.tell({ type: 'step', dir }); },
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
+  settings() { this.tell({ type: 'settings' }); },
   badge(n) { this.tell({ type: 'badge', n }); },
   status(status) { this.tell({ type: 'status', status }); },
   page(url, title, status) { this.tell({ type: 'page', url, title, status }); },
@@ -18,6 +19,7 @@ const SHELL = window.parent === window ? null : {
 };
 
 if (SHELL) {
+  document.documentElement.classList.add('framed');
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
     if (!a || (a.getAttribute('href') || '').startsWith('#')) return;
@@ -42,19 +44,20 @@ if (SHELL) {
     SHELL.step(e.key === 'ArrowLeft' ? -1 : 1);
   }, true);
   // An Escape the page leaves alone reaches the macOS window, which then leaves full screen, so the page cancels
-  // every Escape. Cancelling it also stops a modal dialog from closing on Escape, so the page closes it.
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    e.preventDefault();
-    const dialog = document.querySelector('dialog[open]');
-    if (dialog) dialog.close();
-  }, true);
+  // every Escape.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); }, true);
   // Cmd+Plus, Cmd+Minus and Cmd+0 zoom the desktop app's window. The shell owns the zoom, so the page forwards the
   // chord; it leaves the default in place, so a browser still zooms by itself.
   document.addEventListener('keydown', (e) => {
     if (!e.metaKey || e.altKey || e.ctrlKey) return;
     const dir = e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
     if (dir !== null) SHELL.zoom(dir);
+  }, true);
+  // Cmd+, opens the shell's settings. Focus sits inside the page, so the page forwards the chord.
+  document.addEventListener('keydown', (e) => {
+    if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.key !== ',') return;
+    e.preventDefault();
+    SHELL.settings();
   }, true);
   // The shell says when the tab comes to the front; pages listen for 'tab-shown' on the document.
   window.addEventListener('message', (e) => {

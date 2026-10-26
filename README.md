@@ -271,7 +271,7 @@ editors open, stay too.
   row; `35-marks.js` the search matches and word changes marked inside a
   line; `40-code.js` draws that view as the diff table; `50-comments.js` the
   review threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
-  `75-bugreport.js` the bug report prompt; `76-docs.js` the docs window; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
+  `75-bugreport.js` the bug report prompt; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its
   header; its diff table is cut into chunks of 100 rows that hold their rows
   only while they are near the viewport and keep their height when emptied, so
@@ -287,7 +287,8 @@ editors open, stay too.
   `theme.js` applies the saved theme in every document and keeps the native
   window and the other open documents in step with a change; `document.html`
   wraps the start, progress and error pages (`start.html`, `progress.html`,
-  `error.html`).
+  `error.html`); `settings.html` is the body of the settings, which
+  `settings.py` fills from the code.
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API.
 - `github.py` is the one place that talks to GitHub: every `gh` command the
@@ -308,8 +309,8 @@ Keys in the page: arrow keys in the tree, Option+Up and Option+Down for the
 previous and next shown file, Cmd+F search (it starts from the selected text)
 and Enter for the next hit, Shift+Cmd+F to search the file paths instead (the
 tree then lists only the files found, and Enter goes to the next one) and again
-to go back, `o` back to the top. Escape leaves the focused element and
-ends the search; in a comment box it only leaves the box.
+to go back, `o` back to the top, Cmd+, the settings. Escape leaves the focused
+element and ends the search; in a comment box it only leaves the box.
 
 The search looks at the added, removed and unchanged lines of the shown files,
 in open and closed sections alike, so it also finds the lines of reviewed
@@ -322,11 +323,15 @@ or the arrow keys) opens at its first hit, and Enter, in the tree or the
 search box, goes on from there. The arrow keys pass a closed section without
 opening it; Enter on it opens it at its first hit.
 
-## Docs
+## Settings
 
-"Docs" at the left of the sidebar's footer opens a window in the middle of the
-page that describes every feature of the page, in plain words. Escape, the
-close button or a click outside the window closes it.
+The gear in the bottom left corner of the window, Cmd+, and the desktop app's
+"Settings…" menu item open the settings in the middle of the window. The theme
+is the one setting; the sections below it show the shortcuts, the
+rules that sort files into documentation, tests and implementation, the lines
+the page folds, the files it hides, the editors it knows, the cache on disk,
+and the version. Escape, the close button or a click outside the window closes
+it.
 
 ## Reporting a bug
 

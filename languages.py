@@ -210,6 +210,51 @@ class Language(Enum):
     PERL = auto()
 
 
+def name(language: Language) -> str:
+    """The language's name as it is written."""
+    match language:
+        case Language.PYTHON:
+            return "Python"
+        case Language.JAVASCRIPT:
+            return "JavaScript"
+        case Language.TYPESCRIPT:
+            return "TypeScript"
+        case Language.JAVA:
+            return "Java"
+        case Language.KOTLIN:
+            return "Kotlin"
+        case Language.SWIFT:
+            return "Swift"
+        case Language.CSHARP:
+            return "C#"
+        case Language.PHP:
+            return "PHP"
+        case Language.GO:
+            return "Go"
+        case Language.RUBY:
+            return "Ruby"
+        case Language.DART:
+            return "Dart"
+        case Language.ELIXIR:
+            return "Elixir"
+        case Language.RUST:
+            return "Rust"
+        case Language.C:
+            return "C"
+        case Language.CPP:
+            return "C++"
+        case Language.LUA:
+            return "Lua"
+        case Language.SHELL:
+            return "Shell"
+        case Language.SQL:
+            return "SQL"
+        case Language.R:
+            return "R"
+        case Language.PERL:
+            return "Perl"
+
+
 JVM_TEST_NAME = r"\wTests?$|[a-z0-9]IT$"
 
 
@@ -225,9 +270,15 @@ class LanguageSupport(ABC):
     def structure(self, source: str) -> Structure:
         """The import lines and the symbols of a source."""
 
+    @property
     @abstractmethod
+    def test_name_pattern(self) -> str | None:
+        """The regular expression a file name without its suffix matches when it names a test file, or None when
+        the language names its test files by their folder or prefix only."""
+
     def is_test_name(self, stem: str) -> bool:
         """Whether a file name without its suffix names a test file."""
+        return self.test_name_pattern is not None and re.search(self.test_name_pattern, stem) is not None
 
     @abstractmethod
     def is_definition(self, line: str, name: str) -> bool:
@@ -242,8 +293,9 @@ class Python(LanguageSupport):
     def structure(self, source: str) -> Structure:
         return Structure(*python_structure(source))
 
-    def is_test_name(self, stem: str) -> bool:
-        return re.search(r"_test$|^conftest$", stem) is not None
+    @property
+    def test_name_pattern(self) -> str:
+        return r"_test$|^conftest$"
 
     def is_definition(self, line: str, name: str) -> bool:
         return is_definition(line, name)
@@ -256,8 +308,9 @@ class Java(LanguageSupport):
     def structure(self, source: str) -> Structure:
         return Structure(java_imports(source), [])
 
-    def is_test_name(self, stem: str) -> bool:
-        return re.search(JVM_TEST_NAME, stem) is not None
+    @property
+    def test_name_pattern(self) -> str:
+        return JVM_TEST_NAME
 
     def is_definition(self, line: str, name: str) -> bool:
         return is_definition(line, name)
@@ -272,8 +325,9 @@ class JavaScript(LanguageSupport):
     def structure(self, source: str) -> Structure:
         return Structure(js_imports(source), [])
 
-    def is_test_name(self, stem: str) -> bool:
-        return re.search(r"\.(?:test|spec|cy)$|-test$", stem) is not None
+    @property
+    def test_name_pattern(self) -> str:
+        return r"\.(?:test|spec|cy)$|-test$"
 
     def is_definition(self, line: str, name: str) -> bool:
         return is_definition(line, name)
@@ -283,16 +337,17 @@ class JavaScript(LanguageSupport):
 
 
 class Plain(LanguageSupport):
-    """A language without import lines or symbols. Its test files match `test_name`, if given."""
+    """A language without import lines or symbols. Its test files match `test_name_pattern`, if given."""
 
-    def __init__(self, test_name: str | None) -> None:
-        self.test_name = test_name
+    def __init__(self, test_name_pattern: str | None) -> None:
+        self._test_name_pattern = test_name_pattern
 
     def structure(self, source: str) -> Structure:
         return Structure(set(), [])
 
-    def is_test_name(self, stem: str) -> bool:
-        return self.test_name is not None and re.search(self.test_name, stem) is not None
+    @property
+    def test_name_pattern(self) -> str | None:
+        return self._test_name_pattern
 
     def is_definition(self, line: str, name: str) -> bool:
         return is_definition(line, name)

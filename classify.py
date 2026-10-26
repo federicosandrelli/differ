@@ -383,19 +383,23 @@ def link_moves(files: list[FileDiff]) -> None:
                 target_run.moved_to = Place(path=fd.path, line=run.removed[0][0])
 
 
+DOCS_DIRS = (".claude/", "docs/")
 TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
 TEST_DIRS = {"__tests__", "__snapshots__", "test_helpers"}
+TEST_DIR_SUFFIX = "Tests"
+TEST_PATH_PART = "/src/test/"
+TEST_NAME_PREFIX = "test_"
 
 
 def file_kind(path: str) -> Literal["docs", "test", "implementation"]:
-    if path.startswith((".claude/", "docs/")) or file_types.support_of(path).docs:
+    if path.startswith(DOCS_DIRS) or file_types.support_of(path).docs:
         return "docs"
     *dirs, name = path.split("/")
     if (
         (dirs and dirs[0] in TOP_LEVEL_TEST_DIRS)
-        or any(d in TEST_DIRS or d.endswith("Tests") for d in dirs)
-        or "/src/test/" in f"/{path}"
-        or name.startswith("test_")
+        or any(d in TEST_DIRS or d.endswith(TEST_DIR_SUFFIX) for d in dirs)
+        or TEST_PATH_PART in f"/{path}"
+        or name.startswith(TEST_NAME_PREFIX)
         or file_types.language_support_of(path).is_test_name(name.rsplit(".", 1)[0])
     ):
         return "test"

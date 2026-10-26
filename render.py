@@ -339,8 +339,8 @@ def sources() -> list[Path]:
 
 
 def app_info() -> dict:
-    """The commit of this repository the page was rendered from, for the bug report a page writes; unknown when
-    git can't tell."""
+    """The commit of this repository the app runs from, and whether it has uncommitted changes; unknown when git
+    can't tell."""
 
     def git(*args: str) -> str:
         try:

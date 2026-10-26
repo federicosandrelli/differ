@@ -1,0 +1,115 @@
+<section>
+  <h2>Shortcuts</h2>
+  <div>
+    <table class="keys">
+      <tr><td><kbd>Cmd</kbd>+<kbd>F</kbd></td><td>Search the lines, starting from the selected text.</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>F</kbd></td><td>Search the file paths. Press it again to search the lines.</td></tr>
+      <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Next or previous match. A closed file opens when a match lands in it.</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Move through the file tree, open or close a folder.</td></tr>
+      <tr><td><kbd>Option</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>Previous or next file.</td></tr>
+      <tr><td><kbd>o</kbd></td><td>Back to the overview.</td></tr>
+      <tr><td><kbd>Escape</kbd></td><td>Leave the box or the tree, and end the search. In a comment box, only leave the box.</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>Option</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Previous or next tab.</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>W</kbd> / <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>Close the tab, or the window (desktop app).</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>Zoom in, zoom out, or back to normal (desktop app).</td></tr>
+      <tr><td><kbd>Cmd</kbd>+<kbd>,</kbd></td><td>These settings.</td></tr>
+    </table>
+    <p class="hint">To comment on several lines, drag the <kbd>+</kbd> from the first line to the last, or click the first
+    line number and <kbd>Shift</kbd>+click the last.</p>
+  </div>
+</section>
+
+<section>
+  <h2>File types</h2>
+  <div>
+    <p>The filters above the tree sort every file into one type.</p>
+    <dl>
+      <dt>Documentation</dt>
+      <dd>A file with:<ul>__DOCS_RULES__</ul></dd>
+      <dt>Tests</dt>
+      <dd>Any other file with:<ul>__TEST_RULES__</ul></dd>
+      <dt>Implementation</dt>
+      <dd>Every other file.</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2>Folded lines</h2>
+  <div>
+    <p>A fold is one row in place of lines you can skip. Click it to open the lines, and again to fold them.</p>
+    <dl>
+      <dt>Unchanged lines</dt>
+      <dd>The 4 lines next to each change stay; the rest fold. A block of 10 lines or fewer stays whole. The row
+        names the Python classes and functions that start inside it.</dd>
+      <dt>Import sections</dt>
+      <dd>In Python, Java, JavaScript and TypeScript, every import section folds, even unchanged. The row counts the
+        lines added and removed.</dd>
+      <dt>Whitespace</dt>
+      <dd>A change that only adds or removes spaces, tabs or line breaks.</dd>
+      <dt>Rename fallout</dt>
+      <dd>A change that only follows a rename: the same word changing the same way in at least two places, or a
+        renamed file. The line that defines the new name stays open. Inside a real change, such a line shows pale
+        with a <span class="chip">rename</span> mark.</dd>
+      <dt>Moved code</dt>
+      <dd>A block of 4 non-blank lines or more that appears again, unchanged, elsewhere in the pull request. The row
+        names the other place.</dd>
+      <dt>Folds close together</dt>
+      <dd>Folds of one kind with only a few unchanged lines between them join into one row, which says how many
+        places it covers.</dd>
+    </dl>
+    <p>A fold stays open while it holds a comment thread or the comment you are writing, or while a button under
+    the overview shows its kind; its row then names the fold and takes no clicks.</p>
+
+    <h3>The class or function above a change</h3>
+    <p>A change in a Python file also shows the lines above it, up to the start of the class, function or call it
+    sits in, so you can read the signature without opening a fold. When that body is long, the lines between the
+    signature and the 2 lines before the change fold into a chip:</p>
+    <table class="example">
+      <tr><td class="n">41</td><td class="c">    def recognise(self, volumes, *, dry_run=False):</td></tr>
+      <tr><td class="n"></td><td class="c">        <span class="chip">⋯</span></td></tr>
+      <tr><td class="n">56</td><td class="c">            if volume.quantity == 0:</td></tr>
+      <tr><td class="n">57</td><td class="c">                continue</td></tr>
+      <tr class="add"><td class="n">58</td><td class="c">            volume.recognised = not dry_run</td></tr>
+    </table>
+    <p class="hint">The signature, the chip that holds the 14 lines of the body, the 2 lines before the change, and
+    the added line.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Hidden files</h2>
+  <div>
+    <dl>
+      <dt>Generated files</dt>
+      <dd>A file with:<ul>__GENERATED_RULES__</ul></dd>
+      <dt>Files with only noise</dt>
+      <dd>Files where every change is an import, rename fallout, whitespace or moved code, and files renamed or moved
+        without a change.</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2>Editor</h2>
+  <div>
+    <p>The <code>&lt;/&gt;</code> button in a file's header opens the repository in your editor, on the pull
+    request's branch, at the first changed line. You can pick an editor with <code>⋮</code>, and differ will save
+    it as your default. GitHub opens the file on github.com instead.</p>
+    <dl class="editors"><dt>Supported</dt><dd>__EDITORS__</dd></dl>
+    <p>differ keeps one clone per repository, made in the background when you open a pull request, and checks out
+    the branch each time, also after a force-push, but not for a fork. It never discards your work: when the clone
+    has uncommitted changes on another branch, or when the update would lose commits, it leaves the clone alone and
+    shows the error.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Cache</h2>
+  <div>
+    <p><code>__CACHE__</code></p>
+    <table class="cache">__CACHE_ROWS__</table>
+  </div>
+</section>
+
+<p class="about hint"><span data-version></span>__COMMIT__<a href="https://github.com/federicosandrelli/differ" target="_blank">federicosandrelli/differ</a> · made with ❤️ by <a href="https://github.com/federicosandrelli" target="_blank">fed</a></p>
