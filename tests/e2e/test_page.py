@@ -545,9 +545,7 @@ def test_the_tree_cursor_passes_a_closed_section_and_enter_opens_it_at_its_first
     expect(meta).to_have_text("4 files · 1 / 9")
 
 
-def test_enter_in_the_search_box_opens_a_reviewed_file_at_its_hit(
-    page: Page, server_url: str, config_pr: str
-) -> None:
+def test_enter_in_the_search_box_opens_a_reviewed_file_at_its_hit(page: Page, server_url: str, config_pr: str) -> None:
     open_pr(page, server_url, config_pr)
     config = page.locator("section[data-file='src/config.py']")
     page.click("#side .leaf[data-path='src/config.py'] .check")
