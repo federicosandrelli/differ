@@ -52,6 +52,7 @@ import build
 import commands
 import comments
 import editors
+import file_types
 import github
 import recent
 import render
@@ -61,17 +62,6 @@ PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
 STATUS = re.compile(rf"^/status/{SLUG}/(?P<number>\d+)$")
 API = re.compile(rf"^/api/{SLUG}/(?P<number>\d+)/(?P<action>\w+)$")
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
-IMAGE_TYPES = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".avif": "image/avif",
-    ".bmp": "image/bmp",
-    ".ico": "image/x-icon",
-    ".svg": "image/svg+xml",
-}
 # An SVG file can hold scripts, and the reader may open an image's address on its own.
 IMAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 GH_TTL = 60
@@ -211,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(400, error_page(str(exc)))
             if url.path == "/image":
                 src = (query.get("src") or [""])[0]
-                if not (ctype := IMAGE_TYPES.get(Path(urlparse(src).path).suffix.lower())):
+                if not (ctype := file_types.support_of(urlparse(src).path).image_type):
                     return self.send(404, error_page(f"{src} is not an image"))
                 try:
                     return self.send_image(github.repo_file(src), ctype)

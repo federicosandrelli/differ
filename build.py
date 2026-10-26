@@ -51,7 +51,14 @@ def page_path(ref: PullRef, head: str) -> Path:
 
 def sources() -> list[Path]:
     """Every file that shapes a page, so a page older than any of them is rebuilt."""
-    return [ROOT / "build.py", ROOT / "classify.py", ROOT / "github.py", *render.sources()]
+    return [
+        ROOT / "build.py",
+        ROOT / "classify.py",
+        ROOT / "github.py",
+        ROOT / "file_types.py",
+        ROOT / "languages.py",
+        *render.sources(),
+    ]
 
 
 def page_current(page: Path) -> bool:

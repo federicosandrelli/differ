@@ -15,6 +15,12 @@ styles the same kind of thing (pills, counts, notices, buttons), and reuse it.
   list it in `CONTEXT.md`.
 - Tooltips: give the element a `title`. Never draw a tooltip of your own.
 
+## File types and languages
+
+Never branch on a path's suffix, or on a file name that names a file type (such as `Makefile`), to choose
+behaviour. Add a field to `FileTypeSupport` in `file_types.py` or a method to `LanguageSupport` in `languages.py`
+instead, and fill it for every member. Pyright fails when a `match` in `support()` misses a member.
+
 ## Git
 
 Never merge the base branch into a branch. To bring a branch up to date, or to resolve conflicts with the base

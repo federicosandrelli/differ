@@ -3,8 +3,11 @@ from pathlib import Path
 import pytest
 
 import classify
+import languages
 from classify import FileDiff, Hunk, Run
 from helpers import make_diff
+
+PYTHON = languages.support(languages.Language.PYTHON)
 
 OLD_APP = """import os
 
@@ -229,7 +232,7 @@ def f():
         def inner():
             pass
 """
-    imports, symbols = classify.python_structure(source)
+    imports, symbols = languages.python_structure(source)
     assert imports == {1, 2, 3, 4, 5}
     assert [(s["name"], s["kind"], s["start"]) for s in symbols] == [
         ("C", "class", 8),
@@ -283,7 +286,7 @@ async def h():
                 4,
             )
 """
-    _, symbols = classify.python_structure(source)
+    _, symbols = languages.python_structure(source)
     assert [(s["name"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
         ("Settings", "call", 1, 2, 3),
         ("run", "call", 4, 5, 6),
@@ -306,7 +309,7 @@ def f(
     \"\"\"Docstring.\"\"\"
     return a
 """
-    _, symbols = classify.python_structure(source)
+    _, symbols = languages.python_structure(source)
     assert [(s["start"], s["body"]) for s in symbols] == [(1, 5)]
 
 
@@ -316,12 +319,12 @@ def test_python_structure_starts_a_class_body_at_the_decorator_of_its_first_meth
     def a(self):
         return 1
 """
-    _, symbols = classify.python_structure(source)
+    _, symbols = languages.python_structure(source)
     assert [(s["name"], s["start"], s["body"]) for s in symbols] == [("C", 1, 2), ("a", 2, 4)]
 
 
 def test_python_structure_is_empty_for_a_file_that_does_not_parse() -> None:
-    assert classify.python_structure("def (") == (set(), [])
+    assert languages.python_structure("def (") == (set(), [])
 
 
 # ---------------------------------------------------------------- renames
@@ -383,7 +386,7 @@ def test_apply_renames_respects_word_boundaries() -> None:
     ],
 )
 def test_is_definition(line: str, name: str, expected: bool) -> None:
-    assert classify.is_definition(line, name) is expected
+    assert languages.is_definition(line, name) is expected
 
 
 # ---------------------------------------------------------------- classification
@@ -391,39 +394,39 @@ def test_is_definition(line: str, name: str, expected: bool) -> None:
 
 def test_classify_run_whitespace() -> None:
     run = run_of(["  x = 1", ""], ["x = 1", "   "])
-    classify.classify_run(run, set(), set(), [])
+    classify.classify_run(run, set(), set(), [], PYTHON)
     assert run.cls == "whitespace"
 
 
 def test_classify_run_import() -> None:
     run = run_of(["import os"], ["import os", "import sys"])
-    classify.classify_run(run, {1}, {1, 2}, [])
+    classify.classify_run(run, {1}, {1, 2}, [], PYTHON)
     assert run.cls == "import"
     other = run_of([], ["import sys"], start=2)
-    classify.classify_run(other, {1}, {1}, [])
+    classify.classify_run(other, {1}, {1}, [], PYTHON)
     assert other.cls == "substantive"
 
 
 def test_classify_run_rename_marks_the_definition_as_origin() -> None:
     renames = [("old", "new")]
     definition = run_of(["def old(x):"], ["def new(x):"])
-    classify.classify_run(definition, set(), set(), renames)
+    classify.classify_run(definition, set(), set(), renames, PYTHON)
     assert (definition.cls, definition.rename, definition.origin) == ("rename", ("old", "new"), True)
     use = run_of(["    return old(1)"], ["    return new(1)"])
-    classify.classify_run(use, set(), set(), renames)
+    classify.classify_run(use, set(), set(), renames, PYTHON)
     assert (use.cls, use.rename, use.origin, use.pair_rename) == ("rename", ("old", "new"), False, [True])
 
 
 def test_classify_run_names_a_rename_applied_twice_on_one_line() -> None:
     renames = [("old", "new")]
     run = run_of(["old(old)"], ["new(new)"])
-    classify.classify_run(run, set(), set(), renames)
+    classify.classify_run(run, set(), set(), renames, PYTHON)
     assert (run.cls, run.rename) == ("rename", ("old", "new"))
 
 
 def test_classify_run_substantive() -> None:
     run = run_of(["return 1"], ["return 2"])
-    classify.classify_run(run, set(), set(), [("a", "b")])
+    classify.classify_run(run, set(), set(), [("a", "b")], PYTHON)
     assert run.cls == "substantive" and run.pair_rename == [False]
 
 
@@ -436,7 +439,7 @@ def test_link_moves_links_a_block_removed_here_and_added_there() -> None:
     classify.link_moves([src, dst])
     assert src.runs[0].moved_to == {"path": "dst.py", "line": 20}
     assert dst.runs[0].moved_to == {"path": "src.py", "line": 10}
-    classify.classify_run(src.runs[0], set(), set(), [])
+    classify.classify_run(src.runs[0], set(), set(), [], PYTHON)
     assert src.runs[0].cls == "moved"
 
 
@@ -496,6 +499,10 @@ def test_blank_lines_removed_here_and_added_there_are_whitespace(tmp_path: Path)
         ("src/ParserTest.php", "test"),
         ("lib/parser_test.dart", "test"),
         ("lib/parser_test.exs", "test"),
+        ("lib/parser_test.ex", "test"),
+        ("README.MD", "docs"),
+        ("fixtures/test_data.json", "test"),
+        ("web/api.test.mts", "test"),
         ("src/Contest.java", "implementation"),
         ("src/latest.py", "implementation"),
         ("src/GIT.java", "implementation"),
@@ -528,22 +535,6 @@ def test_file_kind(path: str, kind: str) -> None:
 )
 def test_is_generated(path: str, source: str, marked: set[str], expected: bool) -> None:
     assert classify.is_generated(path, source, marked) is expected
-
-
-@pytest.mark.parametrize(
-    ("path", "lang"),
-    [
-        ("a/b.py", "python"),
-        ("x.TSX", "typescript"),
-        ("Makefile", "makefile"),
-        ("Dockerfile", "dockerfile"),
-        ("page.html", "xml"),
-        ("notes", "text"),
-        ("weird.unknown", "text"),
-    ],
-)
-def test_language(path: str, lang: str) -> None:
-    assert classify.language(path) == lang
 
 
 def test_classify_hides_a_file_as_noise_only_when_none_of_its_changes_shows(tmp_path: Path) -> None:
@@ -623,7 +614,7 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
 
 
 def test_python_structure_finds_the_imports_in_an_except_block() -> None:
-    imports, _ = classify.python_structure("try:\n    import ujson as json\nexcept ImportError:\n    import json\n")
+    imports, _ = languages.python_structure("try:\n    import ujson as json\nexcept ImportError:\n    import json\n")
     assert imports == {2, 4}
 
 
@@ -643,7 +634,7 @@ import static java.util.Map
 public class App {
 }
 """
-    assert classify.java_imports(source) == {6, 7, 8, 11}
+    assert languages.java_imports(source) == {6, 7, 8, 11}
 
 
 def test_java_imports_stops_at_code_after_a_comment() -> None:
@@ -656,18 +647,18 @@ import x.Y;
 \"\"\";
 }
 """
-    assert classify.java_imports(source) == {1}
+    assert languages.java_imports(source) == {1}
 
 
 def test_java_imports_stops_at_a_type_after_an_import_without_a_semicolon() -> None:
-    assert classify.java_imports("import java.util.List\n\nclass App {\n    int x = 1;\n}\n") == {1}
-    assert classify.java_imports("import java.util.List\nclass App\n{\n}\n") == {1}
-    assert classify.java_imports("import static\n    java.util.Map.entry;\nclass App {}\n") == {1, 2}
+    assert languages.java_imports("import java.util.List\n\nclass App {\n    int x = 1;\n}\n") == {1}
+    assert languages.java_imports("import java.util.List\nclass App\n{\n}\n") == {1}
+    assert languages.java_imports("import static\n    java.util.Map.entry;\nclass App {}\n") == {1, 2}
 
 
 def test_java_imports_counts_lines_like_git() -> None:
     source = "\ufeffpackage app;\r\nimport a.B;\r\n\f\r\nimport c.D;\r\nclass App {\r\n}\r\n"
-    assert classify.java_imports(source) == {2, 4}
+    assert languages.java_imports(source) == {2, 4}
 
 
 def test_classify_folds_a_changed_java_import(tmp_path: Path) -> None:
@@ -697,48 +688,48 @@ export function App() {
   return <div />;
 }
 """
-    assert classify.js_imports(source) == {5, 6, 7, 8, 9, 10, 11}
+    assert languages.js_imports(source) == {5, 6, 7, 8, 9, 10, 11}
 
 
 def test_js_imports_stops_at_the_first_other_statement() -> None:
-    assert classify.js_imports("import a from 'a';\nconst url = import.meta.url;\nimport b from 'b';\n") == {1}
-    assert classify.js_imports("import('a');\nimport b from 'b';\n") == set()
-    assert classify.js_imports("import a from 'a'; run();\nimport b from 'b';\n") == set()
-    assert classify.js_imports("import a from 'a\nimport b from 'b';\n") == set()
-    assert classify.js_imports("import\n  .meta.glob('./x');\n") == set()
-    assert classify.js_imports("import$x\nimport a from 'a';\n") == set()
-    assert classify.js_imports("import a from 'a' // x\rrun()\nimport b from 'b'\n") == set()
-    assert classify.js_imports("import a from 'a';\nimport b from 'b'\n// x\r with { type: 'json' };\n") == {1}
-    assert classify.js_imports("import {\n  'a-b'\n  as ab } from 'x';\n") == set()
-    assert classify.js_imports("#!/usr/bin/env node\r/*\nimport a from 'a'\n*/ run()\n") == set()
-    assert classify.js_imports("import a from 'a';\nimport b from 'b'\n\ufeffwith { type: 'json' };\n") == {1}
-    assert classify.js_imports("import a from 'x/*'; run('x '); '*/'\nimport c from 'c'\n") == set()
+    assert languages.js_imports("import a from 'a';\nconst url = import.meta.url;\nimport b from 'b';\n") == {1}
+    assert languages.js_imports("import('a');\nimport b from 'b';\n") == set()
+    assert languages.js_imports("import a from 'a'; run();\nimport b from 'b';\n") == set()
+    assert languages.js_imports("import a from 'a\nimport b from 'b';\n") == set()
+    assert languages.js_imports("import\n  .meta.glob('./x');\n") == set()
+    assert languages.js_imports("import$x\nimport a from 'a';\n") == set()
+    assert languages.js_imports("import a from 'a' // x\rrun()\nimport b from 'b'\n") == set()
+    assert languages.js_imports("import a from 'a';\nimport b from 'b'\n// x\r with { type: 'json' };\n") == {1}
+    assert languages.js_imports("import {\n  'a-b'\n  as ab } from 'x';\n") == set()
+    assert languages.js_imports("#!/usr/bin/env node\r/*\nimport a from 'a'\n*/ run()\n") == set()
+    assert languages.js_imports("import a from 'a';\nimport b from 'b'\n\ufeffwith { type: 'json' };\n") == {1}
+    assert languages.js_imports("import a from 'x/*'; run('x '); '*/'\nimport c from 'c'\n") == set()
 
 
 def test_js_imports_leaves_out_an_import_without_a_closing_line() -> None:
-    assert classify.js_imports("import a from 'a';\nimport {\n  b,\n} from './b.json' with { type: 'json' };\n") == {1}
-    assert classify.js_imports("import a from 'a';\nimport {\n  b,\n} from './b.json'\n  with { type: 'json' };\n") == {
-        1
-    }
-    assert classify.js_imports("import a from 'a';\nimport b from 'b'\n;\n") == {1}
+    assert languages.js_imports("import a from 'a';\nimport {\n  b,\n} from './b.json' with { type: 'json' };\n") == {1}
+    assert languages.js_imports(
+        "import a from 'a';\nimport {\n  b,\n} from './b.json'\n  with { type: 'json' };\n"
+    ) == {1}
+    assert languages.js_imports("import a from 'a';\nimport b from 'b'\n;\n") == {1}
 
 
 def test_js_imports_keeps_an_import_that_a_semicolon_closes() -> None:
     source = "import test from 'node:test';\nimport assert from 'node:assert';\n\nassert.equal(1, 1);\n;[1].map(f)\n"
-    assert classify.js_imports(source) == {1, 2}
+    assert languages.js_imports(source) == {1, 2}
 
 
 def test_js_imports_counts_the_comments_inside_an_import() -> None:
-    assert classify.js_imports("import {\n  // a note\n  a,\n} from 'x';\nrun()\n") == {1, 2, 3, 4}
+    assert languages.js_imports("import {\n  // a note\n  a,\n} from 'x';\nrun()\n") == {1, 2, 3, 4}
 
 
 def test_js_imports_keeps_comment_markers_inside_a_module_path() -> None:
-    assert classify.js_imports("import a from 'https://x/a.js'; // a\nimport b from './*.css'\nrun()\n") == {1, 2}
+    assert languages.js_imports("import a from 'https://x/a.js'; // a\nimport b from './*.css'\nrun()\n") == {1, 2}
 
 
 def test_js_imports_counts_lines_like_git() -> None:
     source = "﻿import a from 'a';\r\n\f\r\nimport b from 'b';\r\nrun();\r\n"
-    assert classify.js_imports(source) == {1, 3}
+    assert languages.js_imports(source) == {1, 3}
 
 
 def test_classify_folds_a_changed_tsx_import(tmp_path: Path) -> None:
