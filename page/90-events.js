@@ -91,10 +91,9 @@ function openSearch() {
   if (box && (text || state.fileSearch)) { if (text) box.value = text; state.fileSearch = false; box.dispatchEvent(new Event('input', { bubbles: true })); }
   focusBox('#side .search');
 }
-// Shift+Cmd+F switches the search between the rows and the file paths, and keeps the query.
-function switchSearch() {
-  state.fileSearch = !state.fileSearch; state.hit = null;
-  render();
+// Shift+Cmd+F searches the file paths, and keeps the query.
+function openFileSearch() {
+  if (!state.fileSearch) { state.fileSearch = true; state.hit = null; render(); }
   focusBox('#side .search');
 }
 // Ending the search also takes it back to the rows. The files it hid come back around the active file, which stays put.
@@ -143,7 +142,7 @@ function stepFile(dir) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? switchSearch() : openSearch(); return; }
+  if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? openFileSearch() : openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.key === 'Escape' && EDITOR.menu !== null) { EDITOR.menu = null; render(); return; }
   if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
