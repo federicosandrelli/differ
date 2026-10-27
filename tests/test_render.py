@@ -105,3 +105,10 @@ def styled_sources() -> list[Path]:
         *render.SHELL_DIR.glob("*.html"),
         *render.SHELL_DIR.glob("*.js"),
     ]
+
+
+def test_status_pill_recolours_its_icon() -> None:
+    """The icon rule of each status and the pill's rule for its icon have the same specificity, so the pill's rule
+    must come later in the head to win, or the icon takes the pill's own colour and vanishes into it."""
+    css = render.theme_head()
+    assert css.index(".pr-icon.st-open {") < css.index(".status .pr-icon {")
