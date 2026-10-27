@@ -326,7 +326,7 @@ editors open, stay too.
 Keys in the page: arrow keys in the tree, Option+Up and Option+Down for the
 previous and next shown file, Cmd+F search (it starts from the selected text)
 and Enter for the next hit, Shift+Cmd+F to search the file paths instead (the
-tree then lists only the files found, and Enter goes to the next one) and again
+tree then lists only the files found, and Enter goes to the next one) and Cmd+F
 to go back, `o` back to the top, Cmd+, the settings. Escape leaves the focused
 element and ends the search; in a comment box it only leaves the box.
 

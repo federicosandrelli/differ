@@ -694,7 +694,7 @@ def test_a_click_on_the_header_leaves_the_section_open_and_the_chevron_closes_it
     expect(section).to_have_class(re.compile(r"\bclosed\b"))
 
 
-def test_shift_cmd_f_switches_the_search_between_the_rows_and_the_file_paths(page: Page, server_url: str) -> None:
+def test_shift_cmd_f_searches_the_file_paths_and_cmd_f_goes_back_to_the_rows(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     meta = page.locator("#searchmeta")
     page.keyboard.press("Meta+Shift+f")
@@ -702,8 +702,6 @@ def test_shift_cmd_f_switches_the_search_between_the_rows_and_the_file_paths(pag
     page.keyboard.type("app")
     expect(meta).to_have_text("1 file")
     expect(page.locator("#main section[data-file]")).to_have_attribute("data-file", "src/app.py")
-    page.keyboard.press("Meta+Shift+f")
-    expect(meta).to_have_text("0 files · 0 lines")
     page.keyboard.press("Meta+Shift+f")
     expect(meta).to_have_text("1 file")
     page.keyboard.press("Meta+f")
