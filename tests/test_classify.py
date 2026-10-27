@@ -302,8 +302,19 @@ def test_enclosing_is_the_innermost_symbol_that_starts_above_the_line() -> None:
     )
 """
     _, symbols = languages.python_structure(source)
-    enclosing = lambda line: (s := classify.enclosing(symbols, line)) and s["name"]  # noqa: E731
-    assert [enclosing(line) for line in range(1, 9)] == [None, "f", *["Poller"] * 5, None]
+    found = [classify.enclosing(symbols, line) for line in range(1, 9)]
+    assert [s and s["name"] for s in found] == [None, "f", *["Poller"] * 5, None]
+
+
+def test_enclosing_takes_the_class_for_a_line_of_a_decorated_function_above_its_body() -> None:
+    source = """class C:
+    @property
+    @cached
+    def a(self):
+        return 1
+"""
+    _, symbols = languages.python_structure(source)
+    assert [(s := classify.enclosing(symbols, line)) and s["name"] for line in (3, 4, 5)] == ["C", "C", "a"]
 
 
 def test_enclosing_takes_a_decorator_call_over_the_function_it_decorates() -> None:

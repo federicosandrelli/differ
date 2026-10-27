@@ -24,7 +24,7 @@ function renderRow(f, r, out, index) {
 // A row with a chip in the code column, indented like the first folded line.
 function inlineFoldRow(b) {
   const title = `${b.open ? 'Fold' : 'Show'} ${plural(b.mid.length, 'unchanged line')}`;
-  const indent = b.mid[0].text.match(/^\s*/)[0];
+  const indent = (b.mid.find(r => r.text.trim()) || b.mid[0]).text.match(/^\s*/)[0];
   return `<tr class="inline-fold-row"><td class="n"></td><td class="n"></td><td class="m"></td><td class="c">${esc(indent)}<span class="inline-fold chip action${b.open ? ' open' : ''}" data-fold="${esc(b.fold)}" title="${title}">⋯</span></td></tr>`;
 }
 
@@ -91,7 +91,7 @@ function lineColumns(text) {
 // The rows of a file's diff table, one HTML string each so the table can be shown in pieces, the index of
 // each row's key in them, and the columns of the longest drawn line.
 function codeRows(f) {
-  const symStarts = new Map(f.symbols.filter(s => s.kind !== 'call').map(s => [s.start, s]));
+  const symStarts = new Map(f.symbols.map(s => [s.start, s]));
   const html = [], index = new Map();
   let cols = 0;
   for (const b of fileBlocks(f)) {

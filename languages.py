@@ -10,9 +10,9 @@ from typing import Literal, NamedTuple, TypedDict
 
 
 class Symbol(TypedDict):
-    """A class, a function, or a call with arguments below its opening parenthesis, in a Python file. It starts on
-    `start` (a class or a function at its first decorator, a call at its opening parenthesis), its body on `body`,
-    and it ends on `end`."""
+    """A class, a function, or a call with arguments below the expression it calls, in a Python file. It starts on
+    `start` (a class or a function at its first decorator, a call on the last line of the expression it calls), its
+    body on `body`, and it ends on `end`."""
 
     name: str
     kind: Literal["class", "def", "call"]
@@ -59,7 +59,7 @@ def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
             )
         elif isinstance(node, ast.Call) and last_line(node) > last_line(node.func):
             start = last_line(node.func)
-            callee = ast.unparse(node.func).rsplit(".", 1)[-1]
+            callee = getattr(node.func, "attr", None) or getattr(node.func, "id", "")
             symbols.append(Symbol(name=callee, kind="call", start=start, body=start + 1, end=last_line(node)))
     symbols.sort(key=lambda s: (s["start"], -s["end"]))
     return imports, symbols

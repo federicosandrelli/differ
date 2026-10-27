@@ -443,8 +443,9 @@ def decoded(content: bytes | None) -> str:
 
 
 def enclosing(symbols: list[Symbol], line: int) -> Symbol | None:
-    """Return the innermost symbol that starts above the line and ends on it or below it, None when no symbol does."""
-    around = [s for s in symbols if s["start"] < line <= s["end"]]
+    """Return the innermost symbol with the line in its body, from its `body` line to its `end` line, or None when
+    the line is in no symbol's body. The innermost symbol starts last, and of those it ends first."""
+    around = [s for s in symbols if s["start"] < line and s["body"] <= line <= s["end"]]
     return max(around, key=lambda s: (s["start"], -s["end"]), default=None)
 
 
@@ -531,7 +532,7 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
             }
             for run in fd.runs
         ],
-        "symbols": f.symbols,
+        "symbols": [s for s in f.symbols if s["kind"] != "call"],
         "import_lines": sorted(f.import_lines),
         "old_import_lines": sorted(f.old_import_lines),
         "stats": {
