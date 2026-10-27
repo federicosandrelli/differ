@@ -217,7 +217,12 @@
   document.getElementById('gear').addEventListener('click', openSettings);
   // A click on the dialog itself, outside its box, is a click on the backdrop.
   settings.addEventListener('click', (e) => { if (e.target === settings || e.target.closest('.close')) settings.close(); });
-  settings.addEventListener('close', () => { const frame = active.frame; if (frame && frame.contentWindow) frame.contentWindow.focus(); });
+  // The page in front hears that it shows again, so the start page asks for its sections, which the followed
+  // repositories may have changed.
+  settings.addEventListener('close', () => {
+    const frame = active.frame;
+    if (frame && frame.contentWindow) { frame.contentWindow.postMessage({ type: 'shown' }, location.origin); frame.contentWindow.focus(); }
+  });
 
   // The bar that offers a newer version in the desktop app. Update and Relaunch quits the app, and a page's
   // unsent text would go with it, so the button waits while a tab holds a draft.

@@ -1202,6 +1202,52 @@ def test_a_click_dismisses_the_tooltip_even_when_the_click_redraws_the_element(p
     expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
 
 
+def test_the_start_page_lists_the_viewers_pull_requests_and_keeps_a_closed_section_closed(
+    page: Page, server_url: str, gh_state: Path, cache_dir: Path
+) -> None:
+    mine = {
+        "number": 1,
+        "title": TITLE,
+        "url": "https://github.com/acme/widgets/pull/1",
+        "isDraft": False,
+        "state": "OPEN",
+        "updatedAt": "2026-10-20T10:00:00Z",
+        "mergedAt": None,
+        "mergeable": "MERGEABLE",
+        "reviewDecision": None,
+        "repository": {"nameWithOwner": "acme/widgets"},
+        "author": {"__typename": "User", "login": "tester"},
+        "commits": {
+            "nodes": [{"commit": {"committedDate": "2026-10-20T10:00:00Z", "statusCheckRollup": {"state": "FAILURE"}}}]
+        },
+        "reviewRequests": {"nodes": []},
+        "reviews": {"nodes": []},
+        "comments": {"nodes": []},
+        "reviewThreads": {"nodes": []},
+    }
+    (gh_state / "search.json").write_text(
+        json.dumps({"is:pr is:open archived:false author:@me sort:updated-desc": [mine]})
+    )
+    # The board asks GitHub at most every 30 seconds, so an answer saved by an earlier test goes first.
+    (cache_dir / "board.json").unlink(missing_ok=True)
+    try:
+        page.goto(server_url + "/home")
+        section = page.locator('#board .sub[data-key="action"]')
+        expect(section.locator("h3")).to_contain_text("Need your action")
+        expect(section.locator(".item .why")).to_have_text("CI failed")
+        section.locator(".chev").click()
+        expect(section.locator(".list")).to_be_hidden()
+        # The board draws again from the server after a reload, and the section stays closed.
+        page.reload()
+        expect(section.locator(".chev")).to_have_attribute("aria-expanded", "false")
+        expect(section.locator(".list")).to_be_hidden()
+        section.locator(".chev").click()
+        expect(section.locator(".list")).to_be_visible()
+    finally:
+        (gh_state / "search.json").unlink()
+        (cache_dir / "board.json").unlink(missing_ok=True)
+
+
 def test_focusing_the_start_page_search_selects_its_text(page: Page, server_url: str) -> None:
     page.goto(server_url + "/home")
     field = page.locator("input[name=pr]")

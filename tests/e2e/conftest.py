@@ -158,12 +158,18 @@ def free_port() -> int:
 
 
 @pytest.fixture(scope="session")
-def server_url(gh_state: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+def cache_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The server's cache folder."""
+    return tmp_path_factory.mktemp("cache")
+
+
+@pytest.fixture(scope="session")
+def server_url(gh_state: Path, cache_dir: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     port = free_port()
     env = {
         **os.environ,
         "PATH": f"{E2E / 'fakegh'}{os.pathsep}{os.environ['PATH']}",
-        "DIFFER_CACHE": str(tmp_path_factory.mktemp("cache")),
+        "DIFFER_CACHE": str(cache_dir),
         "FAKE_GH_STATE": str(gh_state),
     }
     log = tmp_path_factory.mktemp("server") / "server.log"

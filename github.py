@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -163,10 +164,12 @@ class Standing:
     author: str
 
 
-def pr_standings(refs: list[PullRef]) -> tuple[str, dict[PullRef, Standing]]:
-    """The viewer's login and the standing of each pull request on GitHub now, from one query. A pull request
-    GitHub can't return is missing; when gh fails, every one is missing and the login is empty."""
-    params, fields, variables = [], ["viewer { login }"], {}
+def pr_standings(refs: list[PullRef]) -> dict[PullRef, Standing]:
+    """The standing of each pull request on GitHub now, from one query. A pull request GitHub can't return is
+    missing; when gh fails, every one is missing. No pull requests asks GitHub nothing."""
+    if not refs:
+        return {}
+    params, fields, variables = [], [], {}
     for i, ref in enumerate(refs):
         params.append(f"$o{i}: String!, $r{i}: String!, $n{i}: Int!")
         fields.append(
@@ -174,20 +177,18 @@ def pr_standings(refs: list[PullRef]) -> tuple[str, dict[PullRef, Standing]]:
             f"{{ pullRequest(number: $n{i}) {{ state isDraft author {{ login }} }} }}"
         )
         variables |= {f"o{i}": ref.owner, f"r{i}": ref.repo, f"n{i}": ref.number}
-    signature = f"({', '.join(params)})" if params else ""
     try:
         # gh exits with 1 when GitHub can't resolve one repository, but still prints the data of the others.
-        _, _, out = ask(f"query{signature} {{ {' '.join(fields)} }}", variables, timeout=15)
+        _, _, out = ask(f"query({', '.join(params)}) {{ {' '.join(fields)} }}", variables, timeout=15)
     except commands.CommandError:
-        return "", {}
+        return {}
     data = out.get("data") or {}
-    viewer = (data.get("viewer") or {}).get("login", "")
     standings = {}
     for i, ref in enumerate(refs):
         pr = (data.get(f"p{i}") or {}).get("pullRequest")
         if pr and (status := status_of(pr["state"], pr["isDraft"])):
             standings[ref] = Standing(status, (pr.get("author") or {}).get("login", ""))
-    return viewer, standings
+    return standings
 
 
 RECENT_PRS = (
@@ -209,6 +210,42 @@ def repos_of_recent_prs(since: date) -> list[str] | None:
         return None
     names = (((n or {}).get("repository") or {}).get("nameWithOwner") for n in search.get("nodes") or [])
     return [name for name in names if name]
+
+
+# The fields of a pull request that search_prs asks for.
+PR_FIELDS = """
+number title url isDraft state updatedAt mergedAt mergeable reviewDecision
+repository { nameWithOwner }
+author { __typename login }
+commits(last: 1) { nodes { commit { committedDate author { user { login } } statusCheckRollup { state } } } }
+reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
+reviews(last: 30) { nodes { author { __typename login } state submittedAt body } }
+comments(last: 30) { nodes { author { __typename login } createdAt } }
+reviewThreads(last: 20) { nodes { isResolved comments(last: 5) { nodes { author { __typename login } createdAt } } } }
+"""
+
+
+def search_prs(queries: list[str], timeout: float = 30) -> tuple[str, list[list[dict]]] | None:
+    """The viewer's login and, for each search query, the first 50 pull requests it finds, with PR_FIELDS. The
+    searches run side by side, one request each, since GitHub gives up on one request that holds them all. None
+    when gh fails or GitHub answers without the viewer or a search."""
+    query = (
+        "query($q: String!) { viewer { login } "
+        f"search(query: $q, type: ISSUE, first: 50) {{ nodes {{ ... on PullRequest {{ {PR_FIELDS} }} }} }} }}"
+    )
+
+    def one(q: str) -> dict:
+        try:
+            return ask(query, {"q": q}, timeout)[2].get("data") or {}
+        except commands.CommandError:
+            return {}
+
+    with ThreadPoolExecutor(max_workers=max(1, len(queries))) as pool:
+        answers = list(pool.map(one, queries))
+    viewer = next(((a.get("viewer") or {}).get("login") for a in answers if a.get("viewer")), None)
+    if not viewer or any(a.get("search") is None for a in answers):
+        return None
+    return viewer, [[n for n in a["search"].get("nodes") or [] if n and n.get("number")] for a in answers]
 
 
 def ask(query: str, variables: dict[str, object], timeout: float) -> tuple[int, str, dict]:

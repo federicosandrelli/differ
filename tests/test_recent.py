@@ -1,7 +1,5 @@
 import json
-import re
 import subprocess
-import time
 from pathlib import Path
 from typing import Any
 
@@ -19,29 +17,8 @@ def recent_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
-def set_viewer(login: str) -> None:
-    data = recent.load()
-    data["viewer"] = login
-    recent.save(data)
-
-
-def numbers_in(section: str) -> list[int]:
-    """The pull request numbers the section of items_html lists, in order."""
-    m = re.search(rf'<section class="prs {section}">.*?</section>', recent.items_html(), re.S)
-    assert m
-    return [int(n) for n in re.findall(r'href="/o/r/pull/(\d+)"', m[0])]
-
-
-def test_ago() -> None:
-    now = time.time()
-    assert recent.ago(now) == "just now"
-    assert recent.ago(now - 90) == "1m ago"
-    assert recent.ago(now - 3700) == "1h ago"
-    assert recent.ago(now - 2 * 86400) == "2d ago"
-
-
 def test_note_opened_moves_the_page_to_the_top_and_saves_it(recent_path: Path) -> None:
-    assert recent.load() == {"viewer": "", "pages": []}
+    assert recent.load() == {"pages": []}
     for n in range(3):
         recent.note_opened(PullRef("o", "r", n), f"Title & {n}", "open", "ann")
     recent.note_opened(PullRef("o", "r", 1), None, "", "")
@@ -51,7 +28,6 @@ def test_note_opened_moves_the_page_to_the_top_and_saves_it(recent_path: Path) -
     assert pages[0]["author"] == "ann"
     assert pages[1]["title"] == "Title & 2"
     saved = json.loads(recent_path.read_text())
-    assert saved["viewer"] == ""
     assert saved["pages"][1] == {
         "owner": "o",
         "repo": "r",
@@ -63,57 +39,13 @@ def test_note_opened_moves_the_page_to_the_top_and_saves_it(recent_path: Path) -
     }
 
 
-def test_each_section_keeps_its_newest_twenty() -> None:
-    set_viewer("me")
-    for n in range(22):
+def test_the_list_keeps_its_newest_thirty() -> None:
+    for n in range(32):
         recent.note_opened(PullRef("o", "r", n), None, "open", "me")
-    for n in range(100, 122):
-        recent.note_opened(PullRef("o", "r", n), None, "open", "ann")
-    for n in range(200, 222):
-        recent.note_opened(PullRef("o", "r", n), None, "merged", "me" if n % 2 else "ann")
-    assert numbers_in("mine") == list(range(21, 1, -1))
-    assert numbers_in("other") == list(range(121, 101, -1))
-    assert numbers_in("merged") == list(range(221, 201, -1))
-    assert len(recent.load()["pages"]) == 60
+    assert [p["number"] for p in recent.load()["pages"]] == list(range(31, 1, -1))
 
 
-def test_a_merged_pull_request_leaves_its_section_for_the_merged_one() -> None:
-    set_viewer("me")
-    for n in range(21):
-        recent.note_opened(PullRef("o", "r", n), None, "open", "me")
-    recent.note_opened(PullRef("o", "r", 50), None, "merged", "me")
-    assert numbers_in("mine") == list(range(20, 0, -1))
-    assert numbers_in("merged") == [50]
-    data = recent.load()
-    data["pages"][1]["status"] = "merged"
-    recent.save(data)
-    assert numbers_in("mine") == list(range(19, 0, -1))
-    assert numbers_in("merged") == [50, 20]
-
-
-def test_the_sections_follow_the_viewer_saved_last() -> None:
-    recent.note_opened(PullRef("o", "r", 1), None, "open", "me")
-    recent.note_opened(PullRef("o", "r", 2), None, "open", "ann")
-    recent.note_opened(PullRef("o", "r", 3), None, "closed", "")
-    assert numbers_in("mine") == []
-    assert numbers_in("other") == [3, 2, 1]
-    set_viewer("me")
-    assert numbers_in("mine") == [1]
-    assert numbers_in("other") == [3, 2]
-    assert numbers_in("merged") == []
-
-
-def test_recent_items_escapes_titles_and_names_each_section() -> None:
-    html = recent.items_html()
-    assert html.count('<div class="empty">None opened yet.</div>') == 3
-    assert re.findall(r"<h2>(.*?)</h2>", html) == ["mine", "other", "merged"]
-    recent.note_opened(PullRef("o", "r", 1), "a <b>", "", "")
-    items = recent.items_html()
-    assert 'href="/o/r/pull/1"' in items
-    assert re.search(r'<span class="t">a &lt;b&gt;</span>', items)
-
-
-def test_refresh_saves_the_viewer_statuses_and_authors_github_reports(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_refresh_saves_the_statuses_and_authors_github_reports(monkeypatch: pytest.MonkeyPatch) -> None:
     for n in range(4):
         recent.note_opened(PullRef("o", "r", n), None, "open", "")
     answer = {
@@ -136,20 +68,15 @@ def test_refresh_saves_the_viewer_statuses_and_authors_github_reports(monkeypatc
     recent.refresh()
     assert sent["n0"] == 3 and sent["o0"] == "o" and sent["r0"] == "r"
     data = recent.load()
-    assert data["viewer"] == "me"
     assert {p["number"]: (p["status"], p["author"]) for p in data["pages"]} == {
         3: ("open", ""),
         2: ("open", ""),
         1: ("draft", "me"),
         0: ("merged", "ann"),
     }
-    assert numbers_in("mine") == [1]
-    assert numbers_in("other") == [3, 2]
-    assert numbers_in("merged") == [0]
 
 
 def test_refresh_keeps_what_was_saved_when_gh_fails(recent_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    set_viewer("me")
     recent.note_opened(PullRef("o", "r", 1), None, "merged", "ann")
     before = recent_path.read_text()
     monkeypatch.setattr(
@@ -188,13 +115,21 @@ def test_note_opened_keeps_the_old_list_when_a_write_dies(recent_path: Path, mon
     assert [p["number"] for p in recent.load()["pages"]] == [1]
 
 
-def test_a_list_saved_before_the_viewer_and_authors_loads_without_them(recent_path: Path) -> None:
+def test_a_list_saved_with_the_old_sections_loads_its_newest_thirty(recent_path: Path) -> None:
+    pages = [{"owner": "o", "repo": "r", "number": n, "title": "T", "opened": 0} for n in range(60)]
+    recent_path.write_text(json.dumps({"viewer": "me", "pages": pages}))
+    assert [p["number"] for p in recent.load()["pages"]] == list(range(30))
+
+
+def test_a_list_saved_before_statuses_and_authors_loads_without_them(recent_path: Path) -> None:
     recent_path.write_text('[{"owner": "o", "repo": "r", "number": 1, "title": "T", "opened": 0}]')
     assert recent.load() == {
-        "viewer": "",
         "pages": [{"owner": "o", "repo": "r", "number": 1, "title": "T", "opened": 0, "status": "", "author": ""}],
     }
-    assert numbers_in("other") == [1]
+    recent_path.write_text(
+        '{"viewer": "me", "pages": [{"owner": "o", "repo": "r", "number": 2, "title": "T", "opened": 0}]}'
+    )
+    assert [p["number"] for p in recent.load()["pages"]] == [2]
 
 
 def test_opening_a_page_again_keeps_the_status_the_list_saved_and_fills_in_the_author() -> None:
