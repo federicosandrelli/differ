@@ -227,8 +227,9 @@
   // checks on request. Update and Relaunch quits the app, and a page's unsent text would go with it, so the button
   // waits while a tab holds a draft.
   const invoke = APP && window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
-  const updateBar = document.getElementById('update'), versionSection = settings.querySelector('.version');
-  let update = null, checking = false, updating = false, updateError = '';
+  const updateBar = document.getElementById('update'), updateSection = settings.querySelector('.update-section');
+  // Only the answer to the newest check counts, so an hourly check that ends late never undoes a forced one.
+  let update = null, checks = 0, answered = 0, updating = false, updateError = '';
   const seenVersion = () => { try { return localStorage.getItem('dr:updateSeen'); } catch { return null; } };
   // What the reader can do about the newer version: a note on it and the button that installs it.
   function offer() {
@@ -239,7 +240,7 @@
     return { note: 'Homebrew will install and relaunch differ.', label: 'Update and Relaunch' };
   }
   function drawUpdate() {
-    drawVersion();
+    drawUpdateSection();
     updateBar.hidden = !(update && update.newer && seenVersion() !== update.latest);
     if (updateBar.hidden) return;
     const o = offer();
@@ -251,29 +252,32 @@
     act.disabled = !!o.disabled;
     updateBar.querySelector('.later').disabled = updating;
   }
-  function drawVersion() {
-    versionSection.hidden = !invoke;
+  function drawUpdateSection() {
+    updateSection.hidden = !invoke;
     if (!invoke) return;
-    const current = versionSection.querySelector('.current'), note = versionSection.querySelector('.note'), act = versionSection.querySelector('.act');
+    const current = updateSection.querySelector('.current'), sub = updateSection.querySelector('.sub'), act = updateSection.querySelector('.act');
     current.textContent = update ? `differ ${update.current}${update.managed ? ' from Homebrew' : ''}` : 'differ';
     let text = 'This is the latest version.', label = 'Check for Updates', disabled = false, error = false;
     if (update && update.newer) {
       const o = offer();
       text = `${update.latest} is available. ${o.note}`;
       label = o.label; disabled = !!o.disabled; error = !!o.error;
-    } else if (checking || !update) { text = 'Checking for updates…'; label = 'Checking…'; disabled = true; }
-    else if (update.failed) { text = 'Could not reach GitHub to check for updates.'; error = true; }
-    note.textContent = text;
-    note.classList.toggle('err', error);
+    } else if (answered < checks) { text = 'Checking for updates…'; label = 'Checking…'; disabled = true; }
+    else if (!update || update.failed) { text = 'Could not check for updates.'; error = true; }
+    sub.textContent = text;
+    sub.classList.toggle('err', error);
     act.textContent = label;
     act.disabled = disabled;
     act.classList.toggle('primary', !!(update && update.newer));
   }
   function checkUpdate(force = false) {
     if (!invoke) return;
-    if (force) { checking = true; drawUpdate(); }
-    invoke('update_check', { force }).then((status) => { update = status; }).catch(() => {})
-      .finally(() => { if (force) checking = false; drawUpdate(); });
+    const request = ++checks;
+    drawUpdate();
+    invoke('update_check', { force })
+      .then((status) => { if (request > answered) { answered = request; update = status; } })
+      .catch(() => { answered = Math.max(answered, request); })
+      .finally(drawUpdate);
   }
   function runUpdate() {
     if (!update.managed) { location.href = update.url; return; }
@@ -289,7 +293,7 @@
     }
     if (e.target.closest('.act')) runUpdate();
   });
-  versionSection.querySelector('.act').addEventListener('click', () => { if (update && update.newer) runUpdate(); else checkUpdate(true); });
+  updateSection.querySelector('.act').addEventListener('click', () => { if (update && update.newer) runUpdate(); else checkUpdate(true); });
   checkUpdate();
   setInterval(() => checkUpdate(), 60 * 60 * 1000);
 
