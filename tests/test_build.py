@@ -13,31 +13,50 @@ from github import PullRef
 REF = PullRef("owner", "repo", 7)
 
 
-def test_page_path_uses_the_cache_and_a_short_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_page_path_uses_the_cache_a_short_head_and_the_code_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(build, "CACHE", tmp_path)
-    assert build.page_path(REF, "0123456789abcdef") == tmp_path / "pages/owner/repo/7/0123456789ab.html"
+    monkeypatch.setattr(build, "code_hash", lambda: "c0de")
+    assert build.page_path(REF, "0123456789abcdef") == tmp_path / "pages/owner/repo/7/0123456789ab-c0de.html"
 
 
 def test_page_current_and_latest_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(build, "CACHE", tmp_path)
     assert build.latest_page(REF) is None
 
+    monkeypatch.setattr(build, "code_hash", lambda: "old")
     stale = build.page_path(REF, "a" * 12)
     stale.parent.mkdir(parents=True)
     stale.write_text("old")
-    os.utime(stale, (0, 0))
+    unhashed = build.pages_dir(REF) / f"{'c' * 12}.html"
+    unhashed.write_text("from before the code hash")
+    monkeypatch.setattr(build, "code_hash", lambda: "new")
     assert build.page_current(stale) is False
+    assert build.page_current(unhashed) is False
     assert build.latest_page(REF) is None
 
     fresh = build.page_path(REF, "b" * 12)
     fresh.write_text("new")
-    future = time.time() + 60
-    os.utime(fresh, (future, future))
+    os.utime(fresh, (0, 0))
     assert build.page_current(fresh) is True
     assert build.latest_page(REF) == fresh
 
     build.forget_pages(REF)
     assert not stale.parent.exists()
+
+
+def test_the_code_hash_follows_the_contents_of_the_sources_not_their_times(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "render.py"
+    source.write_text("one")
+    monkeypatch.setattr(build, "sources", lambda: [source])
+    first = build.code_hash()
+    os.utime(source, (0, 0))
+    assert build.code_hash() == first
+    source.write_text("two")
+    assert build.code_hash() != first
 
 
 def test_a_missing_git_is_named(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -170,8 +189,6 @@ def pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     page = build.page_path(REF, "a" * 40)
     page.parent.mkdir(parents=True)
     page.write_text("page")
-    future = time.time() + 60
-    os.utime(page, (future, future))
     return state
 
 

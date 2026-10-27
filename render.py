@@ -327,7 +327,7 @@ def page_scripts() -> list[Path]:
 
 
 def sources() -> list[Path]:
-    """Every file whose content ends up in a page, so a page older than any of them is rebuilt."""
+    """Every file whose content ends up in a page."""
     return [
         ROOT / "render.py",
         PAGE_DIR / "page.css",

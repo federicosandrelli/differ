@@ -12,6 +12,7 @@ new head commit in the background.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import sys
@@ -46,11 +47,11 @@ def pages_dir(ref: PullRef) -> Path:
 
 
 def page_path(ref: PullRef, head: str) -> Path:
-    return pages_dir(ref) / f"{head[:12]}.html"
+    return pages_dir(ref) / f"{head[:12]}-{code_hash()}.html"
 
 
 def sources() -> list[Path]:
-    """Every file that shapes a page, so a page older than any of them is rebuilt."""
+    """Every file that shapes a page."""
     return [
         ROOT / "build.py",
         ROOT / "classify.py",
@@ -61,9 +62,17 @@ def sources() -> list[Path]:
     ]
 
 
+def code_hash() -> str:
+    """A short hash of the contents of the files that shape a page."""
+    digest = hashlib.sha256()
+    for src in sources():
+        digest.update(src.read_bytes())
+    return digest.hexdigest()[:12]
+
+
 def page_current(page: Path) -> bool:
-    """Whether the page exists and was built after the last change to the code that builds pages."""
-    return page.exists() and page.stat().st_mtime >= max(src.stat().st_mtime for src in sources())
+    """Whether the page exists and its name carries the hash of the code that builds pages now (`code_hash`)."""
+    return page.exists() and page.stem.endswith(f"-{code_hash()}")
 
 
 def latest_page(ref: PullRef) -> Path | None:

@@ -244,7 +244,9 @@ request that changes `src-tauri/`, `web/`, `package.json`,
    the diff to `classify.py`, then the result and the PR metadata to
    `render.py`.
 5. Writes the page to
-   `~/.cache/differ/pages/<owner>/<repo>/<number>/<head>.html`.
+   `~/.cache/differ/pages/<owner>/<repo>/<number>/<head>-<code hash>.html`.
+   The code hash is a hash of the files that shape a page, so a change to any
+   of them, such as an app update, rebuilds the page.
 
 `DIFFER_CACHE` moves the cache. The cache prunes itself: after a build,
 `build.py` keeps only the pull request's two newest pages, so the page for the
