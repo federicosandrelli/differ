@@ -1,15 +1,18 @@
-"""The body of the settings modal: how the app reads a pull request and what it keeps on this computer, as an HTML
-fragment the shell shows. The static text is shell/settings.html; this module fills in what the code decides."""
+"""The body of the settings modal: the followed repositories, how the app reads a pull request and what it keeps on
+this computer, as an HTML fragment the shell shows. The static text is shell/settings.html; this module fills in
+what the code decides and what the reader saved."""
 
 from __future__ import annotations
 
 import html
+import json
 from pathlib import Path
 
 import build
 import classify
 import editors
 import file_types
+import followed
 import languages
 import render
 
@@ -112,6 +115,7 @@ def commit_line() -> str:
 def settings_html() -> str:
     return render.fill(
         (render.SHELL_DIR / "settings.html").read_text(),
+        FOLLOWED=html.escape(json.dumps(followed.load())),
         DOCS_RULES=docs_rules(),
         TEST_RULES=test_rules(),
         GENERATED_RULES=generated_rules(),

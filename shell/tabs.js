@@ -138,13 +138,82 @@
   // version are current. The shell adds the app's version, which only it knows.
   const settings = document.getElementById('settings');
   function openSettings() {
-    fetch('/settings').then(r => r.ok ? r.text() : Promise.reject()).then((body) => {
+    // A change made while the body loads is newer than the list the body holds, so the fields keep that change.
+    const before = followed.newest;
+    followed.saving.then(() => fetch('/settings')).then(r => r.ok ? r.text() : Promise.reject()).then((body) => {
       settings.querySelector('.state').innerHTML = body;
+      const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
+      if (followed.newest === before) followed.saved = saved;
+      followed.draw(followed.newest === before ? saved : followed.repos);
       if (update) settings.querySelector('[data-version]').textContent = `${update.current}${update.managed ? ' from Homebrew' : ''} · `;
     }).catch(() => {});
     if (!settings.open) settings.showModal();
     settings.querySelector('.body').scrollTop = 0;
   }
+  // Every change goes into `repos` and then whole to the server, one request after the other. Only the newest
+  // answer draws the fields, since an edit and a ✕ can fire together (the blur, then the click). A refused request
+  // puts `repos` back to the list the server last saved, so the fields never show a list the server does not hold.
+  const followed = {
+    repos: [],
+    saved: [],
+    newest: 0,
+    refused: 0,
+    saving: Promise.resolve(),
+    fields: () => [...settings.querySelectorAll('.repos input')],
+    draw(repos) {
+      this.repos = [...repos];
+      const fields = this.fields();
+      if (fields.length === repos.length) fields.forEach((f, i) => { if (f !== document.activeElement) f.value = repos[i]; });
+      else settings.querySelector('.repos').innerHTML = repos.map(r => `<li><input value="${esc(r)}" aria-label="Followed repository"><button class="ghost" data-remove aria-label="Stop following" title="Stop following">✕</button></li>`).join('');
+    },
+    save(then) {
+      const request = ++this.newest;
+      const error = () => settings.querySelector('[data-error]');
+      this.saving = this.saving.then(() => {
+        const repos = this.repos.map(r => r.trim()).filter(Boolean);
+        return fetch('/api/followed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repos }) })
+          .then(r => r.json().then(d => r.ok ? d : Promise.reject(new Error(d.error || `HTTP ${r.status}`))))
+          .then((d) => {
+            this.saved = d.repos;
+            if (request === this.newest) this.draw(d.repos);
+            if (request > this.refused) error().hidden = true;
+            if (then) then();
+          })
+          .catch((err) => {
+            this.refused = request;
+            this.repos = [...this.saved];
+            if (request === this.newest) this.draw(this.saved);
+            error().textContent = err.message;
+            error().hidden = false;
+          });
+      });
+    },
+  };
+  settings.addEventListener('submit', (e) => {
+    const form = e.target.closest('.add');
+    if (!form) return;
+    e.preventDefault();
+    const field = form.querySelector('input');
+    const text = field.value;
+    if (!text.trim()) return;
+    followed.repos.push(text);
+    // The reader may have typed the next name in the field while this one was on its way.
+    followed.save(() => { if (field.value === text) { field.value = ''; field.focus(); } });
+  });
+  settings.addEventListener('change', (e) => {
+    const field = e.target.closest('.repos input');
+    if (field) { followed.repos[followed.fields().indexOf(field)] = field.value; followed.save(); }
+  });
+  // Enter in a field commits the edit, as leaving the field does.
+  settings.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.closest('.repos input')) e.target.blur(); });
+  settings.addEventListener('click', (e) => {
+    const remove = e.target.closest('[data-remove]');
+    if (!remove) return;
+    const row = remove.closest('li');
+    followed.repos.splice([...row.parentElement.children].indexOf(row), 1);
+    row.remove();
+    followed.save();
+  });
   document.getElementById('gear').addEventListener('click', openSettings);
   // A click on the dialog itself, outside its box, is a click on the backdrop.
   settings.addEventListener('click', (e) => { if (e.target === settings || e.target.closest('.close')) settings.close(); });

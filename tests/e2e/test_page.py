@@ -1007,6 +1007,68 @@ def test_the_shell_opens_the_settings_on_cmd_comma_and_closes_them_on_escape_and
     expect(dialog).to_be_hidden()
 
 
+def test_the_settings_save_the_followed_repositories_as_they_change(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.click("#gear")
+    dialog = page.locator("#settings")
+    fields, add = dialog.locator(".repos input"), dialog.locator(".add input")
+    expect(dialog.locator(".repos")).to_be_attached()
+    for name in ("Acme/Widgets", "https://github.com/acme/tools.git", "acme/widgets"):
+        add.fill(name)
+        add.press("Enter")
+    # Each name once, in lower case, without the .git of a clone URL; the add field is empty and focused again.
+    expect(fields).to_have_count(2)
+    expect(fields.nth(0)).to_have_value("acme/widgets")
+    expect(fields.nth(1)).to_have_value("acme/tools")
+    expect(add).to_have_value("")
+    expect(add).to_be_focused()
+    # A text that names no repository stays in its field with the error under it, and the list is unchanged.
+    add.fill("not a repo")
+    add.press("Enter")
+    expect(dialog.locator("[data-error]")).to_have_text(
+        "Not a repository: 'not a repo'. Use owner/repo or the repository's URL."
+    )
+    expect(add).to_have_value("not a repo")
+    # An edit is saved when the field is left, and the focus stays where it went; an edit and a ✕ fired together
+    # (the blur, then the click) save the edited name without the removed one.
+    fields.nth(0).fill("Acme/Gadgets")
+    fields.nth(0).press("Tab")
+    expect(fields.nth(0)).to_have_value("acme/gadgets")
+    expect(dialog.locator("[data-remove]").nth(0)).to_be_focused()
+    expect(dialog.locator("[data-error]")).to_be_hidden()
+    fields.nth(0).fill("acme/gizmos")
+    dialog.locator("[data-remove]").nth(1).click()
+    expect(fields).to_have_count(1)
+    expect(fields.nth(0)).to_have_value("acme/gizmos")
+    # A refused edit puts the fields back to the saved list, so a ✕ after it saves.
+    add.fill("acme/tools")
+    add.press("Enter")
+    expect(fields).to_have_count(2)
+    fields.nth(0).fill("bad name")
+    fields.nth(0).press("Tab")
+    expect(dialog.locator("[data-error]")).to_have_text(
+        "Not a repository: 'bad name'. Use owner/repo or the repository's URL."
+    )
+    expect(fields.nth(0)).to_have_value("acme/gizmos")
+    dialog.locator("[data-remove]").nth(1).click()
+    expect(fields).to_have_count(1)
+    expect(dialog.locator("[data-error]")).to_be_hidden()
+    # The list comes back from the server on the next open (the body is fetched again, so the test waits for the
+    # new one), and an emptied field removes its repository.
+    page.keyboard.press("Escape")
+    page.click("#gear")
+    expect(dialog.locator(".repos")).to_have_attribute("data-repos", '["acme/gizmos"]')
+    expect(fields).to_have_count(1)
+    expect(fields.nth(0)).to_have_value("acme/gizmos")
+    fields.nth(0).press("ControlOrMeta+a")
+    fields.nth(0).press("Backspace")
+    fields.nth(0).press("Tab")
+    expect(fields).to_have_count(0)
+    page.keyboard.press("Escape")
+    page.click("#gear")
+    expect(dialog.locator(".repos")).to_have_attribute("data-repos", "[]")
+
+
 def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, server_url: str, gh_state: Path) -> None:
     open_pr(page, server_url)
     page.click("#side button[data-review-panel]")
