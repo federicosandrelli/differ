@@ -148,20 +148,9 @@ function importSegments(f, rows) {
 const importsKey = (f, b) => `${f.path}#imports:${b.rows[0].newNo ?? b.rows[0].oldNo}`;
 const importsOpen = (f, b) => state.expanded.has(importsKey(f, b)) || b.rows.some(pinned);
 
-// The first body line of the innermost class, function or call around each change run that adds lines and is not
-// noise, by the line the symbol starts on.
-function enclosingBodies(f) {
-  const bodies = new Map();
-  for (const r of f.runs) {
-    if (isNoise(r) || !r.added.length) continue;
-    const first = r.added[0];
-    const around = f.symbols.filter(s => s.start < first && first <= s.end);
-    if (!around.length) continue;
-    const inner = around.reduce((a, s) => s.start > a.start ? s : a);
-    bodies.set(inner.start, inner.body);
-  }
-  return bodies;
-}
+// The first body line of the class, function or call around each change run that adds lines and is not noise, by
+// the line the symbol starts on.
+const enclosingBodies = (f) => new Map(f.runs.filter(r => r.enclosing && !isNoise(r)).map(r => [r.enclosing.start, r.enclosing.body]));
 
 // Context rows that show headLength rows at the start and tailLength rows at the end and fold the middle, unless
 // the reader opened it or the middle is shorter than minFold. A fold row is as tall as a line, so a fold hides

@@ -10,8 +10,9 @@ from typing import Literal, NamedTuple, TypedDict
 
 
 class Symbol(TypedDict):
-    """A class, a function, or a call statement that spans several lines, in a Python file. It starts on `start`
-    (at its first decorator), its body on `body`, and it ends on `end`."""
+    """A class, a function, or a call with arguments below its opening parenthesis, in a Python file. It starts on
+    `start` (a class or a function at its first decorator, a call at its opening parenthesis), its body on `body`,
+    and it ends on `end`."""
 
     name: str
     kind: Literal["class", "def", "call"]
@@ -29,48 +30,38 @@ def first_line(node: ast.stmt) -> int:
     return decorators[0].lineno if decorators else node.lineno
 
 
-def last_line(node: ast.stmt) -> int:
+def last_line(node: ast.stmt | ast.expr) -> int:
     return node.end_lineno or node.lineno
 
 
 def python_structure(source: str) -> tuple[set[int], list[Symbol]]:
-    """Return (import line numbers, symbols) for a Python source; both empty when it does not parse."""
+    """Return (import line numbers, symbols) for a Python source; both empty when it does not parse. The symbols
+    come in the order they start, an outer one before an inner one that starts on the same line."""
     imports: set[int] = set()
     symbols: list[Symbol] = []
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return imports, symbols
-
-    def visit(node: ast.AST) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.Import | ast.ImportFrom):
-                imports.update(range(child.lineno, last_line(child) + 1))
-            elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                kind = "class" if isinstance(child, ast.ClassDef) else "def"
-                symbols.append(
-                    Symbol(
-                        name=child.name,
-                        kind=kind,
-                        start=first_line(child),
-                        body=first_line(child.body[0]),
-                        end=last_line(child),
-                    )
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            imports.update(range(node.lineno, last_line(node) + 1))
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            kind = "class" if isinstance(node, ast.ClassDef) else "def"
+            symbols.append(
+                Symbol(
+                    name=node.name,
+                    kind=kind,
+                    start=first_line(node),
+                    body=first_line(node.body[0]),
+                    end=last_line(node),
                 )
-                visit(child)
-            elif (
-                isinstance(child, ast.Expr | ast.Assign | ast.AnnAssign | ast.AugAssign)
-                and isinstance(child.value, ast.Call)
-                and last_line(child) != child.lineno
-            ):
-                callee = ast.unparse(child.value.func).rsplit(".", 1)[-1]
-                symbols.append(
-                    Symbol(name=callee, kind="call", start=child.lineno, body=child.lineno + 1, end=last_line(child))
-                )
-            elif isinstance(child, ast.stmt | ast.excepthandler | ast.match_case):
-                visit(child)
-
-    visit(tree)
+            )
+        elif isinstance(node, ast.Call) and last_line(node) > last_line(node.func):
+            start = last_line(node.func)
+            callee = ast.unparse(node.func).rsplit(".", 1)[-1]
+            symbols.append(Symbol(name=callee, kind="call", start=start, body=start + 1, end=last_line(node)))
+    symbols.sort(key=lambda s: (s["start"], -s["end"]))
     return imports, symbols
 
 

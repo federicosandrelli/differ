@@ -442,6 +442,12 @@ def decoded(content: bytes | None) -> str:
     return content.decode("utf-8", errors="replace")
 
 
+def enclosing(symbols: list[Symbol], line: int) -> Symbol | None:
+    """Return the innermost symbol that starts above the line and ends on it or below it, None when no symbol does."""
+    around = [s for s in symbols if s["start"] < line <= s["end"]]
+    return max(around, key=lambda s: (s["start"], -s["end"]), default=None)
+
+
 def binary_sizes(diff: Diff, fd: FileDiff) -> dict[Side, int | None] | None:
     """A binary file's size in bytes on each side, None on a side without the file; None for a text file."""
     if not fd.binary:
@@ -521,6 +527,7 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
                 "pair_rename": run.pair_rename,
                 "noise": run.noise,
                 "moved_to": run.moved_to,
+                "enclosing": enclosing(f.symbols, run.added[0][0]) if run.added else None,
             }
             for run in fd.runs
         ],

@@ -242,12 +242,9 @@ def f():
     ]
 
 
-def test_python_structure_finds_the_multi_line_call_statements_at_any_depth() -> None:
+def test_python_structure_finds_the_multi_line_calls_in_any_expression() -> None:
     source = """settings = Settings(
     debug=True,
-)
-app.run(
-    port=80,
 )
 short = Settings(debug=False)
 NAMES = [
@@ -256,49 +253,69 @@ NAMES = [
 
 
 def f():
-    g(
+    return Poller(
+        handlers=[
+            h,
+        ],
+    )
+
+
+async def g():
+    r = await fetch(
         1,
     )
-
-
-class C:
-    items = field(
-        default_factory=list,
-    )
-
-
-async def h():
-    try:
-        r = await f(
-            1,
-        )
-    except Exception:
-        log(
+    raise Error(
+        wrap(
             2,
-        )
-    async with lock:
-        a = b(
+        ),
+    )
+    q = (
+        query
+        .order_by(
             3,
         )
-    match r:
-        case 1:
-            d(
-                4,
-            )
+    )
+    first = parse(x)[
+        0
+    ]
 """
     _, symbols = languages.python_structure(source)
     assert [(s["name"], s["kind"], s["start"], s["body"], s["end"]) for s in symbols] == [
         ("Settings", "call", 1, 2, 3),
-        ("run", "call", 4, 5, 6),
-        ("f", "def", 13, 14, 16),
-        ("g", "call", 14, 15, 16),
-        ("C", "class", 19, 20, 22),
-        ("field", "call", 20, 21, 22),
-        ("h", "def", 25, 26, 42),
-        ("log", "call", 31, 32, 33),
-        ("b", "call", 35, 36, 37),
-        ("d", "call", 40, 41, 42),
+        ("f", "def", 10, 11, 15),
+        ("Poller", "call", 11, 12, 15),
+        ("g", "def", 18, 19, 35),
+        ("fetch", "call", 19, 20, 21),
+        ("Error", "call", 22, 23, 26),
+        ("wrap", "call", 23, 24, 25),
+        ("order_by", "call", 29, 30, 31),
     ]
+
+
+def test_enclosing_is_the_innermost_symbol_that_starts_above_the_line() -> None:
+    source = """def f():
+    return Poller(
+        handlers=[
+            a,
+            b,
+        ],
+    )
+"""
+    _, symbols = languages.python_structure(source)
+    enclosing = lambda line: (s := classify.enclosing(symbols, line)) and s["name"]  # noqa: E731
+    assert [enclosing(line) for line in range(1, 9)] == [None, "f", *["Poller"] * 5, None]
+
+
+def test_enclosing_takes_a_decorator_call_over_the_function_it_decorates() -> None:
+    source = """@route(
+    "/a",
+)
+def f():
+    pass
+"""
+    _, symbols = languages.python_structure(source)
+    found = classify.enclosing(symbols, 2)
+    assert found is not None and found["name"] == "route"
 
 
 def test_python_structure_starts_the_body_after_the_decorators_and_the_signature() -> None:
