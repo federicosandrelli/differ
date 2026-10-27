@@ -13,8 +13,9 @@ gh 2.86.0 runs, and fails with git's error when one fails.
 does nothing.
 `gh api -H <accept> repos/o/r/contents/<path>?ref=<ref>` prints the file at that ref of the repo named in repo.txt,
 or fails when it has none.
-`gh api graphql --input -` answers a read query from comments.json; a mutation is appended to mutations.log,
-and a review posted with threads adds them to comments.json, so the page sees what it sent.
+`gh api graphql --input -` answers a search with the nodes search.json lists for its query, or none; any other
+read query from comments.json; a mutation is appended to mutations.log, and a review posted with threads adds them
+to comments.json, so the page sees what it sent.
 """
 
 import json
@@ -135,6 +136,11 @@ def thread_node(tid: str, draft: dict) -> dict:
 def graphql() -> None:
     request = json.loads(sys.stdin.read())
     query, variables = request["query"], request.get("variables") or {}
+    if "search(" in query:
+        searches = state_dir() / "search.json"
+        found = json.loads(searches.read_text()) if searches.exists() else {}
+        print(json.dumps({"data": {"viewer": {"login": "tester"}, "search": {"nodes": found.get(variables["q"], [])}}}))
+        return
     comments_file = state_dir() / "comments.json"
     state = json.loads(comments_file.read_text())
     if query.lstrip().startswith("mutation"):

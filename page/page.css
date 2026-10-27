@@ -90,8 +90,7 @@ table.plain th { font-weight: 500; }
 .fhead { position: sticky; top: 12px; z-index: 5; }
 .fhead::before { content: ""; position: absolute; inset: -12px 0 auto; height: 20px; background: var(--bg-canvas); z-index: -1; }
 .fhead .top { display: flex; align-items: center; gap: 10px; padding: 10px 20px 8px; background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
-.fhead .top .chev { width: 22px; height: 22px; flex: none; padding: 0; transition: transform .12s ease; }
-.fhead .top .chev.open { transform: rotate(90deg); }
+.fhead .top .chev { width: 22px; height: 22px; }
 /* The header is an inset box, so the hover tint of a button on it needs the stronger tint. */
 .fhead .top button:not(.on):enabled:hover { background: var(--bg-hover-strong); }
 .fhead .top .editor { padding: 1px 7px; }

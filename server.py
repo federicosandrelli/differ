@@ -7,10 +7,11 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   --exit-with-parent  exit once the parent process is gone
 
   /                                  the tabbed shell: the start page as a home tab, and a tab per open page
-  /home                              the start page: a search bar and the pull requests opened last, in
-                                     three sections of up to twenty: yours, other people's, and merged
-  /recent                            the list of pull requests opened last, as an HTML fragment, with each
-                                     status and author fetched from GitHub
+  /home                              the start page: a search bar and the sections of pull requests, drawn
+                                     from GitHub's last answer
+  /board                             the sections of the start page, as an HTML fragment: your pull requests,
+                                     other people's, and the ones opened last, after asking GitHub again (at
+                                     most every 30 seconds, unless the followed repositories changed)
   /settings                          the body of the settings modal, as an HTML fragment: the followed
                                      repositories, the shortcuts, the file type rules, the folds, the editors,
                                      the cache and the version
@@ -54,6 +55,7 @@ from pathlib import Path
 from typing import Any, TextIO, get_args
 from urllib.parse import parse_qs, urlparse
 
+import board
 import build
 import commands
 import comments
@@ -127,10 +129,10 @@ def tabs_page() -> bytes:
 
 
 def start_page() -> bytes:
-    """The start page, with the statuses and authors saved last. Its list, with each status and author fetched
-    from GitHub, is fetched again when the page loads and each time its tab comes to the front."""
+    """The start page, with the sections drawn from GitHub's last answer. The page fetches them again from /board when
+    it loads and each time its tab comes to the front."""
     return shell(
-        "I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), RECENT=recent.items_html())
+        "I beg to differ", render.fill(shell_file("start.html"), BANNER=gh_banner(), BOARD=board.sections_html())
     )
 
 
@@ -197,9 +199,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, tabs_page())
             if url.path == "/home":
                 return self.send(200, start_page())
-            if url.path == "/recent":
-                recent.refresh()
-                return self.send(200, recent.items_html().encode())
+            if url.path == "/board":
+                statuses = threading.Thread(target=recent.refresh)
+                statuses.start()
+                board.refresh()
+                statuses.join()
+                return self.send(200, board.sections_html().encode())
             if url.path == "/settings":
                 return self.send(200, settings.settings_html().encode())
             if url.path in ("/open", "/image") or STATUS.match(url.path) or PAGE.match(url.path):

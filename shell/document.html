@@ -11,14 +11,22 @@ h1 + .log { margin-top: 20px; }
 .banner { margin: 12px 0 16px; }
 form { display: flex; gap: 8px; margin: 0 0 20px; }
 input { flex: 1; }
-.prs h2 { font-size: 15px; margin: 24px 0 8px; }
+.group > h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 28px 0 4px; }
+.group.opened > .list { margin-top: 8px; }
+.sub h3 { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin: 14px 0 6px -2px; }
+.sub .chev { width: 18px; height: 18px; }
+.sub.closed .list { display: none; }
+.sub.closed h3 { margin-bottom: 0; }
 .list { overflow: hidden; }
-.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text); }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--text); }
 .item:first-child { border-top: 0; } .item:hover { background: var(--bg-panel); text-decoration: none; }
 .item .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .t .pr-icon { margin-right: 6px; }
-.item .m { grid-column: 1; color: var(--text-muted); font-size: 12px; font-family: var(--mono); }
+.item .m { grid-column: 1; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-muted); font-size: 12px; }
+.item .m .ref { font-family: var(--mono); }
 .item .w { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.why { color: var(--text-secondary); }
+.why.bad { color: var(--del-fg); } .why.warn { color: var(--mod-fg); } .why.ok { color: var(--add-fg); } .why.accent { color: var(--accent); }
 .empty { color: var(--text-muted); padding: 12px 14px; }
 .log { font: 13px/1.7 var(--mono); color: var(--text-secondary); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 16px; white-space: pre-wrap; }
 .log b { color: var(--text); font-weight: 500; }

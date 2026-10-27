@@ -65,9 +65,20 @@ def test_a_get_without_a_cross_site_header_passes(site: str | None, monkeypatch:
 
 def test_the_home_page_serves_a_cross_site_get(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
+    monkeypatch.setattr(server.board, "PATH", tmp_path / "board.json")
     status, body = get("/home", "cross-site")
     assert status == 200
-    assert body.count(b"None opened yet.") == 3
+    assert b"No pull requests yet." in body
+
+
+def test_board_asks_github_again_and_answers_the_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = []
+    monkeypatch.setattr(server.board, "refresh", lambda: asked.append("board"))
+    monkeypatch.setattr(server.recent, "refresh", lambda: asked.append("recent"))
+    monkeypatch.setattr(server.board, "sections_html", lambda: "<h2>Your pull requests</h2>")
+    status, body = get("/board")
+    assert status == 200 and body == b"<h2>Your pull requests</h2>"
+    assert sorted(asked) == ["board", "recent"]
 
 
 def test_settings_serves_the_settings_body(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -201,6 +212,7 @@ def gh_run(returncode: int) -> Any:
 
 def test_start_page_shows_a_banner_when_gh_is_signed_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
+    monkeypatch.setattr(server.board, "PATH", tmp_path / "board.json")
     monkeypatch.setattr(server, "gh_checked", (0.0, None))
     monkeypatch.setattr(commands.subprocess, "run", gh_run(1))
     page = server.start_page().decode()
@@ -212,6 +224,7 @@ def test_start_page_shows_a_banner_when_gh_is_signed_out(tmp_path: Path, monkeyp
 
 def test_start_page_shows_a_banner_when_gh_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(recent, "PATH", tmp_path / "recent.json")
+    monkeypatch.setattr(server.board, "PATH", tmp_path / "board.json")
     monkeypatch.setattr(server, "gh_checked", (0.0, None))
 
     def missing(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:

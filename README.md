@@ -12,10 +12,23 @@ python3 server.py            # http://localhost:8765/
 
 The page at `/` is a tabbed shell: a home tab with the start page, and one tab
 per pull request. The start page (`/home` on its own) has a search bar and the
-pull requests you opened last, newest first, in three sections: yours, other
-people's, and the merged ones (yours and others'). Each section keeps up to
-twenty; the list is fetched again each time its tab comes to the front. Paste any PR URL or `owner/repo#123` to open
-another. Opening a pull request from the start page opens it in a tab, or
+pull requests that matter to you, in sections:
+
+- Your pull requests: the ones that need your action (comments since your last
+  push or reply, failed CI, conflicts, or approved and green), the ones waiting
+  on CI, the ones waiting on review, your drafts, and the ones merged in the
+  last 7 days.
+- Other people's pull requests: the ones that ask for your review, the ones
+  you reviewed or commented on, and, in the repositories you follow (set in the
+  settings), the ones that need a reviewer and the ones someone else reviews.
+- Recently opened: the pull requests you opened in differ last, less the ones
+  above.
+
+A row says why it is in its section when the section's name doesn't. An empty
+section is left out, and a section closed with its chevron stays closed. The page draws the sections from
+GitHub's last answer at once, and asks GitHub again when it loads and each
+time its tab comes to the front, at most every 30 seconds. Paste any PR URL or
+`owner/repo#123` to open another. Opening a pull request from the start page opens it in a tab, or
 brings its tab to the front when it has one; once a page's comments load,
 its tab shows the number of unresolved threads and the pull request's status
 as GitHub reports it now, and the open tabs survive a relaunch. A page is built on first visit and cached by head commit. A later
@@ -303,9 +316,10 @@ editors open, stay too.
   or GitHub, which opens the file on github.com.
   `checkout.py` keeps the clone of each repository that they open, and moves it
   to the pull request's branch without losing the user's work.
-- `recent.py` keeps the start page's list of the pull requests opened last,
-  with the status and author of each and the viewer's login, in `recent.json`
-  in the cache.
+- `board.py` sorts the pull requests GitHub finds into the start page's
+  sections, keeps them in `board.json` in the cache, and draws them.
+- `recent.py` keeps the list of the pull requests opened last, with the status
+  and author of each, in `recent.json` in the cache.
 
 Keys in the page: arrow keys in the tree, Option+Up and Option+Down for the
 previous and next shown file, Cmd+F search (it starts from the selected text)
