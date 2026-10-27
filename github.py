@@ -7,6 +7,7 @@ import json
 import re
 import urllib.parse
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -187,6 +188,27 @@ def pr_standings(refs: list[PullRef]) -> tuple[str, dict[PullRef, Standing]]:
         if pr and (status := status_of(pr["state"], pr["isDraft"])):
             standings[ref] = Standing(status, (pr.get("author") or {}).get("login", ""))
     return viewer, standings
+
+
+RECENT_PRS = (
+    "query($q: String!) { search(query: $q, type: ISSUE, first: 100) "
+    "{ nodes { ... on PullRequest { repository { nameWithOwner } } } } }"
+)
+
+
+def repos_of_recent_prs(since: date) -> list[str] | None:
+    """The `owner/repo` names of the repositories where the viewer opened a pull request on or after the date, one
+    per pull request, the newest first. None when gh fails or GitHub answers without a search."""
+    q = f"is:pr author:@me created:>={since.isoformat()} sort:created-desc"
+    try:
+        _, _, out = ask(RECENT_PRS, {"q": q}, timeout=15)
+    except commands.CommandError:
+        return None
+    search = (out.get("data") or {}).get("search")
+    if search is None:
+        return None
+    names = (((n or {}).get("repository") or {}).get("nameWithOwner") for n in search.get("nodes") or [])
+    return [name for name in names if name]
 
 
 def ask(query: str, variables: dict[str, object], timeout: float) -> tuple[int, str, dict]:

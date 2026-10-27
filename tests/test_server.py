@@ -401,3 +401,49 @@ def test_a_cross_site_get_to_image_is_refused(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(server.github, "repo_file", lambda url: pytest.fail("a cross-site GET read a file"))
     status, body = get("/image?src=" + quote("https://github.com/o/r/blob/abc/a.png", safe=""), "cross-site")
     assert status == 403 and b"Sec-Fetch-Site: cross-site" in body
+
+
+def test_followed_saves_the_repositories_and_answers_the_names_saved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server.followed, "PATH", tmp_path / "followed.json")
+    monkeypatch.setattr(server.followed.github, "repos_of_recent_prs", lambda since: None)
+    h = request(
+        "POST", "/api/followed", json.dumps({"repos": ["Acme/Widgets", "https://github.com/acme/tools"]}).encode()
+    )
+    h.do_POST()
+    code, body = response(h)
+    assert (code, json.loads(body)) == (200, {"repos": ["acme/widgets", "acme/tools"]})
+    assert server.followed.load() == ["acme/widgets", "acme/tools"]
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        ({"repos": ["acme/widgets", "acme"]}, "Not a repository: 'acme'. Use owner/repo or the repository's URL."),
+        ({"repos": "acme/widgets"}, "Bad request: repos is not a list of strings"),
+        ({"repos": [1]}, "Bad request: repos is not a list of strings"),
+        ({}, "Bad request: 'repos'"),
+    ],
+)
+def test_followed_refuses_a_bad_list_and_keeps_the_old_one(
+    body: object, why: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server.followed, "PATH", tmp_path / "followed.json")
+    monkeypatch.setattr(server.followed.github, "repos_of_recent_prs", lambda since: None)
+    server.followed.save(["acme/old"])
+    h = request("POST", "/api/followed", json.dumps(body).encode())
+    h.do_POST()
+    code, answer = response(h)
+    assert (code, json.loads(answer)) == (400, {"error": why})
+    assert server.followed.load() == ["acme/old"]
+
+
+def test_followed_is_refused_from_another_origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.followed, "PATH", tmp_path / "followed.json")
+    monkeypatch.setattr(server.followed.github, "repos_of_recent_prs", lambda since: None)
+    h = request("POST", "/api/followed", json.dumps({"repos": ["acme/widgets"]}).encode())
+    h.headers["Origin"] = "https://evil.example"
+    h.do_POST()
+    assert response(h)[0] == 403
+    assert server.followed.load() == []

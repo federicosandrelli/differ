@@ -7,9 +7,16 @@ import build
 import classify
 import editors
 import file_types
+import followed
 import languages
 import render
 import settings
+
+
+@pytest.fixture(autouse=True)
+def followed_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(followed, "PATH", tmp_path / "followed.json")
+    monkeypatch.setattr(followed.github, "repos_of_recent_prs", lambda since: None)
 
 
 def test_folder_size_sums_every_file_and_is_zero_for_a_missing_folder(tmp_path: Path) -> None:
@@ -69,3 +76,10 @@ def test_the_settings_show_the_editors_the_patterns_the_generated_rules_the_cach
 def test_the_settings_omit_the_commit_when_git_cannot_tell(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(render, "app_info", lambda: {"commit": "", "dirty": False, "built": ""})
     assert "commit" not in settings.settings_html().split('<p class="about')[1]
+
+
+def test_the_settings_carry_the_followed_repositories(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(render, "app_info", lambda: {"commit": "", "dirty": False, "built": ""})
+    assert 'data-repos="[]"' in settings.settings_html()
+    followed.save(["acme/widgets", "acme/tools"])
+    assert 'data-repos="[&quot;acme/widgets&quot;, &quot;acme/tools&quot;]"' in settings.settings_html()

@@ -11,8 +11,12 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      three sections of up to twenty: yours, other people's, and merged
   /recent                            the list of pull requests opened last, as an HTML fragment, with each
                                      status and author fetched from GitHub
-  /settings                          the body of the settings modal, as an HTML fragment: the shortcuts, the
-                                     file type rules, the folds, the editors, the cache and the version
+  /settings                          the body of the settings modal, as an HTML fragment: the followed
+                                     repositories, the shortcuts, the file type rules, the folds, the editors,
+                                     the cache and the version
+  /api/followed                      POST with a JSON body {"repos": [...]}: replaces the followed repositories
+                                     with the names given, and answers the list saved (refused from another
+                                     origin, as the actions below are)
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
@@ -55,6 +59,7 @@ import commands
 import comments
 import editors
 import file_types
+import followed
 import github
 import recent
 import render
@@ -64,6 +69,7 @@ from github import SLUG, PullRef
 PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
 STATUS = re.compile(rf"^/status/{SLUG}/(?P<number>\d+)$")
 API = re.compile(rf"^/api/{SLUG}/(?P<number>\d+)/(?P<action>\w+)$")
+FOLLOWED = "/api/followed"
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 # An SVG file can hold scripts, and the reader may open an image's address on its own.
 IMAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
@@ -292,16 +298,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if why := self.wrong_host():
             return self.send(403, error_page(why))
-        m = API.match(urlparse(self.path).path)
+        path = urlparse(self.path).path
+        if path == FOLLOWED:
+            return self.post_followed()
+        m = API.match(path)
         if not m:
             return self.send(404, error_page(f"No page at {self.path}"))
         if why := self.refused():
             return self.send_json({"error": f"Forbidden: {why}"}, 403)
-        ref, action = PullRef.from_match(m), m["action"]
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
-            if not isinstance(body, dict):
-                raise ValueError("the request is not a JSON object")
+            body = self.json_body()
+            ref, action = PullRef.from_match(m), m["action"]
             if action == "comment":
                 start_side = body.get("start_side")
                 result = comments.add_thread(
@@ -339,6 +346,29 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": str(exc)}, 400)
         except commands.CommandError as exc:
             return self.send_json({"error": str(exc)}, 502)
+        except Exception as exc:
+            return self.send_failure(exc, as_json=True)
+
+    def json_body(self) -> dict:
+        """The request's JSON object. Raises ValueError when the body is no JSON object."""
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        if not isinstance(body, dict):
+            raise ValueError("the request is not a JSON object")
+        return body
+
+    def post_followed(self) -> None:
+        """Replace the followed repositories with the names the body's "repos" gives, and answer the names saved."""
+        if why := self.refused():
+            return self.send_json({"error": f"Forbidden: {why}"}, 403)
+        try:
+            repos = self.json_body()["repos"]
+            if not isinstance(repos, list) or not all(isinstance(r, str) for r in repos):
+                raise ValueError("repos is not a list of strings")
+            return self.send_json({"repos": followed.save(repos)})
+        except (KeyError, ValueError) as exc:
+            return self.send_json({"error": f"Bad request: {exc}"}, 400)
+        except followed.NotARepository as exc:
+            return self.send_json({"error": str(exc)}, 400)
         except Exception as exc:
             return self.send_failure(exc, as_json=True)
 

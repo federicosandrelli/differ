@@ -288,7 +288,9 @@ editors open, stay too.
   window and the other open documents in step with a change; `document.html`
   wraps the start, progress and error pages (`start.html`, `progress.html`,
   `error.html`); `settings.html` is the body of the settings, which
-  `settings.py` fills from the code.
+  `settings.py` fills from the code and the saved settings.
+- `followed.py` keeps the repositories the reader follows, named in the
+  settings, in `followed.json` in the cache.
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API.
 - `github.py` is the one place that talks to GitHub: every `gh` command the
@@ -326,12 +328,17 @@ opening it; Enter on it opens it at its first hit.
 ## Settings
 
 The gear in the bottom left corner of the window, Cmd+, and the desktop app's
-"Settings…" menu item open the settings in the middle of the window. The theme
-is the one setting; the sections below it show the shortcuts, the
-rules that sort files into documentation, tests and implementation, the lines
-the page folds, the files it hides, the editors it knows, the cache on disk,
-and the version. Escape, the close button or a click outside the window closes
-it.
+"Settings…" menu item open the settings in the middle of the window. The
+settings are the theme and the repositories to follow: add one as `owner/repo`
+or by its URL, edit a name in place, or remove it with `✕` or by emptying its
+field. Until you change the list, it holds the repositories where you opened a
+pull request in the last 7 days. The settings save the list as you change it;
+a text that names no repository shows an error under the fields, saves
+nothing, and puts the fields back to the saved list. The sections below show
+the shortcuts, the rules that sort files into documentation, tests and
+implementation, the lines the page folds, the files it hides, the editors it
+knows, the cache on disk, and the version. Escape, the close button or a click
+outside the window closes it.
 
 ## Reporting a bug
 

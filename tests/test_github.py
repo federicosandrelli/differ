@@ -1,5 +1,6 @@
 import json
 import subprocess
+from datetime import date
 from typing import Any
 
 import pytest
@@ -187,3 +188,42 @@ def test_repo_file_refuses_a_link_to_anything_but_a_repository_file(url: str, mo
     monkeypatch.setattr(commands.subprocess, "run", lambda args, **kwargs: pytest.fail("ran gh"))
     with pytest.raises(ValueError, match="is not a link to a file of a GitHub repository"):
         github.repo_file(url)
+
+
+def test_repos_of_recent_prs_names_the_repository_of_each_pull_request_newest_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent = {}
+    answer = {
+        "data": {
+            "search": {
+                "nodes": [
+                    {"repository": {"nameWithOwner": "Acme/Widgets"}},
+                    {"repository": {"nameWithOwner": "acme/tools"}},
+                    {"repository": {"nameWithOwner": "acme/widgets"}},
+                    {},
+                ]
+            }
+        }
+    }
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        sent.update(json.loads(kwargs["input"]))
+        return subprocess.CompletedProcess(args, 0, json.dumps(answer).encode(), b"")
+
+    monkeypatch.setattr(commands.subprocess, "run", fake_run)
+    assert github.repos_of_recent_prs(date(2026, 10, 20)) == ["Acme/Widgets", "acme/tools", "acme/widgets"]
+    assert sent["variables"] == {"q": "is:pr author:@me created:>=2026-10-20 sort:created-desc"}
+
+
+@pytest.mark.parametrize(
+    ("returncode", "answer"),
+    [(1, b""), (0, b'{"data": {"viewer": {"login": "me"}}}'), (0, b"not json")],
+)
+def test_repos_of_recent_prs_is_none_when_github_gives_no_search(
+    returncode: int, answer: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        commands.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, returncode, answer, b"")
+    )
+    assert github.repos_of_recent_prs(date(2026, 10, 20)) is None
