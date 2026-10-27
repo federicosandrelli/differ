@@ -40,7 +40,11 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 /* A section is a label on the left and its content on the right: the content is phi cubed (about 4.24) times the
    label column with its gap, so the 630px of body width split into 100 + 20 and 510. */
 #settings section { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 0 20px; padding: 22px 0; border-top: 1px solid var(--border); }
-#settings .body > section:first-child { border-top: 0; }
+#settings .body > section:first-child, #settings .body > section[hidden] + section { border-top: 0; }
+#settings .version > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+#settings .version .text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#settings .version .note { color: var(--text-secondary); }
+#settings .version .act { flex: none; }
 #settings h2 { font-size: inherit; font-weight: 600; margin: 0; }
 #settings h3 { font-size: inherit; font-weight: 600; margin: 16px 0 4px; }
 #settings p { margin: 0 0 10px; } #settings section > div > :last-child { margin-bottom: 0; }
@@ -67,7 +71,7 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 </head><body><div id="tabs" data-tauri-drag-region></div><div id="panes"></div>
 <button id="gear" class="ghost" title="Settings (⌘,)" aria-label="Settings"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 <dialog id="settings"><div class="box card"><div class="top"><h1>Settings</h1><button class="ghost close" aria-label="Close">✕</button></div>
-<div class="body"><section><h2>Theme</h2><div><span class="seg"><button data-theme="light">Light</button><button data-theme="sepia">Sepia</button><button data-theme="dark">Dark</button></span></div></section><div class="state"></div></div></div></dialog>
+<div class="body"><section class="version" hidden><h2>Update</h2><div><span class="text"><span class="current"></span><span class="note"></span></span><button class="act"></button></div></section><section><h2>Theme</h2><div><span class="seg"><button data-theme="light">Light</button><button data-theme="sepia">Sepia</button><button data-theme="dark">Dark</button></span></div></section><div class="state"></div></div></div></dialog>
 <div id="update" class="card" role="status" hidden><div class="text"><span class="title"></span><span class="sub"></span></div><div class="actions"><button class="later">Later</button><button class="primary act"></button></div></div>
 <script>
 __SCRIPT__

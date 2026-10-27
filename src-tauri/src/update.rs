@@ -39,6 +39,8 @@ pub struct UpdateStatus {
     pub url: Option<String>,
     /// Homebrew installed this copy, so `update_run` can upgrade it.
     pub managed: bool,
+    /// This check fetched the cask and the fetch failed, so `latest` comes from an earlier check, if any.
+    pub failed: bool,
 }
 
 fn now() -> u64 {
@@ -135,19 +137,22 @@ fn fresh(checked_at: u64) -> bool {
     checked_at <= now && now - checked_at < INTERVAL
 }
 
-/// Looks for a newer version. Fetches the cask when the last successful check is a day old or names a version
-/// older than the running app, and otherwise, or when the fetch fails, answers from the cache.
+/// Looks for a newer version. Fetches the cask when `force` is set, when the last successful check is a day old or
+/// when it names a version older than the running app, and otherwise, or when the fetch fails, answers from the
+/// cache.
 #[tauri::command(async)]
-pub fn update_check(app: AppHandle) -> UpdateStatus {
+pub fn update_check(app: AppHandle, force: bool) -> UpdateStatus {
     let current = app.package_info().version.to_string();
     let path = cache_dir().map(|dir| dir.join("update.json"));
     let mut cache: Option<Cache> = path
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok());
-    if !cache
-        .as_ref()
-        .is_some_and(|c| fresh(c.checked_at) && !is_newer(&current, &c.version))
+    let mut failed = false;
+    if force
+        || !cache
+            .as_ref()
+            .is_some_and(|c| fresh(c.checked_at) && !is_newer(&current, &c.version))
     {
         if let Some(version) = fetch() {
             let next = Cache {
@@ -158,6 +163,8 @@ pub fn update_check(app: AppHandle) -> UpdateStatus {
                 let _ = std::fs::write(path, json);
             }
             cache = Some(next);
+        } else {
+            failed = true;
         }
     }
     let latest = cache.map(|c| c.version);
@@ -167,6 +174,7 @@ pub fn update_check(app: AppHandle) -> UpdateStatus {
         current,
         latest,
         managed: managed(),
+        failed,
     }
 }
 
