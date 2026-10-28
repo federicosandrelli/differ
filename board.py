@@ -428,10 +428,22 @@ def section_html(key: str, subtitle: str, rows: list[Row], full: bool, viewer: s
     return f'<section class="sub" data-key="{key}">{head}{cards or NONE_HTML}{more}</section>'
 
 
+def footer_html(board: Board) -> str:
+    """The start page's footer: the viewer's login and when GitHub last answered, both left out until GitHub has
+    answered, then a button that opens the Settings."""
+    known = (
+        f'<span>Signed in as <span class="login">{html.escape(board["viewer"])}</span></span>'
+        f"<span>Updated from GitHub {html.escape(ago(board['fetched']))}</span>"
+        if board["viewer"]
+        else ""
+    )
+    return f'<footer class="start">{known}<button class="ghost" data-settings>Settings <kbd>⌘,</kbd></button></footer>'
+
+
 def sections_html() -> str:
     """The start page's board, once GitHub has answered: a group of columns for the viewer's pull requests and one
-    for other people's, then the pull requests opened last that no section shows. A column counts the rows of its
-    sections, with a plus when one of them is full."""
+    for other people's, then the pull requests opened last that no section shows, then the footer. A column counts
+    the rows of its sections, with a plus when one of them is full."""
     board = load()
     viewer, shown, groups = board["viewer"], set(), []
     if board["sections"]:
@@ -459,4 +471,4 @@ def sections_html() -> str:
             f'<section class="group opened"><h2>Recently opened<span class="count">{len(opened)}</span></h2>'
             f'<div class="list card">{"".join(row_html(r, viewer) for r in opened)}</div></section>'
         )
-    return "".join(groups) or '<div class="empty">No pull requests yet.</div>'
+    return ("".join(groups) or '<div class="empty">No pull requests yet.</div>') + footer_html(board)

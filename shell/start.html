@@ -1,6 +1,6 @@
-<h1 class="start"><span class="beg">I beg to</span><span class="differ">differ</span></h1>
+<header class="start"><h1 class="start"><span class="beg">I beg to</span><span class="differ">differ</span></h1>
+<form action="/open"><label class="hint" for="pr">Open a pull request</label><div class="row"><input id="pr" name="pr" class="big" placeholder="https://github.com/owner/repo/pull/123 or owner/repo#123" autofocus><button class="primary big">Open</button></div></form></header>
 __BANNER__
-<form action="/open"><input name="pr" class="big" placeholder="https://github.com/owner/repo/pull/123 or owner/repo#123" autofocus><button class="primary big">Open</button></form>
 <div id="board">__BOARD__</div>
 <script>
 // The sections the reader opened with Show N more, by key, so they stay open when the board draws again.
@@ -14,6 +14,7 @@ const showOpened = () => {
   }
 };
 board.addEventListener('click', (e) => {
+  if (e.target.closest('[data-settings]')) { SHELL?.settings(); return; }
   const more = e.target.closest('.sub > .more');
   if (!more) return;
   opened.add(more.parentElement.dataset.key);

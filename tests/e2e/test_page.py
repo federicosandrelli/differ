@@ -1290,6 +1290,12 @@ def test_the_shell_opens_the_settings_on_cmd_comma_and_closes_them_on_escape_and
     expect(dialog).to_be_hidden()
 
 
+def test_the_start_pages_settings_button_opens_the_settings(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.frame_locator("#panes iframe.on").locator("[data-settings]").click()
+    expect(page.locator("#settings")).to_be_visible()
+
+
 def test_the_settings_save_the_followed_repositories_as_they_change(page: Page, server_url: str) -> None:
     page.goto(server_url + "/")
     page.click("#gear")
