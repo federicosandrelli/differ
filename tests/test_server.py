@@ -219,7 +219,7 @@ def test_start_page_shows_a_banner_when_gh_is_signed_out(tmp_path: Path, monkeyp
     assert 'class="banner"' in page
     assert "The GitHub CLI (gh) is not signed in." in page
     assert "<code>gh auth login</code>" in page
-    assert page.index('class="banner"') < page.index("<form")
+    assert page.index("</form>") < page.index('class="banner"') < page.index('id="board"')
 
 
 def test_start_page_shows_a_banner_when_gh_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

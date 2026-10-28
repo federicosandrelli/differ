@@ -98,7 +98,7 @@ def gh_problem() -> str | None:
 
 
 def gh_banner() -> str:
-    """The notice above the start page's search bar when gh cannot reach GitHub, or an empty string."""
+    """The notice under the start page's title and field when gh cannot reach GitHub, or an empty string."""
     problem = gh_problem()
     if problem is None:
         return ""

@@ -288,7 +288,7 @@ def sub_count(page: str, key: str) -> str:
 
 
 def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -> None:
-    assert board.sections_html() == '<div class="empty">No pull requests yet.</div>'
+    assert board.sections_html().startswith('<div class="empty">No pull requests yet.</div><footer')
     save(board.classify(ME, [[pr(1, ci="FAILURE"), pr(2)], [], [pr(3, author="ann", repo="acme/tools")], [], []], []))
     page = board.sections_html()
     assert re.findall(r'<section class="sub" data-key="(\w+)">', page) == [
@@ -310,6 +310,14 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
     assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
     assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
     assert '<span class="ref">tools</span>' in theirs
+
+
+def test_footer_names_the_viewer_and_the_last_answer_only_once_github_has_answered() -> None:
+    footer = board.footer_html(board.load())
+    assert "Signed in" not in footer and "Updated" not in footer
+    save({}, viewer="ann")
+    footer = board.footer_html(board.load())
+    assert 'Signed in as <span class="login">ann</span>' in footer and "Updated from GitHub just now" in footer
 
 
 def test_html_names_a_deleted_author_ghost() -> None:
