@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ const CASK_URL: &str =
 const CASK: &str = "federicosandrelli/tap/differ";
 const APP_PATH: &str = "/Applications/differ.app";
 const RELEASES: &str = "https://github.com/federicosandrelli/differ/releases";
-const INTERVAL: u64 = 24 * 60 * 60;
+const INTERVAL: u64 = 12 * 60 * 60;
 const PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
 
 /// `update.json` in the cache: the version the cask named at the last successful check.
@@ -118,7 +119,9 @@ fn cache_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-// curl rather than an HTTP crate: a TLS stack is a large dependency for one request a day.
+static FETCHED_SINCE_LAUNCH: AtomicBool = AtomicBool::new(false);
+
+// curl rather than an HTTP crate: a TLS stack is a large dependency for a few requests a day.
 fn fetch() -> Option<String> {
     let out = Command::new("/usr/bin/curl")
         .args(["-fsSL", "--max-time", "8", CASK_URL])
@@ -130,16 +133,21 @@ fn fetch() -> Option<String> {
     cask_version(&String::from_utf8_lossy(&out.stdout))
 }
 
-/// Whether a check at `checked_at` is less than a day old. A time in the future, from a clock that was set
+/// Whether a check at `checked_at` is less than 12 hours old. A time in the future, from a clock that was set
 /// back, is not.
 fn fresh(checked_at: u64) -> bool {
     let now = now();
     checked_at <= now && now - checked_at < INTERVAL
 }
 
-/// Looks for a newer version. Fetches the cask when `force` is set, when the last successful check is a day old or
-/// when it names a version older than the running app, and otherwise, or when the fetch fails, answers from the
-/// cache.
+/// Whether to fetch the cask: when `force` is set, when no fetch has succeeded since the app started, or when the
+/// cache is missing or 12 hours old.
+fn needs_fetch(force: bool, fetched_since_launch: bool, cache: Option<&Cache>) -> bool {
+    force || !fetched_since_launch || !cache.is_some_and(|c| fresh(c.checked_at))
+}
+
+/// Looks for a newer version. Fetches the cask on the first call since the app started, when `force` is set, or
+/// when the last successful fetch is 12 hours old, and otherwise, or when the fetch fails, answers from the cache.
 #[tauri::command(async)]
 pub fn update_check(app: AppHandle, force: bool) -> UpdateStatus {
     let current = app.package_info().version.to_string();
@@ -149,11 +157,11 @@ pub fn update_check(app: AppHandle, force: bool) -> UpdateStatus {
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok());
     let mut failed = false;
-    if force
-        || !cache
-            .as_ref()
-            .is_some_and(|c| fresh(c.checked_at) && !is_newer(&current, &c.version))
-    {
+    if needs_fetch(
+        force,
+        FETCHED_SINCE_LAUNCH.load(Ordering::Relaxed),
+        cache.as_ref(),
+    ) {
         if let Some(version) = fetch() {
             let next = Cache {
                 checked_at: now(),
@@ -163,6 +171,7 @@ pub fn update_check(app: AppHandle, force: bool) -> UpdateStatus {
                 let _ = std::fs::write(path, json);
             }
             cache = Some(next);
+            FETCHED_SINCE_LAUNCH.store(true, Ordering::Relaxed);
         } else {
             failed = true;
         }
@@ -279,7 +288,7 @@ pub fn update_run(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{cask_version, fresh, helper_script, is_newer, now};
+    use super::{cask_version, fresh, helper_script, is_newer, needs_fetch, now, Cache};
     use std::path::Path;
 
     #[test]
@@ -302,6 +311,23 @@ mod tests {
         assert!(fresh(now - 10));
         assert!(!fresh(now - 2 * 24 * 60 * 60));
         assert!(!fresh(now + 3600));
+    }
+
+    #[test]
+    fn fetches_once_per_launch_then_when_the_cache_goes_stale() {
+        let recent = Cache {
+            checked_at: now() - 60,
+            version: "0.1.59".into(),
+        };
+        let stale = Cache {
+            checked_at: now() - 13 * 60 * 60,
+            version: "0.1.59".into(),
+        };
+        assert!(needs_fetch(false, false, Some(&recent)));
+        assert!(!needs_fetch(false, true, Some(&recent)));
+        assert!(needs_fetch(true, true, Some(&recent)));
+        assert!(needs_fetch(false, true, Some(&stale)));
+        assert!(needs_fetch(false, true, None));
     }
 
     #[test]
