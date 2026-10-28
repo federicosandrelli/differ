@@ -44,8 +44,9 @@ main:has(#board) { max-width: 1320px; }
 .why { color: var(--text-secondary); }
 .why.bad { color: var(--del-fg); } .why.warn { color: var(--mod-fg); } .why.ok { color: var(--add-fg); } .why.accent { color: var(--accent); }
 .empty { color: var(--text-muted); padding: 12px 14px; }
-footer.start { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 24px; margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
+footer.start { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 24px; margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); }
 footer.start .login { color: var(--text-secondary); }
+html:not(.framed) footer.start [data-settings] { display: none; }
 .log { font: 13px/1.7 var(--mono); color: var(--text-secondary); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 16px; white-space: pre-wrap; }
 .log b { color: var(--text); font-weight: 500; }
 html.app body { padding-top: 28px; }

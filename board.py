@@ -437,7 +437,7 @@ def footer_html(board: Board) -> str:
         if board["viewer"]
         else ""
     )
-    return f'<footer class="start">{known}<button class="ghost" data-settings>Settings <kbd>⌘,</kbd></button></footer>'
+    return f'<footer class="start hint">{known}<button class="ghost" data-settings>Settings <kbd>⌘,</kbd></button></footer>'
 
 
 def sections_html() -> str:

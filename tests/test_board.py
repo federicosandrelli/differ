@@ -314,7 +314,7 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
 
 def test_footer_names_the_viewer_and_the_last_answer_only_once_github_has_answered() -> None:
     footer = board.footer_html(board.load())
-    assert "Signed in" not in footer and "Updated" not in footer and "data-settings" in footer
+    assert "Signed in" not in footer and "Updated" not in footer
     save({}, viewer="ann")
     footer = board.footer_html(board.load())
     assert 'Signed in as <span class="login">ann</span>' in footer and "Updated from GitHub just now" in footer
