@@ -905,6 +905,29 @@ def test_a_comment_draft_stays_on_its_line_and_joins_a_box_extended_onto_it(page
     page.click("button[data-compose-cancel]")
 
 
+def test_a_comment_box_keeps_its_dragged_height_after_scrolling_out_of_view(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    open_pr(page, server_url, add_pr({}, {"src/long.py": "".join(f"x{n} = {n}\n" for n in range(1, 1001))}))
+    page.locator("section[data-file='src/long.py'] tr[id$='-L2'] td.n.key").click()
+    box = page.locator("textarea[data-compose-text]")
+    box.press("Escape")
+    edge = box.bounding_box()
+    assert edge
+    page.mouse.move(edge["x"] + edge["width"] - 3, edge["y"] + edge["height"] - 3)
+    page.mouse.down()
+    page.mouse.move(edge["x"] + edge["width"] - 3, edge["y"] + edge["height"] + 120, steps=5)
+    page.mouse.up()
+    height = box.evaluate("b => b.offsetHeight")
+    assert height > edge["height"] + 100
+
+    page.evaluate("main.scrollTop = main.scrollHeight")
+    expect(box).to_have_count(0)
+    page.evaluate("main.scrollTop = 0")
+    expect(box).to_have_count(1)
+    assert box.evaluate("b => b.offsetHeight") == height
+
+
 def test_dragging_from_a_line_number_opens_a_comment_on_the_lines_in_between(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     section = page.locator(APP)
