@@ -111,7 +111,7 @@ function replyHtml(t) {
 function composeHtml(f, c) {
   const where = `line${c.startLine !== c.line ? 's' : ''} ${lineRange(c.startLine, c.line)}${c.side === 'LEFT' ? ' of the old file' : ''}`;
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
-    <textarea data-compose-text placeholder="Leave a comment">${esc(c.text)}</textarea>
+    <textarea data-compose-text="${esc(draftKey(c.path, c.side, c.line))}" placeholder="Leave a comment">${esc(c.text)}</textarea>
     <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
     ${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
 }
@@ -217,6 +217,20 @@ function draftText(box) {
   if (d.reviewText !== undefined) return state.reviewText;
   if (d.convText !== undefined) return state.convText;
   return box.value;
+}
+// The heights the reader dragged textareas to, by the textarea's data attributes.
+const boxHeights = new Map();
+const boxKey = (box) => JSON.stringify({ ...box.dataset });
+function keepBoxHeights(el) {
+  for (const box of el.getElementsByTagName('textarea')) if (box.style.height) boxHeights.set(boxKey(box), box.style.height);
+}
+// Give each textarea its draft from the state and the height the reader dragged it to. The HTML it came from can
+// predate the latest typing.
+function fillBoxes(el) {
+  for (const box of el.getElementsByTagName('textarea')) {
+    box.value = draftText(box);
+    box.style.height = boxHeights.get(boxKey(box)) || '';
+  }
 }
 function textareaKey(e) {
   const form = e.target.closest('.form');

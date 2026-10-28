@@ -119,14 +119,14 @@ const far = ([top, bottom]) => bottom < main.scrollTop - FAR || top > main.scrol
 
 // Replace an element's content and let the content size it, keeping what is on screen still when the
 // element is above the viewport. An empty box that reaches into the viewport from above holds no line to
-// keep, so the top of the viewport keeps its share of the box's height. Each textarea takes its draft from
-// the state, because the kept HTML of a body can predate the latest typing.
+// keep, so the top of the viewport keeps its share of the box's height.
 function replaceContent(el, html) {
   const [top, bottom] = span(el), before = el.offsetHeight, empty = !el.firstChild;
   const above = bottom <= main.scrollTop + 1, into = main.scrollTop - top;
   el.style.height = '';
+  keepBoxHeights(el);
   el.innerHTML = html;
-  for (const box of el.getElementsByTagName('textarea')) box.value = draftText(box);
+  fillBoxes(el);
   if (above) main.scrollTop += el.offsetHeight - before;
   else if (empty && into > 0 && before) main.scrollTop += into * (el.offsetHeight / before - 1);
 }
@@ -141,6 +141,7 @@ function fillChunk(parts, chunk) {
 function emptyChunk(chunk) {
   if (!chunk.dataset.filled || chunk.contains(document.activeElement)) return;
   chunk.style.height = `${chunk.offsetHeight}px`;
+  keepBoxHeights(chunk);
   chunk.innerHTML = '';
   delete chunk.dataset.filled;
 }
@@ -171,6 +172,7 @@ function emptyBody(el) {
   const code = codeOf(el);
   if (!code || !code.dataset.key || el.contains(document.activeElement)) return;
   code.style.height = `${code.offsetHeight}px`;
+  keepBoxHeights(code);
   code.innerHTML = '';
   delete code.dataset.key;
 }
@@ -208,7 +210,7 @@ function updateSection(f, el) {
     const body = document.createElement('div');
     body.className = 'code'; body.style.height = `${estimateHeight(f)}px`;
     el.append(body);
-  } else if (!open && code) code.remove();
+  } else if (!open && code) { keepBoxHeights(code); code.remove(); }
 }
 // One section per shown file, in order, reusing the sections already on the page.
 function patchSections(files) {
@@ -226,7 +228,7 @@ function patchSections(files) {
     if (at !== el) main.insertBefore(el, at || null);
     sections.push({ f, el });
   });
-  for (const el of existing.values()) el.remove();
+  for (const el of existing.values()) { keepBoxHeights(el); el.remove(); }
 }
 
 // Bring the filled bodies in line with the state: the near ones (and the one being typed in) are rebuilt,

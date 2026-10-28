@@ -104,7 +104,10 @@ function renderSide() {
   const ae = document.activeElement;
   const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : ae.dataset.bugText !== undefined ? '[data-bug-text]' : null);
   const selection = focused && focused !== '.list' ? [ae.selectionStart, ae.selectionEnd, ae.selectionDirection] : null;
-  document.getElementById('side').innerHTML = h;
+  const side = document.getElementById('side');
+  keepBoxHeights(side);
+  side.innerHTML = h;
+  fillBoxes(side);
   if (SHELL) SHELL.draft(hasDraft());
   document.querySelector('#side .list').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
