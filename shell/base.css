@@ -18,10 +18,11 @@ body { background: var(--bg-canvas); color: var(--text); font: 14px/1.45 var(--s
 a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
 .spacer { flex: 1; }
 /* A hint is a line of quiet text under or beside a control; a kind is a small label in capitals, such as a column
-   heading or a file's kind; .err marks text that reports an error. */
+   heading or a file's kind; .err marks text that reports an error. .err is important, so it keeps its colour on any
+   element, however specific the rule that gives the element its own text colour. */
 .hint { color: var(--text-muted); font-size: 12px; }
 .kind { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
-.err { color: var(--del-fg); }
+.err { color: var(--del-fg) !important; }
 
 /* A button is a control: control-sized text in a bordered box, 24px tall. .primary fills it with the accent, .on
    tints it for a toggle that is on, .ghost drops the border, quietens it and tightens it, for icon buttons and side
