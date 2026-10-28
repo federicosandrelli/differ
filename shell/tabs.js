@@ -140,12 +140,16 @@
   function openSettings() {
     // A change made while the body loads is newer than the list the body holds, so the fields keep that change.
     const before = followed.newest;
+    const loading = settings.querySelector('.state .loading');
+    if (loading) { loading.textContent = 'Loading…'; loading.classList.remove('err'); }
     followed.saving.then(() => fetch('/settings')).then(r => r.ok ? r.text() : Promise.reject()).then((body) => {
       settings.querySelector('.state').innerHTML = body;
       const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
       if (followed.newest === before) followed.saved = saved;
       followed.draw(followed.newest === before ? saved : followed.repos);
-    }).catch(() => {});
+    }).catch(() => {
+      if (loading) { loading.textContent = 'Could not load the settings.'; loading.classList.add('err'); }
+    });
     if (!settings.open) settings.showModal();
     settings.querySelector('.body').scrollTop = 0;
   }
