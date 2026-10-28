@@ -261,13 +261,12 @@
     if (!invoke) return;
     const current = updateSection.querySelector('.current'), sub = updateSection.querySelector('.sub'), act = updateSection.querySelector('.act');
     current.textContent = update ? `differ ${update.current}${update.managed ? ' from Homebrew' : ''}` : 'differ';
-    let text = 'This is the latest version.', label = 'Check for Updates', disabled = false, error = false;
+    let text = update && update.latest ? 'This is the latest version.' : '', label = 'Check for Updates', disabled = false, error = false;
     if (update && update.newer) {
       const o = offer();
       text = `${update.latest} is available. ${o.note}`;
       label = o.label; disabled = !!o.disabled; error = !!o.error;
     } else if (answered < checks) { text = 'Checking for updates…'; label = 'Checking…'; disabled = true; }
-    else if (!update || update.failed) { text = 'Could not check for updates.'; error = true; }
     sub.textContent = text;
     sub.classList.toggle('err', error);
     act.textContent = label;
