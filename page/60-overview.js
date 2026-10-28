@@ -24,7 +24,7 @@ function renderMarkdown(md, ctx) {
   };
   const out = []; let para = [], list = null;
   const flush = () => {
-    if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; }
+    if (para.length) { out.push(`<p>${inline(para.join('\n')).replace(/\n/g, '<br>')}</p>`); para = []; }
     if (list) { out.push(`<ul>${list.map(i => `<li>${inline(i)}</li>`).join('')}</ul>`); list = null; }
   };
   const lines = md.split('\n');

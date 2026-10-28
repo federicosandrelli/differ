@@ -172,7 +172,7 @@ tr.thread > td > *, tr.compose > td > * { position: sticky; left: 44px; max-widt
 .comment .chead b { color: var(--text); font-weight: 600; }
 .comment .chead a { color: var(--text-muted); font-size: 12px; } .comment .chead a:hover { color: var(--accent); }
 .comment .cbody { margin-top: 4px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.comment .cbody p { margin: 4px 0; max-width: none; } .comment .cbody ul { margin: 4px 0; padding-left: 20px; }
+.comment .cbody p { margin: 10px 0; max-width: none; } .comment .cbody p:first-child { margin-top: 0; } .comment .cbody p:last-child { margin-bottom: 0; } .comment .cbody ul { margin: 4px 0; padding-left: 20px; }
 .comment .cbody h2, .comment .cbody h3, .comment .cbody h4 { font-size: 13px; margin: 8px 0 4px; }
 .comment .cbody pre { margin: 6px 0; padding: 8px 10px; background: var(--bg-inset); border-radius: var(--radius); overflow-x: auto; }
 .comment.pending { background: var(--comment-pending-bg); }
