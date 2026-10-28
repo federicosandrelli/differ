@@ -829,7 +829,12 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
     expect(page.locator("#side .leaf[data-path='src/app.py'] .bubble")).to_have_text("2")
 
     mutations = [json.loads(line) for line in (gh_state / "mutations.log").read_text().splitlines()]
-    posted = [m for m in mutations if "addPullRequestReview(" in m["query"]]
+    posted = [
+        m
+        for m in mutations
+        if "addPullRequestReview(" in m["query"]
+        and any(t["body"] == "Use a logger here" for t in m["variables"].get("threads") or [])
+    ]
     assert len(posted) == 1
     assert "event: COMMENT" in posted[0]["query"]
     assert posted[0]["variables"]["threads"] == [
@@ -875,6 +880,37 @@ def test_a_comment_github_refuses_goes_back_to_its_box(page: Page, server_url: s
         (gh_state / "fail.txt").unlink()
     expect(page.locator("textarea[data-compose-text]")).to_have_value("Greet by name")
     expect(section.locator("div.thread[data-thread]", has_text="Greet by name")).to_have_count(0)
+
+
+def test_a_reply_github_refuses_goes_back_to_its_box(page: Page, server_url: str, gh_state: Path) -> None:
+    open_pr(page, server_url)
+    page.click("button[data-reply='T1']")
+    page.locator("textarea[data-reply-text='T1']").fill("Will do")
+    (gh_state / "fail.txt").write_text("api graphql\n")
+    try:
+        page.click("button[data-reply-send='T1'][data-mode='single']")
+        expect(page.locator("#side .notice.err")).to_contain_text("Comments:")
+    finally:
+        (gh_state / "fail.txt").unlink()
+    expect(page.locator("textarea[data-reply-text='T1']")).to_have_value("Will do")
+    expect(page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")).to_have_count(0)
+
+
+def test_a_comment_box_under_the_last_row_of_a_chunk_opens_and_closes(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    errors: list[str] = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    open_pr(page, server_url, add_pr({}, {"src/long.py": "".join(f"x{n} = {n}\n" for n in range(1, 1001))}))
+    last = page.locator("section[data-file='src/long.py'] tr[id$='-L100']")
+    last.locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 100 ")
+    expect(last.locator("xpath=following-sibling::tr[1]")).to_have_class("notes")
+    page.click("button[data-compose-cancel]")
+    expect(page.locator(".form.compose")).to_have_count(0)
+    page.locator("section[data-file='src/long.py'] tr[id$='-L2'] td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 2 ")
+    assert errors == []
 
 
 def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str, gh_state: Path) -> None:

@@ -142,11 +142,12 @@ def graphql() -> None:
         found = json.loads(searches.read_text()) if searches.exists() else {}
         print(json.dumps({"data": {"viewer": {"login": "tester"}, "search": {"nodes": found.get(variables["q"], [])}}}))
         return
+    mutation = query.lstrip().startswith("mutation")
+    while mutation and (state_dir() / "hold.txt").exists():
+        time.sleep(0.05)
     comments_file = state_dir() / "comments.json"
     state = json.loads(comments_file.read_text())
-    if query.lstrip().startswith("mutation"):
-        while (state_dir() / "hold.txt").exists():
-            time.sleep(0.05)
+    if mutation:
         with (state_dir() / "mutations.log").open("a") as log:
             log.write(json.dumps(request) + "\n")
         data: dict = {}

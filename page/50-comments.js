@@ -1,8 +1,16 @@
 // Review threads from GitHub, placed on the lines they refer to, and the forms that write back.
 
-// C.version counts the loads, so a file's rendered body knows when its threads changed.
+// C.version counts the changes to the threads the page shows, so a file's rendered body knows when they changed.
 const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', status: '', pending: null, verdict: null, threads: [], reviews: [], comments: [] };
 const THREADS = { byFile: new Map(), orphans: [] };
+// The number of comment loads started, and the number of the load the page shows. A load that answers after a later
+// one changes nothing.
+const LOADS = { started: 0, shown: 0 };
+// The comments the viewer sent that GitHub has yet to give back, in the order sent: { thread } for a new thread or
+// { reply: thread id } for a reply, with the comment, and once GitHub took it, `sent`, the number of loads started by
+// then.
+let sending = [];
+let sends = 0;
 
 async function api(action, body) {
   const init = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
@@ -12,13 +20,18 @@ async function api(action, body) {
 }
 async function loadComments() {
   if (!API) return;
-  const started = Date.now();
+  const load = ++LOADS.started;
   try {
-    Object.assign(C, await api('comments'), { loaded: true, error: '', loadedAt: Date.now() });
-    state.sending = state.sending.filter(s => !s.sent || s.sent > started);
-  } catch (e) { C.error = e.message; }
-  C.version++;
-  indexThreads();
+    const d = await api('comments');
+    if (load < LOADS.shown) return;
+    Object.assign(C, d, { loaded: true, error: '', loadedAt: Date.now() });
+    sending = sending.filter(s => !s.sent || load <= s.sent);
+  } catch (e) {
+    if (load < LOADS.shown) return;
+    C.error = e.message;
+  }
+  LOADS.shown = load;
+  threadsChanged();
   render();
   if (SHELL) { SHELL.badge(C.threads.filter(t => !t.resolved).length); if (C.status) SHELL.status(C.status); }
 }
@@ -26,37 +39,43 @@ async function loadComments() {
 function hasDraft() {
   const b = state.bug;
   return !!((state.compose && state.compose.text.trim()) || state.drafts.size || [...state.replyOpen.values()].some(t => t.trim())
-    || state.reviewText.trim() || state.convText.trim() || (b.open && !b.prompt && b.text.trim()));
+    || state.reviewText.trim() || state.convText.trim() || (b.open && !b.prompt && b.text.trim())
+    || sending.some(s => !s.sent));
 }
-// Send an action to GitHub, then reload the comments. A comment being sent shows at once, tagged as sending until
-// GitHub takes it, and stays until a reload that started after that brings it back from GitHub. When GitHub refuses
-// it, it leaves and undo runs.
-async function post(action, body, sending = null, undo = () => {}) {
-  if (sending) { state.sending.push(sending); C.version++; indexThreads(); }
+// Send an action to GitHub, then reload the comments; false when GitHub refused it. taken runs once GitHub took the
+// action, refused when it refused it, each before the page draws the outcome.
+async function post(action, body, taken = () => {}, refused = () => {}) {
   state.busy = true; render();
   try {
     await api(action, body);
-  } catch (e) {
-    C.error = e.message; state.busy = false;
-    if (sending) { state.sending = state.sending.filter(s => s !== sending); C.version++; indexThreads(); undo(); }
-    render();
-    return false;
-  }
-  if (sending) { sending.comment.sending = false; sending.sent = Date.now(); }
+  } catch (e) { C.error = e.message; state.busy = false; refused(); render(); return false; }
+  taken();
   state.busy = false;
   await loadComments();
   return true;
 }
-// The comment the viewer is sending, as the page shows it until GitHub has it.
-const sendingComment = (body, mode, reply) => ({ id: '', author: C.viewer, body, html: '', created: new Date().toISOString(), url: '', pending: mode === 'review', reply, sending: true });
+// Send a comment to GitHub with post, showing it at once: in its new thread when entry has { thread }, or at the end of
+// the thread with id entry.reply. Until GitHub takes it, it carries a sending tag. It stays until a load started after
+// that shows GitHub's copy, so it never leaves the page before that copy comes. When GitHub refuses it, it leaves and
+// undo runs.
+function postComment(action, body, entry, undo) {
+  sending.push(entry); threadsChanged();
+  return post(action, body, () => { entry.comment.sending = false; entry.sent = LOADS.started; },
+    () => { sending = sending.filter(s => s !== entry); threadsChanged(); undo(); });
+}
+// The comment the viewer is sending, as the page shows it until GitHub has it. It is pending when GitHub will put it
+// in a pending review: a reply joins the pending review only when there is one, while a new thread starts one.
+const sendingComment = (body, mode, reply) => ({ id: '', author: C.viewer, body, html: '', created: new Date().toISOString(), url: '',
+  pending: mode === 'review' && (!reply || !!C.pending), reply, sending: true });
+function threadsChanged() { C.version++; indexThreads(); }
 
 // GitHub's threads with the comments being sent: replies at the end of their threads, then the new threads.
 function shownThreads() {
   const threads = C.threads.map(t => {
-    const replies = state.sending.filter(s => s.reply === t.id).map(s => s.comment);
+    const replies = sending.filter(s => s.reply === t.id).map(s => s.comment);
     return replies.length ? { ...t, comments: [...t.comments, ...replies] } : t;
   });
-  return [...threads, ...state.sending.filter(s => s.thread).map(s => s.thread)];
+  return [...threads, ...sending.filter(s => s.thread).map(s => s.thread)];
 }
 function indexThreads() {
   THREADS.byFile = new Map(); THREADS.orphans = [];
@@ -223,13 +242,24 @@ function openCompose(path, side, line, extend) {
   if (extend && c && c.path === path && c.side === side) {
     c.startLine = Math.min(c.startLine, c.line, line); c.line = Math.max(c.startLine, c.line, line);
     const d = takeDraft(path, side, c.line);
-    if (d) c.text = c.text.trim() ? d.text.trimEnd() + '\n\n' + c.text : d.text;
+    if (d) c.text = joinDrafts(d.text, c.text);
   } else {
     if (c && c.text.trim()) state.drafts.set(draftKey(c.path, c.side, c.line), c);
     state.compose = takeDraft(path, side, line) || { path, side, line, startLine: line, text: '' };
   }
   state.focus = '[data-compose-text]';
   render();
+}
+const joinDrafts = (first, then) => then.trim() ? first.trimEnd() + '\n\n' + then : first;
+// Open a comment box again with its text, joined by the text of a box or draft written on its line since. A box open
+// on another line keeps its text as a draft.
+function restoreCompose(c) {
+  const open = state.compose, draft = takeDraft(c.path, c.side, c.line);
+  if (draft) c.text = joinDrafts(c.text, draft.text);
+  if (open && draftKey(open.path, open.side, open.line) === draftKey(c.path, c.side, c.line)) c.text = joinDrafts(c.text, open.text);
+  else if (open && open.text.trim()) state.drafts.set(draftKey(open.path, open.side, open.line), open);
+  state.compose = c;
+  state.focus = '[data-compose-text]';
 }
 // The draft the state holds for a form's textarea.
 function draftText(box) {
@@ -277,12 +307,10 @@ async function commentClick(t, e) {
     const body = { path: c.path, body: c.text, line: c.line, side: c.side, mode: d.composeSend };
     if (c.startLine !== c.line) { body.start_line = c.startLine; body.start_side = c.side; }
     const comment = sendingComment(c.text, d.composeSend, false);
-    const thread = { id: `sending:${draftKey(c.path, c.side, c.line)}`, path: c.path, resolved: false, outdated: false, resolved_by: '', sending: true,
+    const thread = { id: `sending:${++sends}`, path: c.path, resolved: false, outdated: false, resolved_by: '', sending: true,
       line: c.line, start_line: body.start_line ?? null, side: c.side, start_side: body.start_side ?? null, comments: [comment] };
     state.compose = null;
-    await post('comment', body, { thread, comment }, () => {
-      if (state.compose && state.compose.text.trim()) state.drafts.set(draftKey(c.path, c.side, c.line), c); else state.compose = c;
-    });
+    await postComment('comment', body, { thread, comment }, () => restoreCompose(c));
     return true;
   }
   if (d.reply !== undefined) { state.replyOpen.set(d.reply, ''); state.focus = `[data-reply-text="${CSS.escape(d.reply)}"]`; render(); return true; }
@@ -292,8 +320,9 @@ async function commentClick(t, e) {
     if (!text.trim()) return true;
     const id = d.replySend;
     state.replyOpen.delete(id);
-    await post('reply', { thread: id, body: text, mode: d.mode }, { reply: id, comment: sendingComment(text, d.mode, true) }, () => {
-      if (!(state.replyOpen.get(id) || '').trim()) state.replyOpen.set(id, text);
+    await postComment('reply', { thread: id, body: text, mode: d.mode }, { reply: id, comment: sendingComment(text, d.mode, true) }, () => {
+      state.replyOpen.set(id, joinDrafts(text, state.replyOpen.get(id) || ''));
+      state.focus = `[data-reply-text="${CSS.escape(id)}"]`;
     });
     return true;
   }
