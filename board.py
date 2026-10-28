@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from datetime import date, datetime, timedelta
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 import build
 import followed
@@ -23,32 +23,44 @@ PATH = build.CACHE / "board.json"
 MERGED_DAYS = 7
 REFRESH_SECONDS = 30
 FOLLOWED_QUERY = "is:pr is:open archived:false draft:false -author:@me sort:updated-desc"
+MERGED_QUERY = "is:pr is:merged -author:@me sort:updated-desc"
 FAILED = ("FAILURE", "ERROR")
 RUNNING = ("PENDING", "EXPECTED")
+SHOWN = 5
+NONE_HTML = '<span class="hint none">None</span>'
+
+
+class Column(NamedTuple):
+    """A column of the start page: its label, its sections as (key, subtitle) pairs, the subtitle empty when the column
+    has one section, and whether its rows are quiet."""
+
+    label: str
+    sections: tuple[tuple[str, str], ...]
+    quiet: bool = False
+
+
 GROUPS = (
     (
         "Your pull requests",
         (
-            ("action", "Need your action"),
-            ("ci", "Waiting on CI"),
-            ("review", "Waiting on review"),
-            ("draft", "Draft"),
-            ("merged", "Recently merged"),
+            Column("Drafts", (("draft", ""),)),
+            Column(
+                "In review", (("action", "Needs your action"), ("ci", "Waiting on CI"), ("review", "Waiting on review"))
+            ),
+            Column("Merged this week", (("merged", ""),), quiet=True),
         ),
     ),
     (
         "Other people's pull requests",
         (
-            ("reviewing", "You are reviewing: need your action"),
-            ("reviewed", "You are reviewing: waiting on the author"),
-            ("unreviewed", "Need a reviewer"),
-            ("others", "Being reviewed by someone else"),
+            Column("Need a reviewer", (("unreviewed", ""),)),
+            Column(
+                "Being reviewed",
+                (("reviewing", "Waiting on your review"), ("reviewed", "By you"), ("others", "By someone else")),
+            ),
+            Column("Recently merged", (("merged_others", ""),), quiet=True),
         ),
     ),
-)
-CHEVRON = (
-    '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" '
-    'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 )
 lock = threading.Lock()
 refreshing = threading.Lock()
@@ -71,18 +83,20 @@ class Row(TypedDict):
 
 class Board(TypedDict):
     """What board.json holds: the viewer's login, when GitHub last answered, the followed repositories it was
-    asked about, and the rows of each section, newest first."""
+    asked about, the rows of each section, newest first, and the keys of the full sections (see `full`)."""
 
     viewer: str
     fetched: float
     repos: list[str]
     sections: dict[str, list[Row]]
+    full: list[str]
 
 
 def queries(repos: list[str], merged_since: date) -> list[str]:
     """The searches the sections read, in this order: the viewer's open pull requests, the viewer's pull requests
     merged on or after the date, the pull requests that ask for the viewer's review, the ones the viewer takes part
-    in, the ones the viewer reviewed, and, when there are followed repositories, their open pull requests."""
+    in, the ones the viewer reviewed, and, when there are followed repositories, their open pull requests and the ones
+    other people merged there on or after the date."""
     found = [
         "is:pr is:open archived:false author:@me sort:updated-desc",
         f"is:pr is:merged author:@me merged:>={merged_since.isoformat()} sort:updated-desc",
@@ -91,7 +105,9 @@ def queries(repos: list[str], merged_since: date) -> list[str]:
         "is:pr is:open archived:false reviewed-by:@me -author:@me sort:updated-desc",
     ]
     if repos:
-        found.append(FOLLOWED_QUERY + "".join(f" repo:{repo}" for repo in repos))
+        scope = "".join(f" repo:{repo}" for repo in repos)
+        found.append(FOLLOWED_QUERY + scope)
+        found.append(f"{MERGED_QUERY} merged:>={merged_since.isoformat()}{scope}")
     return found
 
 
@@ -245,8 +261,11 @@ def row(pr: dict, reason: str, tone: str) -> Row:
 def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str, list[Row]]:
     """The rows of each section from the answers to `queries`, in its order, each section newest first. A pull
     request shows in one section only."""
-    sections: dict[str, list[Row]] = {key: [] for _, subs in GROUPS for key, _ in subs}
+    sections: dict[str, list[Row]] = {
+        key: [] for _, columns in GROUPS for column in columns for key, _ in column.sections
+    }
     open_mine, merged, asked, involved, reviewed, *rest = found
+    followed_open, merged_others = rest or ([], [])
     for pr in open_mine:
         key, reason, tone = own(pr, viewer)
         sections[key].append(row(pr, reason, tone))
@@ -255,7 +274,7 @@ def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str
     asked_urls, reviewed_urls = {pr["url"] for pr in asked}, {pr["url"] for pr in reviewed}
     followed_repos = set(repos)
     seen: set[str] = set()
-    for pr in itertools.chain(asked, involved, reviewed, *rest):
+    for pr in itertools.chain(asked, involved, reviewed, followed_open):
         if pr["url"] in seen or login(pr) == viewer:
             continue
         seen.add(pr["url"])
@@ -263,17 +282,43 @@ def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str
         if placed := other(pr, viewer, pr["url"] in asked_urls, pr["url"] in reviewed_urls, repo in followed_repos):
             key, reason, tone = placed
             sections[key].append(row(pr, reason, tone))
+    for pr in merged_others:
+        if pr["url"] not in seen and login(pr) != viewer:
+            sections["merged_others"].append(row(pr, "", ""))
     for rows in sections.values():
         rows.sort(key=lambda r: r["at"], reverse=True)
     return sections
 
 
+def full(found: list[list[dict]]) -> list[str]:
+    """The keys of the sections that may lack rows: those fed by a search that found as many pull requests as
+    `github.search_prs` reads. `found` holds the answers to `queries`, in its order."""
+    open_mine, merged, asked, involved, reviewed, *rest = found
+    followed_open, merged_others = rest or ([], [])
+    fed = (
+        (open_mine, ("draft", "action", "ci", "review")),
+        (merged, ("merged",)),
+        (asked, ("reviewing",)),
+        (involved, ("reviewing", "reviewed", "unreviewed", "others")),
+        (reviewed, ("reviewing", "reviewed")),
+        (followed_open, ("unreviewed", "others")),
+        (merged_others, ("merged_others",)),
+    )
+    return sorted({key for answer, keys in fed if len(answer) >= github.SEARCH_LIMIT for key in keys})
+
+
 def load() -> Board:
     try:
         data = json.loads(PATH.read_text())
-        return Board(viewer=data["viewer"], fetched=data["fetched"], repos=data["repos"], sections=data["sections"])
+        return Board(
+            viewer=data["viewer"],
+            fetched=data["fetched"],
+            repos=data["repos"],
+            sections=data["sections"],
+            full=data.get("full", []),
+        )
     except (OSError, ValueError, KeyError, TypeError):
-        return Board(viewer="", fetched=0.0, repos=[], sections={})
+        return Board(viewer="", fetched=0.0, repos=[], sections={}, full=[])
 
 
 def save(board: Board) -> None:
@@ -299,7 +344,15 @@ def refresh() -> None:
         if answer is None:
             return
         viewer, found = answer
-        save(Board(viewer=viewer, fetched=time.time(), repos=repos, sections=classify(viewer, found, repos)))
+        save(
+            Board(
+                viewer=viewer,
+                fetched=time.time(),
+                repos=repos,
+                sections=classify(viewer, found, repos),
+                full=full(found),
+            )
+        )
 
 
 def ago(ts: float) -> str:
@@ -344,26 +397,63 @@ def opened_rows(shown: set[PullRef]) -> list[Row]:
     ]
 
 
+def count_html(rows: int, full: bool) -> str:
+    """A count of rows, with a plus when `full` says a search may have found more than it read."""
+    return f'<span class="count">{rows}{"+" if full else ""}</span>'
+
+
+def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
+    """A pull request as a card: its title, then, for the viewer's own, its status icon and `owner/repo#number`, or,
+    for someone else's, the author's login and the repository's name, then the reason and the age. A quiet card sits
+    on the canvas, the others on the panel."""
+    ref = ref_of(r)
+    if r["author"] == viewer:
+        who = f'{render.pr_icon(r["status"])}<span class="ref">{html.escape(str(ref))}</span>'
+    else:
+        who = f'<span class="by">{html.escape(r["author"] or "ghost")}</span><span class="ref">{html.escape(r["repo"])}</span>'
+    why = f'<span class="why {r["tone"]}">{html.escape(r["reason"])}</span>' if r["reason"] else ""
+    return (
+        f'<a class="card{"" if quiet else " panel"} pr" href="{html.escape(ref.path)}"{" hidden" if hidden else ""}>'
+        f'<span class="t">{html.escape(r["title"])}</span><span class="m">{who}<span class="spacer"></span>{why}'
+        f'<span class="age">{html.escape(ago(r["at"]))}</span></span></a>'
+    )
+
+
+def section_html(key: str, subtitle: str, rows: list[Row], full: bool, viewer: str, quiet: bool) -> str:
+    """A section: its subtitle and count when it has a subtitle, then its cards, all but the first SHOWN hidden,
+    and a "Show N more" button when some are hidden, or None when it has no rows."""
+    head = f"<h4>{html.escape(subtitle)}{count_html(len(rows), full)}</h4>" if subtitle else ""
+    cards = "".join(card_html(r, viewer, quiet, i >= SHOWN) for i, r in enumerate(rows))
+    more = f'<button class="ghost more">Show {len(rows) - SHOWN} more</button>' if len(rows) > SHOWN else ""
+    return f'<section class="sub" data-key="{key}">{head}{cards or NONE_HTML}{more}</section>'
+
+
 def sections_html() -> str:
-    """The sections as the start page shows them: a group of sections for the viewer's pull requests, one for other
-    people's, each section with a chevron that closes it, then the pull requests opened last that no section shows.
-    An empty section or group is left out."""
+    """The start page's board, once GitHub has answered: a group of columns for the viewer's pull requests and one
+    for other people's, then the pull requests opened last that no section shows. A column counts the rows of its
+    sections, with a plus when one of them is full."""
     board = load()
     viewer, shown, groups = board["viewer"], set(), []
-    for name, subs in GROUPS:
-        parts = []
-        for key, label in subs:
-            rows = board["sections"].get(key) or []
-            shown.update(ref_of(r) for r in rows)
-            if rows:
+    if board["sections"]:
+        for name, columns in GROUPS:
+            parts = []
+            for column in columns:
+                lists = [
+                    (key, subtitle, board["sections"].get(key) or [], key in board["full"])
+                    for key, subtitle in column.sections
+                ]
+                for _, _, rows, _ in lists:
+                    shown.update(ref_of(r) for r in rows)
+                total = sum(len(rows) for _, _, rows, _ in lists)
+                full = any(full for _, _, _, full in lists)
+                body = "".join(section_html(*section, viewer, column.quiet) for section in lists)
                 parts.append(
-                    f'<section class="sub" data-key="{key}"><h3><button class="chev ghost open" '
-                    f'aria-label="Close or open the section" title="Close or open the section" aria-expanded="true">'
-                    f'{CHEVRON}</button>{html.escape(label)}<span class="count">{len(rows)}</span></h3>'
-                    f'<div class="list card">{"".join(row_html(r, viewer) for r in rows)}</div></section>'
+                    f'<div class="column{" quiet" if column.quiet else ""}">'
+                    f"<h3>{html.escape(column.label)}{count_html(total, full)}</h3>{body}</div>"
                 )
-        if parts:
-            groups.append(f'<section class="group"><h2>{html.escape(name)}</h2>{"".join(parts)}</section>')
+            groups.append(
+                f'<section class="group"><h2>{html.escape(name)}</h2><div class="columns">{"".join(parts)}</div></section>'
+            )
     if opened := opened_rows(shown):
         groups.append(
             f'<section class="group opened"><h2>Recently opened<span class="count">{len(opened)}</span></h2>'

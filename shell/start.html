@@ -3,32 +3,27 @@ __BANNER__
 <form action="/open"><input name="pr" class="big" placeholder="https://github.com/owner/repo/pull/123 or owner/repo#123" autofocus><button class="primary big">Open</button></form>
 <div id="board">__BOARD__</div>
 <script>
-// The sections the reader closed, by key, saved as dr:closed so they stay closed across reloads and relaunches.
+// The sections the reader opened with Show N more, by key, so they stay open when the board draws again.
 const board = document.getElementById('board');
-const closedKeys = () => { try { return new Set(JSON.parse(localStorage.getItem('dr:closed')) || []); } catch { return new Set(); } };
-const showClosed = () => {
-  const closed = closedKeys();
-  for (const sub of board.querySelectorAll('.sub')) {
-    const open = !closed.has(sub.dataset.key), chev = sub.querySelector('.chev');
-    sub.classList.toggle('closed', !open);
-    chev.classList.toggle('open', open);
-    chev.setAttribute('aria-expanded', String(open));
+const opened = new Set();
+const showOpened = () => {
+  for (const more of board.querySelectorAll('.sub > .more')) {
+    if (!opened.has(more.parentElement.dataset.key)) continue;
+    for (const card of more.parentElement.querySelectorAll(':scope > [hidden]')) card.hidden = false;
+    more.remove();
   }
 };
 board.addEventListener('click', (e) => {
-  const chev = e.target.closest('.sub .chev');
-  if (!chev) return;
-  const closed = closedKeys(), key = chev.closest('.sub').dataset.key;
-  if (!closed.delete(key)) closed.add(key);
-  try { localStorage.setItem('dr:closed', JSON.stringify([...closed])); } catch {}
-  showClosed();
+  const more = e.target.closest('.sub > .more');
+  if (!more) return;
+  opened.add(more.parentElement.dataset.key);
+  showOpened();
 });
-showClosed();
 let loading = null;
 const loadBoard = () => {
   if (loading) loading.abort();
   loading = new AbortController();
-  fetch('/board', { signal: loading.signal }).then(r => r.ok ? r.text() : Promise.reject()).then(h => { board.innerHTML = h; showClosed(); }).catch(() => {});
+  fetch('/board', { signal: loading.signal }).then(r => r.ok ? r.text() : Promise.reject()).then(h => { board.innerHTML = h; showOpened(); }).catch(() => {});
 };
 loadBoard();
 document.addEventListener('tab-shown', loadBoard);
