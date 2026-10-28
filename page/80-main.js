@@ -329,7 +329,7 @@ function render() {
   readerAt = -Infinity;
   renderSide();
   const anchor = targetAnchor() || viewportAnchor();
-  const before = { rows: drawnRows(), bands: notesBands() };
+  const before = { rows: drawnRowIds(), bands: notesBands() }, typing = focusedBox(main);
   patchOverview();
   patchSections(visibleFiles());
   refreshBodies();
@@ -339,16 +339,17 @@ function render() {
   restoreAnchor(anchor);
   markActive();
   restoreFocus();
+  refocusBox(main, typing);
   animateNotes(before, anchor);
 }
 
 // The ids of the code rows drawn.
-const drawnRows = () => new Set([...main.querySelectorAll('table.diff tr[id]')].map(r => r.id));
+const drawnRowIds = () => new Set([...main.querySelectorAll('.chunk > table.diff > tbody > tr[id]')].map(r => r.id));
 // The band of threads and comment box under each code row that has one, by the code row's id, with its height.
 function notesBands() {
   const bands = new Map();
-  for (const tr of main.querySelectorAll('table.diff tr.notes')) {
-    const el = tr.querySelector(':scope > td > div.notes');
+  for (const tr of main.querySelectorAll('.chunk > table.diff > tbody > tr.notes')) {
+    const el = notesBandOf(tr);
     bands.set(tr.dataset.row, { el, h: el.offsetHeight });
   }
   return bands;
@@ -356,38 +357,38 @@ function notesBands() {
 const RESIZE_MS = 180;
 // Change an element's height from one value to another over RESIZE_MS, clipping what overflows meanwhile, then run
 // done. The element then takes the height its content gives it.
-function resize(el, from, to, done = () => {}) {
+function animateHeight(el, from, to, done = () => {}) {
   el.classList.add('resizing');
   const a = el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: RESIZE_MS, easing: 'ease-out', fill: 'forwards' });
   a.onfinish = () => { a.cancel(); el.classList.remove('resizing'); done(); };
 }
-// Let each band under a code row on screen that changed height, came or left since before (the drawn rows and the
-// bands then) change height over RESIZE_MS instead of at once. A band above the anchor's line changes at once, so the
-// anchor stays still. A band that left gives way to an empty band that shrinks, then leaves.
+// Animate the height of each band that changed, came or left since before, which holds the drawn row ids and the
+// bands of that moment. Only a band under a code row on screen animates. A band above the anchor changes at once,
+// so the anchor stays still. A band that left gives way to an empty band that shrinks, then leaves.
 function animateNotes(before, anchor) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const pane = main.getBoundingClientRect(), anchorRow = anchor && anchor.rowId && document.getElementById(anchor.rowId);
-  const line = anchorRow ? anchorRow.getBoundingClientRect().top : anchor && anchor.sec.isConnected ? anchor.sec.getBoundingClientRect().top : -Infinity;
-  const moves = (row) => {
+  const anchorTop = anchorRow ? anchorRow.getBoundingClientRect().top : anchor && anchor.sec.isConnected ? anchor.sec.getBoundingClientRect().top : -Infinity;
+  const animates = (row) => {
     if (!row || !before.rows.has(row.id)) return false;
     const r = row.getBoundingClientRect();
-    return r.top >= line && r.bottom >= pane.top && r.bottom < pane.bottom;
+    return r.top >= anchorTop && r.bottom >= pane.top && r.bottom < pane.bottom;
   };
   // Measure everything before the first change, so the changes force no layout in between.
   const after = notesBands(), grow = [], shrink = [];
   for (const [id, { el, h }] of after) {
     const old = before.bands.get(id), from = old ? old.h : 0;
-    if ((!old || old.el !== el) && Math.abs(from - h) > 1 && moves(document.getElementById(id))) grow.push({ el, from, to: h });
+    if ((!old || old.el !== el) && Math.abs(from - h) > 1 && animates(document.getElementById(id))) grow.push({ el, from, to: h });
   }
   for (const [id, { h }] of before.bands) {
     const row = document.getElementById(id);
-    if (!after.has(id) && moves(row)) shrink.push({ row, h });
+    if (!after.has(id) && animates(row)) shrink.push({ row, h });
   }
-  for (const { el, from, to } of grow) resize(el, from, to);
+  for (const { el, from, to } of grow) animateHeight(el, from, to);
   for (const { row, h } of shrink) {
     row.insertAdjacentHTML('afterend', notesRowHtml(row.id, ''));
     const ghost = row.nextElementSibling;
-    resize(ghost.querySelector(':scope > td > div.notes'), h, 0, () => ghost.remove());
+    animateHeight(notesBandOf(ghost), h, 0, () => ghost.remove());
   }
 }
 function restoreFocus() {

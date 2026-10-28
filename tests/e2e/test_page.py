@@ -1,11 +1,13 @@
 import json
 import re
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from playwright.sync_api import Locator, Page, Position, expect
+from playwright.sync_api import APIResponse, Locator, Page, Position, Route, expect
 
 from e2e.conftest import TITLE
 from helpers import Files
@@ -842,28 +844,152 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
     ]
 
 
-def test_a_comment_shows_as_sending_until_github_has_it(page: Page, server_url: str, gh_state: Path) -> None:
+@contextmanager
+def held_mutations(gh_state: Path) -> Iterator[Callable[[], None]]:
+    """Hold every mutation of the fake gh until the function this yields is called. Afterwards, wait for the
+    mutations to end, then put the comments back as they were."""
     comments_file, hold = gh_state / "comments.json", gh_state / "hold.txt"
     saved = comments_file.read_text()
     hold.write_text("")
     try:
+        yield lambda: hold.unlink(missing_ok=True)
+    finally:
+        hold.unlink(missing_ok=True)
+        deadline = time.monotonic() + 10
+        while any(gh_state.glob("held-*")) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        comments_file.write_text(saved)
+
+
+def send_on_hello(page: Page, text: str, mode: str = "single") -> Locator:
+    """Send a comment on the line that prints hello, and return its thread."""
+    section = page.locator(APP)
+    section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+    page.locator("textarea[data-compose-text]").fill(text)
+    page.click(f"button[data-compose-send='{mode}']")
+    return section.locator("div.thread[data-thread]", has_text=text)
+
+
+def test_a_comment_shows_as_sending_until_github_has_it(page: Page, server_url: str, gh_state: Path) -> None:
+    with held_mutations(gh_state) as release:
         open_pr(page, server_url)
-        section = page.locator(APP)
-        section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
-        page.locator("textarea[data-compose-text]").fill("Greet by name")
-        page.click("button[data-compose-send='review']")
-        thread = section.locator("div.thread[data-thread]", has_text="Greet by name")
+        thread = send_on_hello(page, "Greet by name", "review")
         expect(thread.locator(".tag.sending")).to_be_visible()
         expect(thread.locator(".tag.pending")).to_be_visible()
         expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
         expect(thread.locator("a[target=_blank]")).to_have_count(0)
 
-        hold.unlink()
+        release()
         expect(thread.locator(".tag.sending")).to_have_count(0)
         expect(thread.locator("a[target=_blank]")).to_have_count(1)
-        expect(section.locator("div.thread[data-thread]", has_text="Greet by name")).to_have_count(1)
+        expect(page.locator(APP).locator("div.thread[data-thread]", has_text="Greet by name")).to_have_count(1)
+
+
+def test_a_box_opened_while_a_comment_sends_keeps_its_focus(page: Page, server_url: str, gh_state: Path) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        thread = send_on_hello(page, "Greet by name")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        page.locator(APP).locator("tr.ctx", has_text="def main():").locator("td.n.key").click()
+        box = page.locator("textarea[data-compose-text]")
+        expect(box).to_be_focused()
+        page.keyboard.type("abc")
+
+        release()
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+        page.keyboard.type("d")
+        expect(box).to_have_value("abcd")
+        expect(box).to_be_focused()
+
+
+def test_a_refused_comment_takes_the_text_written_meanwhile_on_its_line(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        thread = send_on_hello(page, "Greet by name")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+        page.keyboard.type("Use their login")
+        (gh_state / "fail.txt").write_text("api graphql\n")
+        try:
+            release()
+            expect(page.locator("#side .notice.err")).to_contain_text("Comments:")
+        finally:
+            (gh_state / "fail.txt").unlink()
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("Greet by name\n\nUse their login")
+    expect(thread).to_have_count(0)
+
+
+def test_a_refused_comment_waits_as_a_draft_while_another_box_has_text(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        thread = send_on_hello(page, "Greet by name")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        main_row = page.locator(APP).locator("tr.ctx", has_text="def main():")
+        main_row.locator("td.n.key").click()
+        page.keyboard.type("Other")
+        (gh_state / "fail.txt").write_text("api graphql\n")
+        try:
+            release()
+            expect(page.locator("#side .notice.err")).to_contain_text("is a draft on its line")
+        finally:
+            (gh_state / "fail.txt").unlink()
+    box = page.locator("textarea[data-compose-text]")
+    expect(box).to_have_value("Other")
+    expect(box).to_be_focused()
+    page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+    expect(box).to_have_value("Greet by name")
+
+
+def test_a_reply_without_a_pending_review_shows_as_sending_and_not_pending(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        page.click("button[data-reply='T1']")
+        page.locator("textarea[data-reply-text='T1']").fill("Will do")
+        page.click("button[data-reply-send='T1'][data-mode='review']")
+        reply = page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")
+        expect(reply.locator(".tag.sending")).to_be_visible()
+        expect(reply.locator(".tag.pending")).to_have_count(0)
+        expect(page.locator("textarea[data-reply-text='T1']")).to_have_count(0)
+
+        release()
+        expect(reply.locator(".tag.sending")).to_have_count(0)
+        expect(reply.locator("a[target=_blank]")).to_have_count(1)
+        expect(page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")).to_have_count(1)
+
+
+def test_a_load_that_answers_after_a_later_one_changes_nothing(page: Page, server_url: str, gh_state: Path) -> None:
+    comments_file = gh_state / "comments.json"
+    saved = comments_file.read_text()
+    try:
+        open_pr(page, server_url)
+        held: list[tuple[Route, APIResponse]] = []
+
+        def hold_the_first(route: Route) -> None:
+            if held:
+                route.fallback()
+            else:
+                held.append((route, route.fetch()))
+
+        page.route("**/api/acme/widgets/1/comments", hold_the_first)
+        page.evaluate("() => { window.lateLoad = loadComments(); }")
+        deadline = time.monotonic() + 10
+        while not held and time.monotonic() < deadline:
+            page.wait_for_timeout(50)
+        thread = send_on_hello(page, "Greet by name")
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+
+        route, response = held[0]
+        route.fulfill(response=response)
+        page.evaluate("lateLoad")
+        expect(thread).to_have_count(1)
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
     finally:
-        hold.unlink(missing_ok=True)
         comments_file.write_text(saved)
 
 
@@ -908,6 +1034,7 @@ def test_a_comment_box_under_the_last_row_of_a_chunk_opens_and_closes(
     expect(last.locator("xpath=following-sibling::tr[1]")).to_have_class("notes")
     page.click("button[data-compose-cancel]")
     expect(page.locator(".form.compose")).to_have_count(0)
+    expect(page.locator("tr.notes")).to_have_count(0)
     page.locator("section[data-file='src/long.py'] tr[id$='-L2'] td.n.key").click()
     expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 2 ")
     assert errors == []

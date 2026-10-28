@@ -43,7 +43,7 @@ function bugState() {
     compose: c && { ...c, text: `${c.text.length} chars` }, drafts: [...state.drafts.values()].map(d => ({ ...d, text: `${d.text.length} chars` })),
     replyOpen: [...state.replyOpen.keys()], openThreads: cap([...state.openThreads]), showOutdated: [...state.showOutdated],
     reviewPanel: state.reviewPanel, reviewText: `${state.reviewText.length} chars`, convText: `${state.convText.length} chars`,
-    sending: sending.map(s => ({ thread: s.thread ? s.thread.id : null, reply: s.reply || null, sent: s.sent || null })),
+    sending: sendingSummary(),
     busy: state.busy, focus: state.focus, reviewedFiles: FILES.filter(isReviewed).length,
     visibleFiles: visibleFiles().length, hiddenNoiseOnly: FILES.filter(f => kindVisible(f) && f.noise_only && !state.showNoiseOnly).length,
     hiddenGenerated: FILES.filter(f => kindVisible(f) && f.generated && !state.showGenerated).length,
@@ -54,7 +54,7 @@ function commentsLine() {
   if (!C.loaded) return `Not loaded yet${C.error ? ` · error: ${C.error}` : ''}.`;
   const unresolved = C.threads.filter(t => !t.resolved).length, outdated = C.threads.filter(t => t.outdated).length;
   const stale = C.head && !PR.head.startsWith(C.head) && !C.head.startsWith(PR.head);
-  return [`loaded ${relative(C.loadedAt, Date.now())} (load ${LOADS.shown} of ${LOADS.started})`, `viewer ${C.viewer || 'unknown'}`,
+  return [`loaded ${relative(C.loadedAt, Date.now())} (${loadsSummary()})`, `viewer ${C.viewer || 'unknown'}`,
     `pending review ${C.pending ? `yes (${plural(pendingCount(), 'pending comment')})` : 'no'}`,
     `${plural(C.threads.length, 'thread')} (${unresolved} unresolved, ${outdated} outdated, ${THREADS.orphans.length} on files outside the diff)`,
     `${plural(C.reviews.length, 'review')}`, `${plural(C.comments.length, 'conversation comment')}`,

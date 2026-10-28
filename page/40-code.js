@@ -20,8 +20,9 @@ function renderRow(f, r, out, index) {
   out.push(`<tr class="${cls}" id="${id}"><td class="n${old ? ' key' : ''}">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n${old ? '' : ' key'}">${old ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`
     + (notes ? notesRowHtml(id, notes) : ''));
 }
-// The row under a code row that holds its threads and comment box, named by the code row's id.
+// The row under a code row that holds its threads and comment box in a band, named by the code row's id.
 const notesRowHtml = (id, html) => `<tr class="notes" data-row="${id}"><td colspan="4"><div class="notes">${html}</div></td></tr>`;
+const notesBandOf = (tr) => tr.firstElementChild.firstElementChild;
 
 // A row with a chip in the code column, indented like the first folded line.
 function inlineFoldRow(b) {

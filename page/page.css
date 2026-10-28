@@ -159,8 +159,8 @@ table.diff tr.sel td { box-shadow: inset 0 0 0 100px var(--row-selected-bg); }
 table.diff tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px var(--row-selected-bg) !important; }
 table.diff tr.between td:first-child { box-shadow: inset 3px 0 0 var(--accent) !important; }
 table.diff tr.notes > td { padding: 0; white-space: normal; font: 13px/1.45 var(--sans); }
-/* The band of a line's threads and comment form. Its borders are shadows and its spacing the margins of what it holds,
-   so it can shrink to nothing while its height changes (animateNotes); clip, unlike hidden, leaves the sticky
+/* The band of a line's threads and comment form. Its borders are shadows and its spacing is the margins of what it
+   holds, so it can shrink to nothing while its height changes (animateNotes). Clip, unlike hidden, leaves the sticky
    threads their scroll container. */
 tr.notes > td > div.notes { display: flow-root; padding: 0 12px 0 44px; background: var(--bg-panel); box-shadow: inset 0 1px var(--border), inset 0 -1px var(--border); }
 tr.notes > td > div.notes.resizing { overflow: clip; }

@@ -96,7 +96,7 @@ button.primary .count { background: var(--text-on-fill); color: var(--accent); }
 .chip.action:hover, .chip.open { color: var(--accent); border-color: var(--accent); }
 .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; border: 1px solid currentColor; border-radius: var(--radius-sm); padding: 0 5px; }
 .tag.pending { color: var(--mod-fg); }
-/* The tag of a comment GitHub has yet to take pulses until GitHub has it. */
+/* A comment's sending tag pulses until GitHub takes the comment. */
 .tag.sending { color: var(--accent); animation: fade 1.2s ease-in-out infinite; }
 @keyframes fade { 50% { opacity: var(--dim); } }
 kbd { font: 11px var(--mono); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; }
