@@ -799,7 +799,7 @@ def test_threads_show_on_their_lines_and_in_the_overview(page: Page, server_url:
     expect(open_thread.locator(".comment b")).to_have_text("bob")
     expect(
         section.locator("tr.add", has_text='print("hello")').locator("xpath=following-sibling::tr[1]")
-    ).to_have_class("thread")
+    ).to_have_class("notes")
     expect(section.locator(".thread.folded[data-thread-open='T2']")).to_contain_text(
         "Resolved by bob · ann: nit: spacing"
     )
@@ -822,7 +822,9 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
     expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 11")
     box.fill("Use a logger here")
     page.click("button[data-compose-send='single']")
-    expect(section.locator("div.thread[data-thread]", has_text="Use a logger here")).to_be_visible()
+    thread = section.locator("div.thread[data-thread]", has_text="Use a logger here")
+    expect(thread).to_be_visible()
+    expect(thread.locator(".tag.sending")).to_have_count(0)
     expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
     expect(page.locator("#side .leaf[data-path='src/app.py'] .bubble")).to_have_text("2")
 
@@ -833,6 +835,46 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
     assert posted[0]["variables"]["threads"] == [
         {"path": "src/app.py", "body": "Use a logger here", "line": 11, "side": "RIGHT"}
     ]
+
+
+def test_a_comment_shows_as_sending_until_github_has_it(page: Page, server_url: str, gh_state: Path) -> None:
+    comments_file, hold = gh_state / "comments.json", gh_state / "hold.txt"
+    saved = comments_file.read_text()
+    hold.write_text("")
+    try:
+        open_pr(page, server_url)
+        section = page.locator(APP)
+        section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+        page.locator("textarea[data-compose-text]").fill("Greet by name")
+        page.click("button[data-compose-send='review']")
+        thread = section.locator("div.thread[data-thread]", has_text="Greet by name")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        expect(thread.locator(".tag.pending")).to_be_visible()
+        expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
+        expect(thread.locator("a[target=_blank]")).to_have_count(0)
+
+        hold.unlink()
+        expect(thread.locator(".tag.sending")).to_have_count(0)
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+        expect(section.locator("div.thread[data-thread]", has_text="Greet by name")).to_have_count(1)
+    finally:
+        hold.unlink(missing_ok=True)
+        comments_file.write_text(saved)
+
+
+def test_a_comment_github_refuses_goes_back_to_its_box(page: Page, server_url: str, gh_state: Path) -> None:
+    open_pr(page, server_url)
+    section = page.locator(APP)
+    section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+    page.locator("textarea[data-compose-text]").fill("Greet by name")
+    (gh_state / "fail.txt").write_text("api graphql\n")
+    try:
+        page.click("button[data-compose-send='single']")
+        expect(page.locator("#side .notice.err")).to_contain_text("Comments:")
+    finally:
+        (gh_state / "fail.txt").unlink()
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("Greet by name")
+    expect(section.locator("div.thread[data-thread]", has_text="Greet by name")).to_have_count(0)
 
 
 def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str, gh_state: Path) -> None:
@@ -912,6 +954,7 @@ def test_a_comment_box_keeps_its_dragged_height_after_scrolling_out_of_view(
     page.locator("section[data-file='src/long.py'] tr[id$='-L2'] td.n.key").click()
     box = page.locator("textarea[data-compose-text]")
     box.press("Escape")
+    expect(page.locator("div.notes.resizing")).to_have_count(0)
     edge = box.bounding_box()
     assert edge
     page.mouse.move(edge["x"] + edge["width"] - 3, edge["y"] + edge["height"] - 3)

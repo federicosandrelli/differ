@@ -159,9 +159,15 @@ body.comment-drag table.diff td { transition: none; }
 table.diff tr.sel td { box-shadow: inset 0 0 0 100px var(--row-selected-bg); }
 table.diff tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px var(--row-selected-bg) !important; }
 table.diff tr.between td:first-child { box-shadow: inset 3px 0 0 var(--accent) !important; }
-tr.thread > td, tr.compose > td { padding: 6px 12px 8px 44px; white-space: normal; font: 13px/1.45 var(--sans); background: var(--bg-panel); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+table.diff tr.notes > td { padding: 0; white-space: normal; font: 13px/1.45 var(--sans); }
+/* The band of a line's threads and comment form. Its borders are shadows and its spacing the margins of what it holds,
+   so it can shrink to nothing while its height changes (animateNotes); clip, unlike hidden, leaves the sticky
+   threads their scroll container. */
+div.notes { display: flow-root; padding: 0 12px 0 44px; background: var(--bg-panel); box-shadow: inset 0 1px var(--border), inset 0 -1px var(--border); }
+div.notes.resizing { overflow: clip; }
 /* A thread or form stays in view and inside the body's width however far the code is scrolled sideways. */
-tr.thread > td > *, tr.compose > td > * { position: sticky; left: 44px; max-width: min(760px, 100cqw - 56px); }
+div.notes > * { position: sticky; left: 44px; max-width: min(760px, 100cqw - 56px); margin: 7px 0 0; }
+div.notes > :last-child { margin-bottom: 9px; }
 .thread { max-width: 760px; }
 .thread.folded { padding: 6px 12px; color: var(--text-secondary); font-size: 12.5px; cursor: pointer; }
 .thread.folded:hover { border-color: var(--accent); }
@@ -177,6 +183,8 @@ tr.thread > td > *, tr.compose > td > * { position: sticky; left: 44px; max-widt
 .comment .cbody h2, .comment .cbody h3, .comment .cbody h4 { font-size: 13px; margin: 8px 0 4px; }
 .comment .cbody pre { margin: 6px 0; padding: 8px 10px; background: var(--bg-inset); border-radius: var(--radius); overflow-x: auto; }
 .comment.pending { background: var(--comment-pending-bg); }
+/* A comment GitHub has yet to take: its tag pulses until it has. */
+.tag.sending { color: var(--accent); animation: fade 1.2s ease-in-out infinite; }
 .comment.approved .chead { color: var(--add-fg); } .comment.changes .chead { color: var(--del-fg); }
 .thread .tfoot { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); }
 .suggestion { margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }

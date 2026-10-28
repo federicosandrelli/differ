@@ -14,14 +14,15 @@ does nothing.
 `gh api -H <accept> repos/o/r/contents/<path>?ref=<ref>` prints the file at that ref of the repo named in repo.txt,
 or fails when it has none.
 `gh api graphql --input -` answers a search with the nodes search.json lists for its query, or none; any other
-read query from comments.json; a mutation is appended to mutations.log, and a review posted with threads adds them
-to comments.json, so the page sees what it sent.
+read query from comments.json; a mutation waits while hold.txt exists, then is appended to mutations.log, and a
+review posted with threads adds them to comments.json, so the page sees what it sent.
 """
 
 import json
 import os
 import subprocess
 import sys
+import time
 import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
@@ -144,6 +145,8 @@ def graphql() -> None:
     comments_file = state_dir() / "comments.json"
     state = json.loads(comments_file.read_text())
     if query.lstrip().startswith("mutation"):
+        while (state_dir() / "hold.txt").exists():
+            time.sleep(0.05)
         with (state_dir() / "mutations.log").open("a") as log:
             log.write(json.dumps(request) + "\n")
         data: dict = {}

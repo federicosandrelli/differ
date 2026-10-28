@@ -8,8 +8,8 @@ function rowHtml(f, r) {
   return q && caseFold(r.text).includes(caseFold(q)) ? markHtml(html, q) : html;
 }
 
-// Append the row's HTML to out, with its threads and the comment being written on it, noting in index where the
-// row's key landed.
+// Append the row's HTML to out, then a row with its threads and the comment being written on it, noting in index
+// where the row's key landed.
 function renderRow(f, r, out, index) {
   const key = rowKeyOf(r);
   const cls = [r.type, r.dim ? 'dim' : '', r.sel ? 'sel' : '', r.between ? 'between' : ''].join(' ');
@@ -17,8 +17,8 @@ function renderRow(f, r, out, index) {
   index.set(key, out.length);
   const old = r.type === 'del';
   out.push(`<tr class="${cls}" id="${rowId(f, key)}"><td class="n${old ? ' key' : ''}">${r.type === 'add' ? '' : (r.oldNo ?? '')}</td><td class="n${old ? '' : ' key'}">${old ? '' : (r.newNo ?? '')}</td><td class="m">${r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</td><td class="c">${tag}${r.html}</td></tr>`);
-  if (r.threads) for (const t of r.threads) out.push(`<tr class="thread"><td colspan="4">${threadHtml(f, t)}</td></tr>`);
-  if (r.compose) out.push(`<tr class="compose"><td colspan="4">${composeHtml(f, state.compose)}</td></tr>`);
+  const notes = (r.threads || []).map(t => threadHtml(f, t)).join('') + (r.compose ? composeHtml(f, state.compose) : '');
+  if (notes) out.push(`<tr class="notes"><td colspan="4"><div class="notes">${notes}</div></td></tr>`);
 }
 
 // A row with a chip in the code column, indented like the first folded line.

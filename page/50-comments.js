@@ -12,8 +12,10 @@ async function api(action, body) {
 }
 async function loadComments() {
   if (!API) return;
+  const started = Date.now();
   try {
     Object.assign(C, await api('comments'), { loaded: true, error: '', loadedAt: Date.now() });
+    state.sending = state.sending.filter(s => !s.sent || s.sent > started);
   } catch (e) { C.error = e.message; }
   C.version++;
   indexThreads();
@@ -26,19 +28,39 @@ function hasDraft() {
   return !!((state.compose && state.compose.text.trim()) || state.drafts.size || [...state.replyOpen.values()].some(t => t.trim())
     || state.reviewText.trim() || state.convText.trim() || (b.open && !b.prompt && b.text.trim()));
 }
-async function post(action, body) {
+// Send an action to GitHub, then reload the comments. A comment being sent shows at once, tagged as sending until
+// GitHub takes it, and stays until a reload that started after that brings it back from GitHub. When GitHub refuses
+// it, it leaves and undo runs.
+async function post(action, body, sending = null, undo = () => {}) {
+  if (sending) { state.sending.push(sending); C.version++; indexThreads(); }
   state.busy = true; render();
   try {
     await api(action, body);
-    state.busy = false;
-    await loadComments();
-    return true;
-  } catch (e) { C.error = e.message; state.busy = false; render(); return false; }
+  } catch (e) {
+    C.error = e.message; state.busy = false;
+    if (sending) { state.sending = state.sending.filter(s => s !== sending); C.version++; indexThreads(); undo(); }
+    render();
+    return false;
+  }
+  if (sending) { sending.comment.sending = false; sending.sent = Date.now(); }
+  state.busy = false;
+  await loadComments();
+  return true;
 }
+// The comment the viewer is sending, as the page shows it until GitHub has it.
+const sendingComment = (body, mode, reply) => ({ id: '', author: C.viewer, body, html: '', created: new Date().toISOString(), url: '', pending: mode === 'review', reply, sending: true });
 
+// GitHub's threads with the comments being sent: replies at the end of their threads, then the new threads.
+function shownThreads() {
+  const threads = C.threads.map(t => {
+    const replies = state.sending.filter(s => s.reply === t.id).map(s => s.comment);
+    return replies.length ? { ...t, comments: [...t.comments, ...replies] } : t;
+  });
+  return [...threads, ...state.sending.filter(s => s.thread).map(s => s.thread)];
+}
 function indexThreads() {
   THREADS.byFile = new Map(); THREADS.orphans = [];
-  for (const t of C.threads) {
+  for (const t of shownThreads()) {
     const f = BY_PATH[t.path];
     if (!f) { THREADS.orphans.push(t); continue; }
     const entry = THREADS.byFile.get(t.path) || THREADS.byFile.set(t.path, { rows: new Map(), outdated: [] }).get(t.path);
@@ -86,9 +108,9 @@ function bodyHtml(c, ctx) {
     .replace(/(<img\b[^>]*?\ssrc=")([^"]*)"/g, (m, head, src) => `${head}${esc(imageSrc(unesc(src)))}"`);
 }
 function commentHtml(c, ctx) {
+  const links = !c.url ? '' : `${c.pending ? `<a href="#" data-delete="${esc(c.id)}">delete</a>` : ''}<a href="${c.url}" target="_blank" title="Open on GitHub">↗</a>`;
   return `<div class="comment ${c.pending ? 'pending' : ''}"><div class="chead"><b>${esc(c.author)}</b><span class="hint">${ago(c.created)}</span>
-    ${c.pending ? '<span class="tag pending">pending</span>' : ''}<span class="spacer"></span>
-    ${c.pending ? `<a href="#" data-delete="${esc(c.id)}">delete</a>` : ''}<a href="${c.url}" target="_blank" title="Open on GitHub">↗</a></div>
+    ${c.pending ? '<span class="tag pending">pending</span>' : ''}${c.sending ? '<span class="tag sending">sending</span>' : ''}<span class="spacer"></span>${links}</div>
     <div class="cbody">${bodyHtml(c, ctx)}</div></div>`;
 }
 function threadHtml(f, t) {
@@ -98,7 +120,7 @@ function threadHtml(f, t) {
   }
   const head = t.outdated ? `<div class="thead">Outdated · was on line${t.original_start_line && t.original_start_line !== t.original_line ? 's' : ''} ${lineRange(t.original_start_line, t.original_line)}${t.side === 'LEFT' ? ' of the old file' : ''}</div>`
     : t.start_line && t.start_line !== t.line ? `<div class="thead">Lines ${lineRange(t.start_line, t.line)}</div>` : '';
-  const reply = state.replyOpen.has(t.id) ? replyHtml(t) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
+  const reply = t.sending ? '' : state.replyOpen.has(t.id) ? replyHtml(t) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
     ${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
   return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
@@ -254,7 +276,13 @@ async function commentClick(t, e) {
     if (!c.text.trim()) { state.focus = '[data-compose-text]'; render(); return true; }
     const body = { path: c.path, body: c.text, line: c.line, side: c.side, mode: d.composeSend };
     if (c.startLine !== c.line) { body.start_line = c.startLine; body.start_side = c.side; }
-    if (await post('comment', body)) { state.compose = null; render(); }
+    const comment = sendingComment(c.text, d.composeSend, false);
+    const thread = { id: `sending:${draftKey(c.path, c.side, c.line)}`, path: c.path, resolved: false, outdated: false, resolved_by: '', sending: true,
+      line: c.line, start_line: body.start_line ?? null, side: c.side, start_side: body.start_side ?? null, comments: [comment] };
+    state.compose = null;
+    await post('comment', body, { thread, comment }, () => {
+      if (state.compose && state.compose.text.trim()) state.drafts.set(draftKey(c.path, c.side, c.line), c); else state.compose = c;
+    });
     return true;
   }
   if (d.reply !== undefined) { state.replyOpen.set(d.reply, ''); state.focus = `[data-reply-text="${CSS.escape(d.reply)}"]`; render(); return true; }
@@ -262,7 +290,11 @@ async function commentClick(t, e) {
   if (d.replySend !== undefined) {
     const text = state.replyOpen.get(d.replySend) || '';
     if (!text.trim()) return true;
-    if (await post('reply', { thread: d.replySend, body: text, mode: d.mode })) { state.replyOpen.delete(d.replySend); render(); }
+    const id = d.replySend;
+    state.replyOpen.delete(id);
+    await post('reply', { thread: id, body: text, mode: d.mode }, { reply: id, comment: sendingComment(text, d.mode, true) }, () => {
+      if (!(state.replyOpen.get(id) || '').trim()) state.replyOpen.set(id, text);
+    });
     return true;
   }
   if (d.resolve !== undefined) { await post('resolve', { thread: d.resolve, resolved: d.resolved === '1' }); return true; }

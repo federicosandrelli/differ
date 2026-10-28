@@ -329,6 +329,7 @@ function render() {
   readerAt = -Infinity;
   renderSide();
   const anchor = targetAnchor() || viewportAnchor();
+  const notes = notesNow();
   patchOverview();
   patchSections(visibleFiles());
   refreshBodies();
@@ -338,6 +339,45 @@ function render() {
   restoreAnchor(anchor);
   markActive();
   restoreFocus();
+  animateNotes(notes, anchor);
+}
+
+// The code rows drawn, by id, and the band of threads and comment form under each row that has one, with its height.
+function notesNow() {
+  const bands = new Map();
+  for (const el of main.querySelectorAll('div.notes')) bands.set(el.closest('tr').previousElementSibling.id, { el, h: el.offsetHeight });
+  return { rows: new Set([...main.querySelectorAll('table.diff tr[id]')].map(r => r.id)), bands };
+}
+const RESIZE_MS = 180;
+function resize(el, from, to, done = () => {}) {
+  el.classList.add('resizing');
+  const a = el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: RESIZE_MS, easing: 'ease-out', fill: 'forwards' });
+  a.onfinish = () => { a.cancel(); el.classList.remove('resizing'); done(); };
+}
+// Let the bands that a render grew, shrank, added or removed under a code row on screen change height over a moment
+// instead of at once. A band above the anchor changes at once: the render moved the page to keep the anchor still.
+// A removed band leaves an empty band in its place for the moment it takes to shrink.
+function animateNotes(before, anchor) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const pane = main.getBoundingClientRect(), anchorRow = anchor && anchor.rowId && document.getElementById(anchor.rowId);
+  const from = anchorRow ? anchorRow.getBoundingClientRect().top : anchor && anchor.sec.isConnected ? anchor.sec.getBoundingClientRect().top : -Infinity;
+  const moves = (row) => {
+    const r = row.getBoundingClientRect();
+    return before.rows.has(row.id) && r.top >= from && r.bottom < pane.bottom && r.bottom >= pane.top;
+  };
+  const after = notesNow().bands;
+  for (const [id, { el }] of after) {
+    const old = before.bands.get(id), h = el.offsetHeight;
+    if (old && old.el === el) continue;
+    if (Math.abs((old ? old.h : 0) - h) > 1 && moves(document.getElementById(id))) resize(el, old ? old.h : 0, h);
+  }
+  for (const [id, { el, h }] of before.bands) {
+    const row = document.getElementById(id);
+    if (after.has(id) || el.isConnected || !row || !moves(row)) continue;
+    row.insertAdjacentHTML('afterend', '<tr class="notes"><td colspan="4"><div class="notes"></div></td></tr>');
+    const ghost = row.nextElementSibling;
+    resize(ghost.querySelector('div.notes'), h, 0, () => ghost.remove());
+  }
 }
 function restoreFocus() {
   if (!state.focus) return;
