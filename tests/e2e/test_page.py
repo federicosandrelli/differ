@@ -1,11 +1,13 @@
 import json
 import re
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from playwright.sync_api import Locator, Page, Position, expect
+from playwright.sync_api import APIResponse, Locator, Page, Position, Route, expect
 
 from e2e.conftest import TITLE
 from helpers import Files
@@ -799,7 +801,7 @@ def test_threads_show_on_their_lines_and_in_the_overview(page: Page, server_url:
     expect(open_thread.locator(".comment b")).to_have_text("bob")
     expect(
         section.locator("tr.add", has_text='print("hello")').locator("xpath=following-sibling::tr[1]")
-    ).to_have_class("thread")
+    ).to_have_class("notes")
     expect(section.locator(".thread.folded[data-thread-open='T2']")).to_contain_text(
         "Resolved by bob · ann: nit: spacing"
     )
@@ -822,17 +824,276 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
     expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 11")
     box.fill("Use a logger here")
     page.click("button[data-compose-send='single']")
-    expect(section.locator("div.thread[data-thread]", has_text="Use a logger here")).to_be_visible()
+    thread = section.locator("div.thread[data-thread]", has_text="Use a logger here")
+    expect(thread).to_be_visible()
+    expect(thread.locator(".tag.sending")).to_have_count(0)
     expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
     expect(page.locator("#side .leaf[data-path='src/app.py'] .bubble")).to_have_text("2")
 
     mutations = [json.loads(line) for line in (gh_state / "mutations.log").read_text().splitlines()]
-    posted = [m for m in mutations if "addPullRequestReview(" in m["query"]]
+    posted = [
+        m
+        for m in mutations
+        if "addPullRequestReview(" in m["query"]
+        and any(t["body"] == "Use a logger here" for t in m["variables"].get("threads") or [])
+    ]
     assert len(posted) == 1
     assert "event: COMMENT" in posted[0]["query"]
     assert posted[0]["variables"]["threads"] == [
         {"path": "src/app.py", "body": "Use a logger here", "line": 11, "side": "RIGHT"}
     ]
+
+
+@contextmanager
+def kept_comments(gh_state: Path) -> Iterator[None]:
+    """Put the fake gh's comments back as they were after the block."""
+    comments_file = gh_state / "comments.json"
+    saved = comments_file.read_text()
+    try:
+        yield
+    finally:
+        comments_file.write_text(saved)
+
+
+@contextmanager
+def held_mutations(gh_state: Path) -> Iterator[Callable[[], None]]:
+    """Hold every mutation of the fake gh until the function this yields is called. Afterwards, wait for the
+    mutations to end, then put the comments back as they were."""
+    hold = gh_state / "hold.txt"
+    with kept_comments(gh_state):
+        hold.write_text("")
+        try:
+            yield lambda: hold.unlink(missing_ok=True)
+        finally:
+            hold.unlink(missing_ok=True)
+            deadline = time.monotonic() + 10
+            while any(gh_state.glob("held-*")) and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+
+@contextmanager
+def refused_mutations(page: Page, gh_state: Path) -> Iterator[None]:
+    """Make the fake gh refuse every GraphQL call in the block, and wait for the page to show the refusal."""
+    fail = gh_state / "fail.txt"
+    fail.write_text("api graphql\n")
+    try:
+        yield
+        expect(page.locator("#side .notice.err")).to_contain_text("Comments:")
+    finally:
+        fail.unlink()
+
+
+def send_on_hello(page: Page, text: str, mode: str = "single") -> Locator:
+    """Send a comment on the line that prints hello, and return its thread."""
+    section = page.locator(APP)
+    section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+    page.locator("textarea[data-compose-text]").fill(text)
+    page.click(f"button[data-compose-send='{mode}']")
+    return section.locator("div.thread[data-thread]", has_text=text)
+
+
+def test_a_comment_shows_as_sending_until_github_has_it(page: Page, server_url: str, gh_state: Path) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        thread = send_on_hello(page, "Greet by name", "review")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        expect(thread.locator(".tag.pending")).to_be_visible()
+        expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
+        expect(thread.locator("a[target=_blank]")).to_have_count(0)
+
+        release()
+        expect(thread.locator(".tag.sending")).to_have_count(0)
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+        expect(page.locator(APP).locator("div.thread[data-thread]", has_text="Greet by name")).to_have_count(1)
+
+
+def test_a_box_opened_while_a_comment_sends_keeps_its_focus(page: Page, server_url: str, gh_state: Path) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        thread = send_on_hello(page, "Greet by name")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        page.locator(APP).locator("tr.ctx", has_text="def main():").locator("td.n.key").click()
+        box = page.locator("textarea[data-compose-text]")
+        expect(box).to_be_focused()
+        page.keyboard.type("abc")
+
+        release()
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+        page.keyboard.type("d")
+        expect(box).to_have_value("abcd")
+        expect(box).to_be_focused()
+
+
+def test_a_comment_github_refuses_goes_back_to_its_box(page: Page, server_url: str, gh_state: Path) -> None:
+    open_pr(page, server_url)
+    with refused_mutations(page, gh_state):
+        thread = send_on_hello(page, "Greet by name")
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("Greet by name")
+    expect(thread).to_have_count(0)
+
+
+def test_a_refused_comment_takes_the_text_written_meanwhile_on_its_line(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        thread = send_on_hello(page, "Greet by name")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+        page.keyboard.type("Use their login")
+        with refused_mutations(page, gh_state):
+            release()
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("Greet by name\n\nUse their login")
+    expect(thread).to_have_count(0)
+
+
+def test_a_refused_comment_waits_as_a_draft_while_another_box_has_text(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        thread = send_on_hello(page, "Greet by name")
+        expect(thread.locator(".tag.sending")).to_be_visible()
+        page.locator(APP).locator("tr.ctx", has_text="def main():").locator("td.n.key").click()
+        page.keyboard.type("Other")
+        with refused_mutations(page, gh_state):
+            release()
+    box = page.locator("textarea[data-compose-text]")
+    expect(box).to_have_value("Other")
+    expect(box).to_be_focused()
+    notice = page.locator("#side .notice", has_text="GitHub refused your comment on line 11 of app.py")
+    expect(notice).to_be_visible()
+    page.click("#side a[data-comments-reload]")
+    expect(page.locator("#side .notice.err")).to_have_count(0)
+    expect(notice).to_be_visible()
+    notice.locator("a[data-draft-open]").click()
+    expect(box).to_have_value("Greet by name")
+    expect(notice).to_have_count(0)
+
+
+def test_a_refused_reply_goes_back_to_its_box_and_leaves_the_focus_where_it_is(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        page.click("button[data-reply='T1']")
+        page.locator("textarea[data-reply-text='T1']").fill("Will do")
+        page.click("button[data-reply-send='T1'][data-mode='single']")
+        expect(page.locator("div.thread[data-thread='T1'] .tag.sending")).to_be_visible()
+        page.locator(APP).locator("tr.ctx", has_text="def main():").locator("td.n.key").click()
+        page.keyboard.type("Other")
+        with refused_mutations(page, gh_state):
+            release()
+    expect(page.locator("textarea[data-reply-text='T1']")).to_have_value("Will do")
+    expect(page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")).to_have_count(0)
+    page.keyboard.type("X")
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("OtherX")
+
+
+def test_a_reply_without_a_pending_review_shows_as_sending_and_not_pending(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        page.click("button[data-reply='T1']")
+        page.locator("textarea[data-reply-text='T1']").fill("Will do")
+        page.click("button[data-reply-send='T1'][data-mode='review']")
+        reply = page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")
+        expect(reply.locator(".tag.sending")).to_be_visible()
+        expect(reply.locator(".tag.pending")).to_have_count(0)
+        expect(page.locator("textarea[data-reply-text='T1']")).to_have_count(0)
+
+        release()
+        expect(reply.locator(".tag.sending")).to_have_count(0)
+        expect(reply.locator("a[target=_blank]")).to_have_count(1)
+        expect(page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")).to_have_count(1)
+
+
+def hold_requests(page: Page, pattern: str) -> list[tuple[Route, APIResponse]]:
+    """Send each request to a URL matching pattern on to the server at once, and hold its answer back from the page.
+    Returns the held requests with their answers, in the order they came."""
+    held: list[tuple[Route, APIResponse]] = []
+    page.route(pattern, lambda route: held.append((route, route.fetch())))
+    return held
+
+
+def wait_for(page: Page, check: Callable[[], bool]) -> None:
+    deadline = time.monotonic() + 10
+    while not check():
+        assert time.monotonic() < deadline
+        page.wait_for_timeout(50)
+
+
+def answer(held: tuple[Route, APIResponse]) -> None:
+    route, response = held
+    route.fulfill(response=response)
+
+
+def test_the_sending_tag_goes_when_github_takes_the_comment(page: Page, server_url: str, gh_state: Path) -> None:
+    with kept_comments(gh_state):
+        open_pr(page, server_url)
+        loads = hold_requests(page, "**/api/acme/widgets/1/comments")
+        thread = send_on_hello(page, "Greet by name")
+        wait_for(page, lambda: len(loads) == 1)
+        expect(thread.locator(".tag.sending")).to_have_count(0)
+        expect(thread.locator("a[target=_blank]")).to_have_count(0)
+        answer(loads[0])
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+
+
+def test_a_load_that_started_before_github_took_a_comment_shows_it_once(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with kept_comments(gh_state):
+        open_pr(page, server_url)
+        sends = hold_requests(page, "**/api/acme/widgets/1/comment")
+        loads = hold_requests(page, "**/api/acme/widgets/1/comments")
+        thread = send_on_hello(page, "Greet by name")
+        wait_for(page, lambda: len(sends) == 1)
+        page.evaluate("() => { window.early = loadComments(); }")
+        wait_for(page, lambda: len(loads) == 1)
+        answer(sends[0])
+        wait_for(page, lambda: len(loads) == 2)
+        answer(loads[0])
+        page.evaluate("early")
+        expect(thread).to_have_count(1)
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+        answer(loads[1])
+        expect(thread).to_have_count(1)
+
+
+def test_a_load_that_answers_after_a_later_one_changes_nothing(page: Page, server_url: str, gh_state: Path) -> None:
+    with kept_comments(gh_state):
+        open_pr(page, server_url)
+        loads = hold_requests(page, "**/api/acme/widgets/1/comments")
+        page.evaluate("() => { window.late = loadComments(); }")
+        wait_for(page, lambda: len(loads) == 1)
+        thread = send_on_hello(page, "Greet by name")
+        wait_for(page, lambda: len(loads) == 2)
+        answer(loads[1])
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+        answer(loads[0])
+        page.evaluate("late")
+        expect(thread).to_have_count(1)
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+
+
+def test_a_comment_box_under_the_last_row_of_a_chunk_opens_and_closes(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    errors: list[str] = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    open_pr(page, server_url, add_pr({}, {"src/long.py": "".join(f"x{n} = {n}\n" for n in range(1, 1001))}))
+    last = page.locator("section[data-file='src/long.py'] tr[id$='-L100']")
+    last.locator("td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 100 ")
+    expect(last.locator("xpath=following-sibling::tr[1]")).to_have_class("notes")
+    page.click("button[data-compose-cancel]")
+    expect(page.locator(".form.compose")).to_have_count(0)
+    expect(page.locator("tr.notes")).to_have_count(0)
+    page.locator("section[data-file='src/long.py'] tr[id$='-L2'] td.n.key").click()
+    expect(page.locator(".form.compose .hint")).to_contain_text("Comment on line 2 ")
+    assert errors == []
 
 
 def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str, gh_state: Path) -> None:
@@ -912,6 +1173,7 @@ def test_a_comment_box_keeps_its_dragged_height_after_scrolling_out_of_view(
     page.locator("section[data-file='src/long.py'] tr[id$='-L2'] td.n.key").click()
     box = page.locator("textarea[data-compose-text]")
     box.press("Escape")
+    expect(page.locator("div.notes.resizing")).to_have_count(0)
     edge = box.bounding_box()
     assert edge
     page.mouse.move(edge["x"] + edge["width"] - 3, edge["y"] + edge["height"] - 3)

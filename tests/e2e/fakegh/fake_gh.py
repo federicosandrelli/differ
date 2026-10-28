@@ -14,14 +14,16 @@ does nothing.
 `gh api -H <accept> repos/o/r/contents/<path>?ref=<ref>` prints the file at that ref of the repo named in repo.txt,
 or fails when it has none.
 `gh api graphql --input -` answers a search with the nodes search.json lists for its query, or none; any other
-read query from comments.json; a mutation is appended to mutations.log, and a review posted with threads adds them
-to comments.json, so the page sees what it sent.
+read query from comments.json. A mutation waits while hold.txt exists, then fails when fail.txt lists it by then,
+else is appended to mutations.log. A review posted with threads and a reply add their comments to comments.json, so
+the page sees what it sent, and the answer holds the new comment's id.
 """
 
 import json
 import os
 import subprocess
 import sys
+import time
 import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
@@ -102,7 +104,6 @@ def contents(endpoint: str) -> None:
 
 
 def thread_node(tid: str, draft: dict) -> dict:
-    now = datetime.now(UTC).isoformat(timespec="seconds")
     return {
         "id": tid,
         "isResolved": False,
@@ -115,25 +116,59 @@ def thread_node(tid: str, draft: dict) -> dict:
         "originalLine": draft["line"],
         "originalStartLine": draft.get("startLine"),
         "resolvedBy": None,
-        "comments": {
-            "nodes": [
-                {
-                    "id": f"{tid}-c1",
-                    "author": {"login": "tester"},
-                    "body": draft["body"],
-                    "bodyHTML": "",
-                    "createdAt": now,
-                    "url": f"https://github.com/acme/widgets/pull/1#{tid}",
-                    "state": "SUBMITTED",
-                    "replyTo": None,
-                    "pullRequestReview": None,
-                }
-            ]
-        },
+        "comments": {"nodes": [comment_node(f"{tid}-c1", draft["body"])]},
     }
 
 
-def graphql() -> None:
+def comment_node(cid: str, body: str) -> dict:
+    return {
+        "id": cid,
+        "author": {"login": "tester"},
+        "body": body,
+        "bodyHTML": "",
+        "createdAt": datetime.now(UTC).isoformat(timespec="seconds"),
+        "url": f"https://github.com/acme/widgets/pull/1#{cid}",
+        "state": "SUBMITTED",
+        "replyTo": None,
+        "pullRequestReview": None,
+    }
+
+
+def mutate(args: list[str], request: dict) -> None:
+    """Answer a mutation. A held-<pid> file marks it while it runs."""
+    query, variables = request["query"], request.get("variables") or {}
+    marker = state_dir() / f"held-{os.getpid()}"
+    marker.write_text("")
+    try:
+        while (state_dir() / "hold.txt").exists():
+            time.sleep(0.05)
+        fail_if_listed(args)
+        comments_file = state_dir() / "comments.json"
+        state = json.loads(comments_file.read_text())
+        with (state_dir() / "mutations.log").open("a") as log:
+            log.write(json.dumps(request) + "\n")
+        data: dict = {}
+        if "addPullRequestReview(" in query:
+            added = [
+                thread_node(f"T{len(state['threads']) + 1 + i}", d)
+                for i, d in enumerate(variables.get("threads") or [])
+            ]
+            state["threads"].extend(added)
+            comments_file.write_text(json.dumps(state))
+            review = {"id": "R_new", "comments": {"nodes": [{"id": t["comments"]["nodes"][0]["id"]} for t in added]}}
+            data = {"addPullRequestReview": {"pullRequestReview": review}}
+        if "addPullRequestReviewThreadReply(" in query:
+            thread = next(t for t in state["threads"] if t["id"] == variables["thread"])
+            node = comment_node(f"{thread['id']}-c{len(thread['comments']['nodes']) + 1}", variables["body"])
+            thread["comments"]["nodes"].append(node)
+            comments_file.write_text(json.dumps(state))
+            data = {"addPullRequestReviewThreadReply": {"comment": {"id": node["id"]}}}
+        print(json.dumps({"data": data}))
+    finally:
+        marker.unlink()
+
+
+def graphql(args: list[str]) -> None:
     request = json.loads(sys.stdin.read())
     query, variables = request["query"], request.get("variables") or {}
     if "search(" in query:
@@ -141,19 +176,10 @@ def graphql() -> None:
         found = json.loads(searches.read_text()) if searches.exists() else {}
         print(json.dumps({"data": {"viewer": {"login": "tester"}, "search": {"nodes": found.get(variables["q"], [])}}}))
         return
-    comments_file = state_dir() / "comments.json"
-    state = json.loads(comments_file.read_text())
     if query.lstrip().startswith("mutation"):
-        with (state_dir() / "mutations.log").open("a") as log:
-            log.write(json.dumps(request) + "\n")
-        data: dict = {}
-        if "addPullRequestReview(" in query:
-            for draft in variables.get("threads") or []:
-                state["threads"].append(thread_node(f"T{len(state['threads']) + 1}", draft))
-            comments_file.write_text(json.dumps(state))
-            data = {"addPullRequestReview": {"pullRequestReview": {"id": "R_new"}}}
-        print(json.dumps({"data": data}))
+        mutate(args, request)
         return
+    state = json.loads((state_dir() / "comments.json").read_text())
     pr = {
         "id": "PR_1",
         "headRefOid": state["head"],
@@ -174,6 +200,10 @@ def graphql() -> None:
 def log_and_fail(args: list[str]) -> None:
     with (state_dir() / "calls.log").open("a") as log:
         log.write(json.dumps(args) + "\n")
+    fail_if_listed(args)
+
+
+def fail_if_listed(args: list[str]) -> None:
     failures = state_dir() / "fail.txt"
     lines = failures.read_text().splitlines() if failures.exists() else []
     for line in lines:
@@ -197,7 +227,7 @@ def main() -> None:
     elif args[:2] == ["repo", "set-default"]:
         pass
     elif args[:2] == ["api", "graphql"]:
-        graphql()
+        graphql(args)
     elif args[:3] == ["api", "-H", "Accept: application/vnd.github.raw"]:
         contents(args[3])
     else:
