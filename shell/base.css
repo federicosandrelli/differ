@@ -91,7 +91,7 @@ button.primary .count { background: var(--text-on-fill); color: var(--accent); }
 /* A chip is a small bordered note inside content, such as a fold or a rename marker; .action makes it a control,
    lit when open. A tag is a word in capitals in an outline, such as a pending comment's. A key cap. Inline code. */
 .chip { display: inline-block; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-inset); color: var(--text-muted); font: 11px/1.5 var(--sans); }
-.chip.action { cursor: pointer; user-select: none; }
+.chip.action { cursor: pointer; user-select: none; -webkit-user-select: none; }
 .chip.action:hover, .chip.open { color: var(--accent); border-color: var(--accent); }
 .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; border: 1px solid currentColor; border-radius: var(--radius-sm); padding: 0 5px; }
 .tag.pending { color: var(--mod-fg); }

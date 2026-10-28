@@ -114,8 +114,8 @@ table.plain th { font-weight: 500; }
 
 table.diff { border-collapse: collapse; width: 100%; font: 12.5px/1.65 var(--mono); table-layout: fixed; color: var(--text); }
 table.diff td { padding: 0 6px; vertical-align: top; white-space: pre; transition: box-shadow .8s ease; }
-table.diff td.n { text-align: right; color: var(--text-muted); user-select: none; font-size: 11px; padding: 0 4px 0 2px; }
-table.diff td.m { text-align: center; color: var(--text-muted); user-select: none; padding: 0; }
+table.diff td.n { text-align: right; color: var(--text-muted); user-select: none; -webkit-user-select: none; font-size: 11px; padding: 0 4px 0 2px; }
+table.diff td.m { text-align: center; color: var(--text-muted); user-select: none; -webkit-user-select: none; padding: 0; }
 table.diff tr.add td { background: var(--add-bg); } table.diff tr.add td.n { background: var(--add-num); color: var(--add-fg); } table.diff tr.add td.m { color: var(--add-fg); }
 table.diff tr.del td { background: var(--del-bg); } table.diff tr.del td.n { background: var(--del-num); color: var(--del-fg); } table.diff tr.del td.m { color: var(--del-fg); }
 table.diff tr.add td:first-child { box-shadow: inset 3px 0 0 var(--add-fg); }
@@ -128,6 +128,7 @@ table.diff tr.target td { box-shadow: inset 0 0 0 100px var(--row-target-bg); }
 table.diff tr.target td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 100px var(--row-target-bg) !important; }
 table.diff td.c .chip { float: right; margin-left: 8px; opacity: 1; }
 table.diff td.c .inline-fold { float: none; margin: 0; vertical-align: 1px; }
+table.diff tr.inline-fold-row td { user-select: none; -webkit-user-select: none; }
 tr.fold td, tr.collapsed td, tr.runhead td { white-space: nowrap; }
 tr.fold .lbl, tr.collapsed .lbl, tr.runhead .lbl { position: sticky; left: 12px; display: inline-block; vertical-align: top; max-width: calc(100cqw - 24px); overflow: hidden; text-overflow: ellipsis; }
 tr.fold td { background: var(--bg-panel); color: var(--text-muted); font: 11.5px var(--sans); padding: 3px 12px; cursor: pointer; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
