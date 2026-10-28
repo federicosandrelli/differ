@@ -63,7 +63,8 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 /* The live example of an inline fold draws a few rows as the diff table does, in the diff's own tokens. */
 #settings .example { width: 100%; margin: 10px 0; font: 12px/1.7 var(--mono); border: 1px solid var(--border); border-radius: var(--radius); }
 #settings .example td { padding: 0 8px; white-space: pre; }
-#settings .example td.n { width: 1%; text-align: right; color: var(--text-muted); user-select: none; }
+#settings .example td.n { width: 1%; text-align: right; color: var(--text-muted); user-select: none; -webkit-user-select: none; }
+#settings .example tr.inline-fold-row td { user-select: none; -webkit-user-select: none; }
 #settings .example tr.add td { background: var(--add-bg); } #settings .example tr.add td.n { background: var(--add-num); color: var(--add-fg); }
 #settings .about { padding-top: 22px; border-top: 1px solid var(--border); }
 </style>
