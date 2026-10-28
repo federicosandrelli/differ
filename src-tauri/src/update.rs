@@ -6,10 +6,10 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::AppHandle;
 
 // The cask is what Homebrew installs, so a version read from it is one `brew upgrade` can serve. A release
@@ -23,25 +23,24 @@ const RELEASES: &str = "https://github.com/federicosandrelli/differ/releases";
 const INTERVAL: u64 = 12 * 60 * 60;
 const PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
 
-/// `update.json` in the cache: the version the cask named at the last successful check.
-#[derive(Serialize, Deserialize)]
-struct Cache {
-    checked_at: u64,
+/// The version the cask named at a successful fetch.
+struct Fetch {
+    at: u64,
     version: String,
 }
+
+static LAST_FETCH: Mutex<Option<Fetch>> = Mutex::new(None);
 
 #[derive(Serialize)]
 pub struct UpdateStatus {
     pub current: String,
-    /// The version the cask names, once a check has succeeded.
+    /// The version the cask named at the last successful fetch since the app started.
     pub latest: Option<String>,
     pub newer: bool,
     /// The release page of `latest`.
     pub url: Option<String>,
     /// Homebrew installed this copy, so `update_run` can upgrade it.
     pub managed: bool,
-    /// This check fetched the cask and the fetch failed, so `latest` comes from an earlier check, if any.
-    pub failed: bool,
 }
 
 fn now() -> u64 {
@@ -119,8 +118,6 @@ fn cache_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-static FETCHED_SINCE_LAUNCH: AtomicBool = AtomicBool::new(false);
-
 // curl rather than an HTTP crate: a TLS stack is a large dependency for a few requests a day.
 fn fetch() -> Option<String> {
     let out = Command::new("/usr/bin/curl")
@@ -133,57 +130,40 @@ fn fetch() -> Option<String> {
     cask_version(&String::from_utf8_lossy(&out.stdout))
 }
 
-/// Whether a check at `checked_at` is less than 12 hours old. A time in the future, from a clock that was set
-/// back, is not.
-fn fresh(checked_at: u64) -> bool {
+/// Whether a fetch at `at` is less than 12 hours old. A time in the future, from a clock that was set back, is not.
+fn fresh(at: u64) -> bool {
     let now = now();
-    checked_at <= now && now - checked_at < INTERVAL
+    at <= now && now - at < INTERVAL
 }
 
-/// Whether to fetch the cask: when `force` is set, when no fetch has succeeded since the app started, or when the
-/// cache is missing or 12 hours old.
-fn needs_fetch(force: bool, fetched_since_launch: bool, cache: Option<&Cache>) -> bool {
-    force || !fetched_since_launch || !cache.is_some_and(|c| fresh(c.checked_at))
+/// Whether to fetch the cask: when `force` is set, or when the last fetch is missing or 12 hours old.
+fn needs_fetch(force: bool, last: Option<&Fetch>) -> bool {
+    force || !last.is_some_and(|f| fresh(f.at))
 }
 
 /// Looks for a newer version. Fetches the cask on the first call since the app started, when `force` is set, or
-/// when the last successful fetch is 12 hours old, and otherwise, or when the fetch fails, answers from the cache.
+/// when the last successful fetch is 12 hours old. Answers from the last successful fetch since the app started,
+/// so until one succeeds, `latest` is `None` and `newer` is false. Calls run one at a time, so a call that
+/// starts during a fetch answers from it.
 #[tauri::command(async)]
 pub fn update_check(app: AppHandle, force: bool) -> UpdateStatus {
     let current = app.package_info().version.to_string();
-    let path = cache_dir().map(|dir| dir.join("update.json"));
-    let mut cache: Option<Cache> = path
-        .as_ref()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|raw| serde_json::from_str(&raw).ok());
-    let mut failed = false;
-    if needs_fetch(
-        force,
-        FETCHED_SINCE_LAUNCH.load(Ordering::Relaxed),
-        cache.as_ref(),
-    ) {
+    let mut last = LAST_FETCH
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if needs_fetch(force, last.as_ref()) {
         if let Some(version) = fetch() {
-            let next = Cache {
-                checked_at: now(),
-                version,
-            };
-            if let (Some(path), Ok(json)) = (&path, serde_json::to_vec_pretty(&next)) {
-                let _ = std::fs::write(path, json);
-            }
-            cache = Some(next);
-            FETCHED_SINCE_LAUNCH.store(true, Ordering::Relaxed);
-        } else {
-            failed = true;
+            *last = Some(Fetch { at: now(), version });
         }
     }
-    let latest = cache.map(|c| c.version);
+    let latest = last.as_ref().map(|f| f.version.clone());
+    drop(last);
     UpdateStatus {
         newer: latest.as_deref().is_some_and(|l| is_newer(l, &current)),
         url: latest.as_ref().map(|v| format!("{RELEASES}/tag/v{v}")),
         current,
         latest,
         managed: managed(),
-        failed,
     }
 }
 
@@ -288,7 +268,7 @@ pub fn update_run(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{cask_version, fresh, helper_script, is_newer, needs_fetch, now, Cache};
+    use super::{cask_version, fresh, helper_script, is_newer, needs_fetch, now, Fetch};
     use std::path::Path;
 
     #[test]
@@ -314,20 +294,19 @@ mod tests {
     }
 
     #[test]
-    fn fetches_once_per_launch_then_when_the_cache_goes_stale() {
-        let recent = Cache {
-            checked_at: now() - 60,
+    fn fetches_at_first_then_when_the_last_fetch_goes_stale() {
+        let recent = Fetch {
+            at: now() - 60,
             version: "0.1.59".into(),
         };
-        let stale = Cache {
-            checked_at: now() - 13 * 60 * 60,
+        let stale = Fetch {
+            at: now() - 13 * 60 * 60,
             version: "0.1.59".into(),
         };
-        assert!(needs_fetch(false, false, Some(&recent)));
-        assert!(!needs_fetch(false, true, Some(&recent)));
-        assert!(needs_fetch(true, true, Some(&recent)));
-        assert!(needs_fetch(false, true, Some(&stale)));
-        assert!(needs_fetch(false, true, None));
+        assert!(needs_fetch(false, None));
+        assert!(!needs_fetch(false, Some(&recent)));
+        assert!(needs_fetch(true, Some(&recent)));
+        assert!(needs_fetch(false, Some(&stale)));
     }
 
     #[test]
