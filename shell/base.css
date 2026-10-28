@@ -54,9 +54,13 @@ textarea { display: block; width: 100%; font-family: var(--mono); line-height: 1
 input.big, button.big { font-size: 14px; border-radius: var(--radius-lg); }
 input.big { padding: 9px 12px; } button.big { padding: 0 16px; }
 
-/* A card: a bordered box on the canvas, for a thread, a form, a comment, a dialog or a list. A banner: a notice
-   that something needs the reader. */
+/* A card: a bordered box on the canvas, for a thread, a form, a comment, a dialog or a list. .panel puts it on the
+   panel surface, to raise it over cards on the canvas. A card that is a link keeps the text colour and lights on
+   hover. A banner: a notice that something needs the reader. */
 .card { background: var(--bg-canvas); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.card.panel { background: var(--bg-panel); }
+a.card { color: var(--text); }
+a.card:hover { background: var(--bg-hover); text-decoration: none; }
 .banner { color: var(--mod-fg); background: var(--mod-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 9px 12px; }
 
 /* A count is a number in a rounded pill next to a label, with an icon before it at times; .hits is the count of

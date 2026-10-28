@@ -82,11 +82,14 @@ def thread(*said: dict, resolved: bool = False) -> dict:
     return {"isResolved": resolved, "comments": {"nodes": list(said)}}
 
 
-def test_queries_search_the_followed_repositories_in_one_query() -> None:
+def test_queries_search_the_followed_repositories_for_open_and_merged_pull_requests_only_when_there_are_some() -> None:
     assert len(board.queries([], date(2026, 10, 20))) == 5
     assert "merged:>=2026-10-20" in board.queries([], date(2026, 10, 20))[1]
     found = board.queries(["acme/tools", "acme/web"], date(2026, 10, 20))
-    assert found[5:] == [board.FOLLOWED_QUERY + " repo:acme/tools repo:acme/web"]
+    assert found[5:] == [
+        board.FOLLOWED_QUERY + " repo:acme/tools repo:acme/web",
+        board.MERGED_QUERY + " merged:>=2026-10-20 repo:acme/tools repo:acme/web",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -242,7 +245,7 @@ def test_classify_puts_each_pull_request_in_one_section_newest_first() -> None:
         pr(8, author=ME, repo="acme/tools"),
         pr(9, author="bob", repo="other/x"),
     ]
-    sections = board.classify(ME, [mine, merged, asked, involved, reviewed, followed_found], ["acme/tools"])
+    sections = board.classify(ME, [mine, merged, asked, involved, reviewed, followed_found, []], ["acme/tools"])
     numbers = {key: [r["number"] for r in rows] for key, rows in sections.items() if rows}
     assert numbers == {
         "review": [2, 1],
@@ -260,17 +263,93 @@ def save(sections: dict, viewer: str = ME) -> None:
     board.save(board.Board(viewer=viewer, fetched=time.time(), repos=[], sections=sections))
 
 
-def test_html_leaves_out_empty_sections_and_groups_and_names_other_authors() -> None:
+def test_classify_lists_other_peoples_merges_newest_merge_first_and_leaves_out_the_viewers_own() -> None:
+    merged_others = [
+        pr(1, author="ann", state="MERGED", merged="2026-10-20T00:00:00Z", updated="2026-10-23T00:00:00Z"),
+        pr(2, author="bob", state="MERGED", merged="2026-10-22T00:00:00Z", updated="2026-10-22T00:00:00Z"),
+        pr(3, author=ME, state="MERGED", merged="2026-10-21T00:00:00Z"),
+    ]
+    sections = board.classify(ME, [[], [], [], [], [], [], merged_others], ["acme/widgets"])
+    assert [r["number"] for r in sections["merged_others"]] == [2, 1]
+    assert sections["merged_others"][1]["at"] == board.seconds("2026-10-20T00:00:00Z")
+
+
+def column(page: str, label: str) -> str:
+    """The HTML of the column with the label, up to the next column or group."""
+    start = page.index(f"<h3>{label}<")
+    ends = [
+        i for i in (page.find('<div class="column', start), page.find("</section></div></section>", start)) if i > 0
+    ]
+    return page[start : min(ends)]
+
+
+def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -> None:
     assert board.sections_html() == '<div class="empty">No pull requests yet.</div>'
-    save(board.classify(ME, [[pr(1, ci="FAILURE")], [], [pr(2, author="ann", repo="acme/tools")], [], []], []))
+    save(board.classify(ME, [[pr(1, ci="FAILURE"), pr(2)], [], [pr(3, author="ann", repo="acme/tools")], [], []], []))
     page = board.sections_html()
     assert re.findall(r"<h2>(.*?)</h2>", page) == ["Your pull requests", "Other people&#x27;s pull requests"]
-    assert re.findall(r'<section class="sub" data-key="(\w+)">', page) == ["action", "reviewing"]
-    assert page.count('class="chev ghost open"') == 2
-    mine, theirs = re.findall(r'<a class="item".*?</a>', page)
+    assert re.findall(r"<h3>(.*?)<span", page) == [
+        "Drafts",
+        "In review",
+        "Merged this week",
+        "Need a reviewer",
+        "Being reviewed",
+        "Recently merged",
+    ]
+    assert re.findall(r'<section class="sub" data-key="(\w+)">', page) == [
+        "draft",
+        "action",
+        "ci",
+        "review",
+        "merged",
+        "unreviewed",
+        "reviewing",
+        "reviewed",
+        "others",
+        "merged_others",
+    ]
+    in_review = column(page, "In review")
+    assert '<h3>In review<span class="count">2</span></h3>' in in_review
+    assert re.findall(r"<h4>(.*?)</h4>", in_review) == [
+        'Needs your action<span class="count">1</span>',
+        'Waiting on CI<span class="count">0</span>',
+        'Waiting on review<span class="count">1</span>',
+    ]
+    mine, _, theirs = re.findall(r'<a class="card.*?</a>', page)
     assert 'href="/acme/widgets/pull/1"' in mine and '<span class="why bad">CI failed</span>' in mine
-    assert "<span>me</span>" not in mine
-    assert 'href="/acme/tools/pull/2"' in theirs and "<span>ann</span>" in theirs
+    assert "acme/widgets#1" in mine and "<span>me</span>" not in mine
+    assert (
+        'href="/acme/tools/pull/3"' in theirs
+        and "<span>ann</span>" in theirs
+        and '<span class="ref">tools</span>' in theirs
+    )
+
+
+def test_html_keeps_an_empty_subtitle_and_an_empty_column_with_none() -> None:
+    save(board.classify(ME, [[pr(1)], [], [], [], []], []))
+    page = board.sections_html()
+    assert column(page, "Drafts").count(board.NONE) == 1
+    assert '<h3>Drafts<span class="count">0</span></h3>' in page
+    assert column(page, "In review").count(board.NONE) == 2
+    assert column(page, "Being reviewed").count(board.NONE) == 3
+
+
+def test_html_shows_the_first_rows_of_a_section_and_a_button_for_the_rest() -> None:
+    save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 9)], [], [], [], []], []))
+    drafts = column(board.sections_html(), "Drafts")
+    assert drafts.count("<a class=") == 8 and drafts.count(" hidden>") == 3
+    assert '<button class="ghost more">Show 3 more</button>' in drafts
+    save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 6)], [], [], [], []], []))
+    assert "more</button>" not in column(board.sections_html(), "Drafts")
+
+
+def test_html_counts_a_section_as_full_when_it_holds_as_many_rows_as_a_search_reads() -> None:
+    limit = board.github.SEARCH_LIMIT
+    merged = [pr(n, author="ann", state="MERGED", merged="2026-10-20T00:00:00Z") for n in range(limit)]
+    save(board.classify(ME, [[], [], [], [], [], [], merged], ["acme/widgets"]))
+    page = board.sections_html()
+    assert f'<h3>Recently merged<span class="count">{limit}+</span></h3>' in page
+    assert '<h3>Merged this week<span class="count">0</span></h3>' in page
 
 
 def test_recently_opened_lists_what_no_section_shows_and_escapes_titles() -> None:

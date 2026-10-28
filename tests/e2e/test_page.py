@@ -1223,47 +1223,51 @@ def test_a_click_dismisses_the_tooltip_even_when_the_click_redraws_the_element(p
     expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
 
 
-def test_the_start_page_lists_the_viewers_pull_requests_and_keeps_a_closed_section_closed(
+def test_the_start_page_lists_the_viewers_pull_requests_and_show_more_opens_the_rest(
     page: Page, server_url: str, gh_state: Path, cache_dir: Path
 ) -> None:
-    mine = {
-        "number": 1,
-        "title": TITLE,
-        "url": "https://github.com/acme/widgets/pull/1",
-        "isDraft": False,
-        "state": "OPEN",
-        "updatedAt": "2026-10-20T10:00:00Z",
-        "mergedAt": None,
-        "mergeable": "MERGEABLE",
-        "reviewDecision": None,
-        "repository": {"nameWithOwner": "acme/widgets"},
-        "author": {"__typename": "User", "login": "tester"},
-        "commits": {
-            "nodes": [{"commit": {"committedDate": "2026-10-20T10:00:00Z", "statusCheckRollup": {"state": "FAILURE"}}}]
-        },
-        "reviewRequests": {"nodes": []},
-        "reviews": {"nodes": []},
-        "comments": {"nodes": []},
-        "reviewThreads": {"nodes": []},
-    }
+    def mine(number: int, draft: bool, ci: str) -> dict:
+        return {
+            "number": number,
+            "title": f"{TITLE} {number}",
+            "url": f"https://github.com/acme/widgets/pull/{number}",
+            "isDraft": draft,
+            "state": "OPEN",
+            "updatedAt": f"2026-10-{number:02d}T10:00:00Z",
+            "mergedAt": None,
+            "mergeable": "MERGEABLE",
+            "reviewDecision": None,
+            "repository": {"nameWithOwner": "acme/widgets"},
+            "author": {"__typename": "User", "login": "tester"},
+            "commits": {
+                "nodes": [{"commit": {"committedDate": "2026-10-01T10:00:00Z", "statusCheckRollup": {"state": ci}}}]
+            },
+            "reviewRequests": {"nodes": []},
+            "reviews": {"nodes": []},
+            "comments": {"nodes": []},
+            "reviewThreads": {"nodes": []},
+        }
+
+    found = [mine(1, False, "FAILURE"), *(mine(n, True, "SUCCESS") for n in range(2, 9))]
     (gh_state / "search.json").write_text(
-        json.dumps({"is:pr is:open archived:false author:@me sort:updated-desc": [mine]})
+        json.dumps({"is:pr is:open archived:false author:@me sort:updated-desc": found})
     )
     # The board asks GitHub at most every 30 seconds, so an answer saved by an earlier test goes first.
     (cache_dir / "board.json").unlink(missing_ok=True)
     try:
         page.goto(server_url + "/home")
-        section = page.locator('#board .sub[data-key="action"]')
-        expect(section.locator("h3")).to_contain_text("Need your action")
-        expect(section.locator(".item .why")).to_have_text("CI failed")
-        section.locator(".chev").click()
-        expect(section.locator(".list")).to_be_hidden()
-        # The board draws again from the server after a reload, and the section stays closed.
-        page.reload()
-        expect(section.locator(".chev")).to_have_attribute("aria-expanded", "false")
-        expect(section.locator(".list")).to_be_hidden()
-        section.locator(".chev").click()
-        expect(section.locator(".list")).to_be_visible()
+        action = page.locator('#board .sub[data-key="action"]')
+        expect(action.locator("h4")).to_contain_text("Needs your action")
+        expect(action.locator(".card .why")).to_have_text("CI failed")
+        drafts = page.locator('#board .sub[data-key="draft"]')
+        cards = drafts.locator(".card")
+        expect(cards).to_have_count(7)
+        expect(cards.nth(4)).to_be_visible()
+        expect(cards.nth(5)).to_be_hidden()
+        drafts.get_by_role("button", name="Show 2 more").click()
+        expect(cards.nth(6)).to_be_visible()
+        expect(cards.nth(6).locator(".t")).to_have_text(f"{TITLE} 2")
+        expect(drafts.get_by_role("button")).to_have_count(0)
     finally:
         (gh_state / "search.json").unlink()
         (cache_dir / "board.json").unlink(missing_ok=True)

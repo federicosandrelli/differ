@@ -11,12 +11,24 @@ h1 + .log { margin-top: 20px; }
 .banner { margin: 12px 0 16px; }
 form { display: flex; gap: 8px; margin: 0 0 20px; }
 input { flex: 1; }
-.group > h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 28px 0 4px; }
-.group.opened > .list { margin-top: 8px; }
-.sub h3 { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin: 14px 0 6px -2px; }
-.sub .chev { width: 18px; height: 18px; }
-.sub.closed .list { display: none; }
-.sub.closed h3 { margin-bottom: 0; }
+main:has(#board) { max-width: 1320px; }
+.group > h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 28px 0 12px; }
+.group.opened > h2 { margin-bottom: 8px; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 20px; align-items: start; }
+.column, .sub { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.column h3, .sub h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.sub h4 { margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.sub > [hidden] { display: none; }
+.sub > .more { align-self: flex-start; }
+.none { opacity: var(--dim); }
+.pr { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
+.pr .t { font-size: 13px; font-weight: 500; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.pr .m { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.pr .m .ref { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pr .why { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.quiet .pr { gap: 2px; padding: 7px 12px; }
+.quiet .pr .t { font-weight: 400; color: var(--text-secondary); -webkit-line-clamp: 1; }
+.quiet .pr .m { font-size: 11px; }
 .list { overflow: hidden; }
 .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--text); }
 .item:first-child { border-top: 0; } .item:hover { background: var(--bg-panel); text-decoration: none; }

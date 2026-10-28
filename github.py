@@ -223,15 +223,17 @@ reviews(last: 30) { nodes { author { __typename login } state submittedAt body }
 comments(last: 30) { nodes { author { __typename login } createdAt } }
 reviewThreads(last: 20) { nodes { isResolved comments(last: 5) { nodes { author { __typename login } createdAt } } } }
 """
+# The pull requests search_prs reads of each search.
+SEARCH_LIMIT = 50
 
 
 def search_prs(queries: list[str], timeout: float = 30) -> tuple[str, list[list[dict]]] | None:
-    """The viewer's login and, for each search query, the first 50 pull requests it finds, with PR_FIELDS. The
+    """The viewer's login and, for each search query, the first SEARCH_LIMIT pull requests it finds, with PR_FIELDS. The
     searches run side by side, one request each, since GitHub gives up on one request that holds them all. None
     when gh fails or GitHub answers without the viewer or a search."""
     query = (
         "query($q: String!) { viewer { login } "
-        f"search(query: $q, type: ISSUE, first: 50) {{ nodes {{ ... on PullRequest {{ {PR_FIELDS} }} }} }} }}"
+        f"search(query: $q, type: ISSUE, first: {SEARCH_LIMIT}) {{ nodes {{ ... on PullRequest {{ {PR_FIELDS} }} }} }} }}"
     )
 
     def one(q: str) -> dict:
