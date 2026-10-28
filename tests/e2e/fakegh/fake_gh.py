@@ -104,7 +104,6 @@ def contents(endpoint: str) -> None:
 
 
 def thread_node(tid: str, draft: dict) -> dict:
-    now = datetime.now(UTC).isoformat(timespec="seconds")
     return {
         "id": tid,
         "isResolved": False,
@@ -117,37 +116,21 @@ def thread_node(tid: str, draft: dict) -> dict:
         "originalLine": draft["line"],
         "originalStartLine": draft.get("startLine"),
         "resolvedBy": None,
-        "comments": {
-            "nodes": [
-                {
-                    "id": f"{tid}-c1",
-                    "author": {"login": "tester"},
-                    "body": draft["body"],
-                    "bodyHTML": "",
-                    "createdAt": now,
-                    "url": f"https://github.com/acme/widgets/pull/1#{tid}",
-                    "state": "SUBMITTED",
-                    "replyTo": None,
-                    "pullRequestReview": None,
-                }
-            ]
-        },
+        "comments": {"nodes": [comment_node(f"{tid}-c1", draft["body"])]},
     }
 
 
-def reply_node(cid: str, variables: dict) -> dict:
-    now = datetime.now(UTC).isoformat(timespec="seconds")
-    review = variables.get("review")
+def comment_node(cid: str, body: str) -> dict:
     return {
         "id": cid,
         "author": {"login": "tester"},
-        "body": variables["body"],
+        "body": body,
         "bodyHTML": "",
-        "createdAt": now,
+        "createdAt": datetime.now(UTC).isoformat(timespec="seconds"),
         "url": f"https://github.com/acme/widgets/pull/1#{cid}",
-        "state": "PENDING" if review else "SUBMITTED",
-        "replyTo": {"id": "earlier"},
-        "pullRequestReview": {"id": review} if review else None,
+        "state": "SUBMITTED",
+        "replyTo": None,
+        "pullRequestReview": None,
     }
 
 
@@ -176,7 +159,7 @@ def mutate(args: list[str], request: dict) -> None:
             data = {"addPullRequestReview": {"pullRequestReview": review}}
         if "addPullRequestReviewThreadReply(" in query:
             thread = next(t for t in state["threads"] if t["id"] == variables["thread"])
-            node = reply_node(f"{thread['id']}-c{len(thread['comments']['nodes']) + 1}", variables)
+            node = comment_node(f"{thread['id']}-c{len(thread['comments']['nodes']) + 1}", variables["body"])
             thread["comments"]["nodes"].append(node)
             comments_file.write_text(json.dumps(state))
             data = {"addPullRequestReviewThreadReply": {"comment": {"id": node["id"]}}}

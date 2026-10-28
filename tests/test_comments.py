@@ -251,15 +251,19 @@ def test_a_new_thread_answers_its_comment_id(
     assert result["comment"] == "C1"
 
 
-def test_a_new_thread_without_a_comment_id_in_the_answer_still_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("mode", "answer", "result"),
+    [
+        ("single", {"addPullRequestReview": {"pullRequestReview": None}}, {"posted": True, "comment": ""}),
+        ("review", {"addPullRequestReview": None}, {"pending": None, "comment": ""}),
+    ],
+)
+def test_a_new_thread_without_a_comment_id_in_the_answer_still_succeeds(
+    monkeypatch: pytest.MonkeyPatch, mode: comments.Mode, answer: dict, result: dict
+) -> None:
     monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", None, None))
-    monkeypatch.setattr(
-        comments, "graphql", lambda query, **variables: {"addPullRequestReview": {"pullRequestReview": None}}
-    )
-    assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT", mode="single") == {
-        "posted": True,
-        "comment": "",
-    }
+    monkeypatch.setattr(comments, "graphql", lambda query, **variables: answer)
+    assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT", mode=mode) == result
 
 
 def test_a_reply_answers_its_comment_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -268,9 +272,3 @@ def test_a_reply_answers_its_comment_id(monkeypatch: pytest.MonkeyPatch) -> None
         comments, "graphql", lambda query, **variables: {"addPullRequestReviewThreadReply": {"comment": {"id": "C2"}}}
     )
     assert comments.reply(REF, thread_id="T1", body="Done", mode="single") == {"pending": None, "comment": "C2"}
-
-
-def test_a_new_review_without_a_review_in_the_answer_still_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", None, None))
-    monkeypatch.setattr(comments, "graphql", lambda query, **variables: {"addPullRequestReview": None})
-    assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT") == {"pending": None, "comment": ""}

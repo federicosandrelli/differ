@@ -22,17 +22,15 @@ async function api(action, body) {
 async function loadComments() {
   if (!API) return;
   const load = ++LOADS.started;
-  try {
-    const d = await api('comments');
-    if (load < LOADS.applied) return;
+  let d = null, error = '';
+  try { d = await api('comments'); } catch (e) { error = e.message; }
+  if (load < LOADS.applied) return;
+  LOADS.applied = load;
+  if (d) {
     Object.assign(C, d, { loaded: true, error: '', loadedAt: Date.now() });
     const ids = new Set(C.threads.flatMap(t => t.comments.map(c => c.id)));
     sendingComments = sendingComments.filter(s => !arrived(s, ids, load));
-  } catch (e) {
-    if (load < LOADS.applied) return;
-    C.error = e.message;
-  }
-  LOADS.applied = load;
+  } else C.error = error;
   threadsChanged();
   render();
   if (SHELL) { SHELL.badge(C.threads.filter(t => !t.resolved).length); if (C.status) SHELL.status(C.status); }
@@ -88,9 +86,11 @@ function arrived(s, ids, load) {
 const sendingComment = (body, mode, reply) => ({ id: '', author: C.viewer || 'you', body, html: '', created: new Date().toISOString(), url: '',
   pending: mode === 'review' && (!reply || !!C.pending), reply, sending: true });
 // The thread a comment box starts, shaped like GitHub's, with the comment in it. It is `local`: GitHub has no copy yet.
-const localThread = (c, comment) => ({ id: `local:${++localThreads}`, path: c.path, resolved: false, outdated: false, resolved_by: '', local: true,
-  line: c.line, start_line: c.startLine !== c.line ? c.startLine : null, side: c.side, start_side: c.startLine !== c.line ? c.side : null,
-  original_line: c.line, original_start_line: c.startLine !== c.line ? c.startLine : null, comments: [comment] });
+function localThread(c, comment) {
+  const start = c.startLine !== c.line ? c.startLine : null;
+  return { id: `local:${++localThreads}`, path: c.path, resolved: false, outdated: false, resolved_by: '', local: true, line: c.line,
+    start_line: start, side: c.side, start_side: start && c.side, original_line: c.line, original_start_line: start, comments: [comment] };
+}
 function threadsChanged() { C.version++; indexThreads(); }
 // The comments being sent, without their text, and the loads.
 const sendingSummary = () => sendingComments.map(s => ({ thread: s.thread ? s.thread.id : null, replyTo: s.replyTo ?? null, taken: !s.comment.sending, takenAtLoad: s.takenAtLoad ?? null }));
