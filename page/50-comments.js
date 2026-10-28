@@ -9,7 +9,7 @@ const LOADS = { started: 0, applied: 0 };
 // The comments the viewer sent that the page shows before GitHub gives them back, in the order sent. Each entry holds
 // the comment and either `thread`, the new thread it starts, or `replyTo`, the id of the thread it answers. Once GitHub
 // takes the comment, the comment holds GitHub's id when GitHub's answer has it, and `takenAtLoad` the number of loads
-// started by then.
+// started by then. A load drops the entry once the comment arrived.
 let sendingComments = [];
 let localThreads = 0;
 
@@ -27,7 +27,7 @@ async function loadComments() {
     if (load < LOADS.applied) return;
     Object.assign(C, d, { loaded: true, error: '', loadedAt: Date.now() });
     const ids = new Set(C.threads.flatMap(t => t.comments.map(c => c.id)));
-    sendingComments = sendingComments.filter(s => !ids.has(s.comment.id) && !(s.takenAtLoad !== undefined && load > s.takenAtLoad));
+    sendingComments = sendingComments.filter(s => !arrived(s, ids, load));
   } catch (e) {
     if (load < LOADS.applied) return;
     C.error = e.message;
@@ -61,8 +61,8 @@ async function post(action, body) {
   return true;
 }
 // Send a comment to GitHub, showing it at once in entry's thread with a sending tag until GitHub takes it, then reload
-// the comments. The comment stays until a load shows GitHub's copy of it or a load started after GitHub took it
-// applies. When GitHub refuses it, it leaves and undo runs.
+// the comments. The comment stays until a load ends the wait for GitHub's copy (arrived). When GitHub refuses it, it
+// leaves and undo runs.
 async function postComment(action, body, entry, undo) {
   sendingComments.push(entry); threadsChanged();
   const d = await send(action, body);
@@ -76,6 +76,13 @@ async function postComment(action, body, entry, undo) {
   threadsChanged(); render();
   await loadComments();
 }
+// Whether a load with this number, showing comments with these ids, ends the wait for GitHub's copy of a sending
+// comment. A load that shows the comment's id ends it. Otherwise the first load started after GitHub took the comment
+// ends it, or the second when GitHub answered with an id, since a read just after a write can miss the comment.
+function arrived(s, ids, load) {
+  if (s.takenAtLoad === undefined) return false;
+  return ids.has(s.comment.id) || load > s.takenAtLoad + (s.comment.id ? 1 : 0);
+}
 // A comment the viewer is sending, shaped like GitHub's. It is pending when GitHub will put it in a pending review: a
 // reply joins the pending review only when there is one, while a new thread starts one.
 const sendingComment = (body, mode, reply) => ({ id: '', author: C.viewer || 'you', body, html: '', created: new Date().toISOString(), url: '',
@@ -85,7 +92,7 @@ const localThread = (c, comment) => ({ id: `local:${++localThreads}`, path: c.pa
   line: c.line, start_line: c.startLine !== c.line ? c.startLine : null, side: c.side, start_side: c.startLine !== c.line ? c.side : null,
   original_line: c.line, original_start_line: c.startLine !== c.line ? c.startLine : null, comments: [comment] });
 function threadsChanged() { C.version++; indexThreads(); }
-// What the bug report says of the comments being sent and of the loads; no text.
+// The comments being sent, without their text, and the loads.
 const sendingSummary = () => sendingComments.map(s => ({ thread: s.thread ? s.thread.id : null, replyTo: s.replyTo ?? null, taken: !s.comment.sending, takenAtLoad: s.takenAtLoad ?? null }));
 const loadsSummary = () => `load ${LOADS.applied} of ${LOADS.started}`;
 
@@ -201,6 +208,11 @@ function outdatedHtml(f) {
 }
 function commentNotices() {
   if (!API) return '';
+  const refused = [...state.drafts].filter(([, d]) => d.refused).map(([key, d]) =>
+    `<div class="notice">GitHub refused your comment on line ${d.line} of ${esc(d.path.split('/').pop())}. It is a draft on its line · <a href="#" data-draft-open="${esc(key)}">open it</a></div>`).join('');
+  return commentsStatus() + refused;
+}
+function commentsStatus() {
   if (C.error) return `<div class="notice err">Comments: ${esc(C.error)} · <a href="#" data-comments-reload>retry</a></div>`;
   if (!C.loaded) return '<div class="notice">Loading comments…</div>';
   const stale = C.head && !PR.head.startsWith(C.head) && !C.head.startsWith(PR.head);
@@ -255,6 +267,7 @@ const draftKey = (path, side, line) => `${side}:${line}:${path}`;
 function takeDraft(path, side, line) {
   const key = draftKey(path, side, line), d = state.drafts.get(key);
   state.drafts.delete(key);
+  if (d) delete d.refused;
   return d;
 }
 function openCompose(path, side, line, extend) {
@@ -272,19 +285,25 @@ function openCompose(path, side, line, extend) {
 }
 const joinDrafts = (first, then) => then.trim() ? first.trimEnd() + '\n\n' + then : first;
 // Open a comment box again with its text, joined by the text of a box or draft written on its line since. While a box
-// with text is open on another line, that box stays, the comment becomes a draft on its own line, and C.error says so.
+// with text is open on another line, that box stays and the comment becomes a draft on its own line, marked `refused`.
+// The box takes focus unless another textarea has it.
 function restoreCompose(c) {
   const open = state.compose, key = draftKey(c.path, c.side, c.line), draft = takeDraft(c.path, c.side, c.line);
   if (draft) c.text = joinDrafts(c.text, draft.text);
   const sameLine = open && draftKey(open.path, open.side, open.line) === key;
   if (open && !sameLine && open.text.trim()) {
+    c.refused = true;
     state.drafts.set(key, c);
-    C.error += ` · Your comment on line ${c.line} of ${c.path.split('/').pop()} is a draft on its line`;
     return;
   }
   if (sameLine) c.text = joinDrafts(c.text, open.text);
   state.compose = c;
-  state.focus = '[data-compose-text]';
+  if (!typingElsewhere('[data-compose-text]')) state.focus = '[data-compose-text]';
+}
+// Whether a textarea that selector misses has focus.
+function typingElsewhere(selector) {
+  const el = document.activeElement;
+  return !!el && el.tagName === 'TEXTAREA' && !el.matches(selector);
 }
 // The draft the state holds for a form's textarea.
 function draftText(box) {
@@ -329,7 +348,7 @@ function textareaKey(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') { const b = form && form.querySelector('[data-bug-cancel]'); if (b) b.click(); else e.target.blur(); }
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
@@ -359,8 +378,9 @@ async function commentClick(t, e) {
     const id = d.replySend;
     state.replyOpen.delete(id);
     await postComment('reply', { thread: id, body: text, mode: d.mode }, { replyTo: id, comment: sendingComment(text, d.mode, true) }, () => {
+      const box = `[data-reply-text="${CSS.escape(id)}"]`;
       state.replyOpen.set(id, joinDrafts(text, state.replyOpen.get(id) || ''));
-      state.focus = `[data-reply-text="${CSS.escape(id)}"]`;
+      if (!typingElsewhere(box)) state.focus = box;
     });
     return true;
   }
@@ -384,6 +404,12 @@ async function commentClick(t, e) {
   if (d.convSend !== undefined) {
     if (!state.convText.trim()) { state.focus = '[data-conv-text]'; render(); return true; }
     if (await post('conversation', { body: state.convText })) { state.convText = ''; render(); }
+    return true;
+  }
+  if (d.draftOpen !== undefined) {
+    e.preventDefault();
+    const draft = state.drafts.get(d.draftOpen), f = draft && BY_PATH[draft.path];
+    if (f) { openCompose(draft.path, draft.side, draft.line, false); go(draft.path, rowKey(f, draft.side, draft.line)); }
     return true;
   }
   if (d.commentsReload !== undefined) { e.preventDefault(); C.error = ''; render(); loadComments(); return true; }

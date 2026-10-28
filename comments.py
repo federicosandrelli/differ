@@ -219,7 +219,7 @@ def _pending_id(pr: dict, viewer: str) -> str | None:
 
 def _first_comment_id(node: dict | None) -> str:
     """The id of the first comment of a review or thread GitHub answered a mutation with, or "" when the answer has
-    none. The mutation went through either way, so a missing id must not turn into an error."""
+    none."""
     nodes = ((node or {}).get("comments") or {}).get("nodes") or []
     return ((nodes[0] or {}).get("id") or "") if nodes else ""
 
@@ -289,8 +289,8 @@ mutation($pr: ID!, $oid: GitObjectID!, $threads: [DraftPullRequestReviewThread])
         oid=target.head,
         threads=[thread],
     )
-    review = data["addPullRequestReview"]["pullRequestReview"]
-    return {"pending": review["id"], "comment": _first_comment_id(review)}
+    review = (data.get("addPullRequestReview") or {}).get("pullRequestReview") or {}
+    return {"pending": review.get("id"), "comment": _first_comment_id(review)}
 
 
 def reply(ref: PullRef, *, thread_id: str, body: str, mode: Mode = "review") -> dict:

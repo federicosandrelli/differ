@@ -934,14 +934,42 @@ def test_a_refused_comment_waits_as_a_draft_while_another_box_has_text(
         (gh_state / "fail.txt").write_text("api graphql\n")
         try:
             release()
-            expect(page.locator("#side .notice.err")).to_contain_text("is a draft on its line")
+            expect(page.locator("#side .notice.err")).to_contain_text("Comments:")
         finally:
             (gh_state / "fail.txt").unlink()
     box = page.locator("textarea[data-compose-text]")
     expect(box).to_have_value("Other")
     expect(box).to_be_focused()
-    page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+    notice = page.locator("#side .notice", has_text="GitHub refused your comment on line 11 of app.py")
+    expect(notice).to_be_visible()
+    page.click("#side a[data-comments-reload]")
+    expect(page.locator("#side .notice.err")).to_have_count(0)
+    expect(notice).to_be_visible()
+    notice.locator("a[data-draft-open]").click()
     expect(box).to_have_value("Greet by name")
+    expect(notice).to_have_count(0)
+
+
+def test_a_refused_reply_leaves_the_focus_in_the_box_being_typed_in(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        page.click("button[data-reply='T1']")
+        page.locator("textarea[data-reply-text='T1']").fill("Will do")
+        page.click("button[data-reply-send='T1'][data-mode='single']")
+        expect(page.locator("div.thread[data-thread='T1'] .tag.sending")).to_be_visible()
+        page.locator(APP).locator("tr.ctx", has_text="def main():").locator("td.n.key").click()
+        page.keyboard.type("Other")
+        (gh_state / "fail.txt").write_text("api graphql\n")
+        try:
+            release()
+            expect(page.locator("#side .notice.err")).to_contain_text("Comments:")
+        finally:
+            (gh_state / "fail.txt").unlink()
+    expect(page.locator("textarea[data-reply-text='T1']")).to_have_value("Will do")
+    page.keyboard.type("X")
+    expect(page.locator("textarea[data-compose-text]")).to_have_value("OtherX")
 
 
 def test_a_reply_without_a_pending_review_shows_as_sending_and_not_pending(
@@ -961,6 +989,66 @@ def test_a_reply_without_a_pending_review_shows_as_sending_and_not_pending(
         expect(reply.locator(".tag.sending")).to_have_count(0)
         expect(reply.locator("a[target=_blank]")).to_have_count(1)
         expect(page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")).to_have_count(1)
+
+
+def hold_requests(page: Page, pattern: str) -> list[tuple[Route, APIResponse]]:
+    """Send each request to a URL matching pattern on to the server at once, and hold its answer back from the page.
+    Returns the held requests with their answers, in the order they came."""
+    held: list[tuple[Route, APIResponse]] = []
+    page.route(pattern, lambda route: held.append((route, route.fetch())))
+    return held
+
+
+def wait_for(page: Page, check: Callable[[], bool]) -> None:
+    deadline = time.monotonic() + 10
+    while not check():
+        assert time.monotonic() < deadline
+        page.wait_for_timeout(50)
+
+
+def test_the_sending_tag_goes_when_github_takes_the_comment(page: Page, server_url: str, gh_state: Path) -> None:
+    comments_file = gh_state / "comments.json"
+    saved = comments_file.read_text()
+    try:
+        open_pr(page, server_url)
+        loads = hold_requests(page, "**/api/acme/widgets/1/comments")
+        thread = send_on_hello(page, "Greet by name")
+        wait_for(page, lambda: len(loads) == 1)
+        expect(thread.locator(".tag.sending")).to_have_count(0)
+        expect(thread.locator("a[target=_blank]")).to_have_count(0)
+        route, response = loads[0]
+        route.fulfill(response=response)
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+    finally:
+        comments_file.write_text(saved)
+
+
+def test_a_load_that_started_before_github_took_a_comment_shows_it_once(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    comments_file = gh_state / "comments.json"
+    saved = comments_file.read_text()
+    try:
+        open_pr(page, server_url)
+        sends = hold_requests(page, "**/api/acme/widgets/1/comment")
+        loads = hold_requests(page, "**/api/acme/widgets/1/comments")
+        thread = send_on_hello(page, "Greet by name")
+        wait_for(page, lambda: len(sends) == 1)
+        page.evaluate("() => { window.early = loadComments(); }")
+        wait_for(page, lambda: len(loads) == 1)
+        route, response = sends[0]
+        route.fulfill(response=response)
+        wait_for(page, lambda: len(loads) == 2)
+        route, response = loads[0]
+        route.fulfill(response=response)
+        page.evaluate("early")
+        expect(thread).to_have_count(1)
+        expect(thread.locator("a[target=_blank]")).to_have_count(1)
+        route, response = loads[1]
+        route.fulfill(response=response)
+        expect(thread).to_have_count(1)
+    finally:
+        comments_file.write_text(saved)
 
 
 def test_a_load_that_answers_after_a_later_one_changes_nothing(page: Page, server_url: str, gh_state: Path) -> None:

@@ -268,3 +268,9 @@ def test_a_reply_answers_its_comment_id(monkeypatch: pytest.MonkeyPatch) -> None
         comments, "graphql", lambda query, **variables: {"addPullRequestReviewThreadReply": {"comment": {"id": "C2"}}}
     )
     assert comments.reply(REF, thread_id="T1", body="Done", mode="single") == {"pending": None, "comment": "C2"}
+
+
+def test_a_new_review_without_a_review_in_the_answer_still_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", None, None))
+    monkeypatch.setattr(comments, "graphql", lambda query, **variables: {"addPullRequestReview": None})
+    assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT") == {"pending": None, "comment": ""}

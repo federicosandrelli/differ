@@ -152,7 +152,7 @@ def reply_node(cid: str, variables: dict) -> dict:
 
 
 def mutate(args: list[str], request: dict) -> None:
-    """Answer a mutation. While it runs, a held-<pid> file marks it, so a test can wait for every mutation to end."""
+    """Answer a mutation. A held-<pid> file marks it while it runs."""
     query, variables = request["query"], request.get("variables") or {}
     marker = state_dir() / f"held-{os.getpid()}"
     marker.write_text("")

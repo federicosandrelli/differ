@@ -22,7 +22,7 @@ function renderRow(f, r, out, index) {
 }
 // The row under a code row that holds its threads and comment box in a band, named by the code row's id.
 const notesRowHtml = (id, html) => `<tr class="notes" data-row="${id}"><td colspan="4"><div class="notes">${html}</div></td></tr>`;
-const notesBandOf = (tr) => tr.firstElementChild.firstElementChild;
+const notesBandOf = (tr) => tr.querySelector(':scope > td > div.notes');
 
 // A row with a chip in the code column, indented like the first folded line.
 function inlineFoldRow(b) {
