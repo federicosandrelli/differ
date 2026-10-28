@@ -223,7 +223,7 @@ reviews(last: 30) { nodes { author { __typename login } state submittedAt body }
 comments(last: 30) { nodes { author { __typename login } createdAt } }
 reviewThreads(last: 20) { nodes { isResolved comments(last: 5) { nodes { author { __typename login } createdAt } } } }
 """
-# The pull requests search_prs reads of each search.
+# How many pull requests search_prs reads from each search.
 SEARCH_LIMIT = 50
 
 

@@ -3,18 +3,27 @@ __BANNER__
 <form action="/open"><input name="pr" class="big" placeholder="https://github.com/owner/repo/pull/123 or owner/repo#123" autofocus><button class="primary big">Open</button></form>
 <div id="board">__BOARD__</div>
 <script>
+// The sections the reader opened with Show N more, by key, so they stay open when the board draws again.
 const board = document.getElementById('board');
+const opened = new Set();
+const showOpened = () => {
+  for (const more of board.querySelectorAll('.sub > .more')) {
+    if (!opened.has(more.parentElement.dataset.key)) continue;
+    for (const card of more.parentElement.querySelectorAll(':scope > [hidden]')) card.hidden = false;
+    more.remove();
+  }
+};
 board.addEventListener('click', (e) => {
   const more = e.target.closest('.sub > .more');
   if (!more) return;
-  for (const card of more.parentElement.querySelectorAll(':scope > [hidden]')) card.hidden = false;
-  more.remove();
+  opened.add(more.parentElement.dataset.key);
+  showOpened();
 });
 let loading = null;
 const loadBoard = () => {
   if (loading) loading.abort();
   loading = new AbortController();
-  fetch('/board', { signal: loading.signal }).then(r => r.ok ? r.text() : Promise.reject()).then(h => { board.innerHTML = h; }).catch(() => {});
+  fetch('/board', { signal: loading.signal }).then(r => r.ok ? r.text() : Promise.reject()).then(h => { board.innerHTML = h; showOpened(); }).catch(() => {});
 };
 loadBoard();
 document.addEventListener('tab-shown', loadBoard);

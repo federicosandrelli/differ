@@ -27,7 +27,7 @@ MERGED_QUERY = "is:pr is:merged -author:@me sort:updated-desc"
 FAILED = ("FAILURE", "ERROR")
 RUNNING = ("PENDING", "EXPECTED")
 SHOWN = 5
-NONE = '<span class="hint none">None</span>'
+NONE_HTML = '<span class="hint none">None</span>'
 
 
 class Column(NamedTuple):
@@ -83,18 +83,20 @@ class Row(TypedDict):
 
 class Board(TypedDict):
     """What board.json holds: the viewer's login, when GitHub last answered, the followed repositories it was
-    asked about, and the rows of each section, newest first."""
+    asked about, the rows of each section, newest first, and the keys of the full sections (see `full`)."""
 
     viewer: str
     fetched: float
     repos: list[str]
     sections: dict[str, list[Row]]
+    full: list[str]
 
 
 def queries(repos: list[str], merged_since: date) -> list[str]:
     """The searches the sections read, in this order: the viewer's open pull requests, the viewer's pull requests
     merged on or after the date, the pull requests that ask for the viewer's review, the ones the viewer takes part
-    in, the ones the viewer reviewed, and, when there are followed repositories, their open pull requests."""
+    in, the ones the viewer reviewed, and, when there are followed repositories, their open pull requests and the ones
+    other people merged there on or after the date."""
     found = [
         "is:pr is:open archived:false author:@me sort:updated-desc",
         f"is:pr is:merged author:@me merged:>={merged_since.isoformat()} sort:updated-desc",
@@ -288,12 +290,35 @@ def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str
     return sections
 
 
+def full(found: list[list[dict]]) -> list[str]:
+    """The keys of the sections that may lack rows: those fed by a search that found as many pull requests as
+    `github.search_prs` reads. `found` holds the answers to `queries`, in its order."""
+    open_mine, merged, asked, involved, reviewed, *rest = found
+    followed_open, merged_others = rest or ([], [])
+    fed = (
+        (open_mine, ("draft", "action", "ci", "review")),
+        (merged, ("merged",)),
+        (asked, ("reviewing",)),
+        (involved, ("reviewing", "reviewed", "unreviewed", "others")),
+        (reviewed, ("reviewing", "reviewed")),
+        (followed_open, ("unreviewed", "others")),
+        (merged_others, ("merged_others",)),
+    )
+    return sorted({key for answer, keys in fed if len(answer) >= github.SEARCH_LIMIT for key in keys})
+
+
 def load() -> Board:
     try:
         data = json.loads(PATH.read_text())
-        return Board(viewer=data["viewer"], fetched=data["fetched"], repos=data["repos"], sections=data["sections"])
+        return Board(
+            viewer=data["viewer"],
+            fetched=data["fetched"],
+            repos=data["repos"],
+            sections=data["sections"],
+            full=data.get("full", []),
+        )
     except (OSError, ValueError, KeyError, TypeError):
-        return Board(viewer="", fetched=0.0, repos=[], sections={})
+        return Board(viewer="", fetched=0.0, repos=[], sections={}, full=[])
 
 
 def save(board: Board) -> None:
@@ -319,7 +344,15 @@ def refresh() -> None:
         if answer is None:
             return
         viewer, found = answer
-        save(Board(viewer=viewer, fetched=time.time(), repos=repos, sections=classify(viewer, found, repos)))
+        save(
+            Board(
+                viewer=viewer,
+                fetched=time.time(),
+                repos=repos,
+                sections=classify(viewer, found, repos),
+                full=full(found),
+            )
+        )
 
 
 def ago(ts: float) -> str:
@@ -377,42 +410,43 @@ def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
     if r["author"] == viewer:
         who = f'{render.pr_icon(r["status"])}<span class="ref">{html.escape(str(ref))}</span>'
     else:
-        who = f'<span>{html.escape(r["author"])}</span><span class="ref">{html.escape(r["repo"])}</span>'
+        who = f'<span class="by">{html.escape(r["author"] or "ghost")}</span><span class="ref">{html.escape(r["repo"])}</span>'
     why = f'<span class="why {r["tone"]}">{html.escape(r["reason"])}</span>' if r["reason"] else ""
     return (
         f'<a class="card{"" if quiet else " panel"} pr" href="{html.escape(ref.path)}"{" hidden" if hidden else ""}>'
         f'<span class="t">{html.escape(r["title"])}</span><span class="m">{who}<span class="spacer"></span>{why}'
-        f"<span>{html.escape(ago(r['at']))}</span></span></a>"
+        f'<span class="age">{html.escape(ago(r["at"]))}</span></span></a>'
     )
 
 
-def section_html(key: str, subtitle: str, rows: list[Row], viewer: str, quiet: bool) -> str:
-    """A section: its subtitle and count when it has a subtitle, then its first SHOWN cards and a button that shows
-    the rest, or None when it has no rows."""
-    head = (
-        f"<h4>{html.escape(subtitle)}{count_html(len(rows), len(rows) >= github.SEARCH_LIMIT)}</h4>" if subtitle else ""
-    )
+def section_html(key: str, subtitle: str, rows: list[Row], full: bool, viewer: str, quiet: bool) -> str:
+    """A section: its subtitle and count when it has a subtitle, then its cards, all but the first SHOWN hidden,
+    and a "Show N more" button when some are hidden, or None when it has no rows."""
+    head = f"<h4>{html.escape(subtitle)}{count_html(len(rows), full)}</h4>" if subtitle else ""
     cards = "".join(card_html(r, viewer, quiet, i >= SHOWN) for i, r in enumerate(rows))
     more = f'<button class="ghost more">Show {len(rows) - SHOWN} more</button>' if len(rows) > SHOWN else ""
-    return f'<section class="sub" data-key="{key}">{head}{cards or NONE}{more}</section>'
+    return f'<section class="sub" data-key="{key}">{head}{cards or NONE_HTML}{more}</section>'
 
 
 def sections_html() -> str:
     """The start page's board, once GitHub has answered: a group of columns for the viewer's pull requests and one
     for other people's, then the pull requests opened last that no section shows. A column counts the rows of its
-    sections, with a plus when one holds as many rows as a search reads, since that search may have found more."""
+    sections, with a plus when one of them is full."""
     board = load()
     viewer, shown, groups = board["viewer"], set(), []
     if board["sections"]:
         for name, columns in GROUPS:
             parts = []
             for column in columns:
-                lists = [(key, subtitle, board["sections"].get(key) or []) for key, subtitle in column.sections]
-                for _, _, rows in lists:
+                lists = [
+                    (key, subtitle, board["sections"].get(key) or [], key in board["full"])
+                    for key, subtitle in column.sections
+                ]
+                for _, _, rows, _ in lists:
                     shown.update(ref_of(r) for r in rows)
-                total = sum(len(rows) for _, _, rows in lists)
-                full = any(len(rows) >= github.SEARCH_LIMIT for _, _, rows in lists)
-                body = "".join(section_html(key, subtitle, rows, viewer, column.quiet) for key, subtitle, rows in lists)
+                total = sum(len(rows) for _, _, rows, _ in lists)
+                full = any(full for _, _, _, full in lists)
+                body = "".join(section_html(*section, viewer, column.quiet) for section in lists)
                 parts.append(
                     f'<div class="column{" quiet" if column.quiet else ""}">'
                     f"<h3>{html.escape(column.label)}{count_html(total, full)}</h3>{body}</div>"

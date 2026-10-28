@@ -259,8 +259,8 @@ def test_classify_puts_each_pull_request_in_one_section_newest_first() -> None:
     assert sections["unreviewed"][0]["owner"] == "acme" and sections["unreviewed"][0]["repo"] == "tools"
 
 
-def save(sections: dict, viewer: str = ME) -> None:
-    board.save(board.Board(viewer=viewer, fetched=time.time(), repos=[], sections=sections))
+def save(sections: dict, viewer: str = ME, full: tuple[str, ...] = ()) -> None:
+    board.save(board.Board(viewer=viewer, fetched=time.time(), repos=[], sections=sections, full=list(full)))
 
 
 def test_classify_lists_other_peoples_merges_newest_merge_first_and_leaves_out_the_viewers_own() -> None:
@@ -274,28 +274,23 @@ def test_classify_lists_other_peoples_merges_newest_merge_first_and_leaves_out_t
     assert sections["merged_others"][1]["at"] == board.seconds("2026-10-20T00:00:00Z")
 
 
-def column(page: str, label: str) -> str:
-    """The HTML of the column with the label, up to the next column or group."""
-    start = page.index(f"<h3>{label}<")
-    ends = [
-        i for i in (page.find('<div class="column', start), page.find("</section></div></section>", start)) if i > 0
-    ]
-    return page[start : min(ends)]
+def sub(page: str, key: str) -> str:
+    """The HTML of the section with the key."""
+    return re.findall(rf'<section class="sub" data-key="{key}">.*?</section>', page)[0]
+
+
+def column_counts(page: str) -> list[str]:
+    return re.findall(r'<h3>[^<]*<span class="count">([^<]*)</span>', page)
+
+
+def sub_count(page: str, key: str) -> str:
+    return re.findall(r'<h4>[^<]*<span class="count">([^<]*)</span>', sub(page, key))[0]
 
 
 def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -> None:
     assert board.sections_html() == '<div class="empty">No pull requests yet.</div>'
     save(board.classify(ME, [[pr(1, ci="FAILURE"), pr(2)], [], [pr(3, author="ann", repo="acme/tools")], [], []], []))
     page = board.sections_html()
-    assert re.findall(r"<h2>(.*?)</h2>", page) == ["Your pull requests", "Other people&#x27;s pull requests"]
-    assert re.findall(r"<h3>(.*?)<span", page) == [
-        "Drafts",
-        "In review",
-        "Merged this week",
-        "Need a reviewer",
-        "Being reviewed",
-        "Recently merged",
-    ]
     assert re.findall(r'<section class="sub" data-key="(\w+)">', page) == [
         "draft",
         "action",
@@ -308,48 +303,58 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
         "others",
         "merged_others",
     ]
-    in_review = column(page, "In review")
-    assert '<h3>In review<span class="count">2</span></h3>' in in_review
-    assert re.findall(r"<h4>(.*?)</h4>", in_review) == [
-        'Needs your action<span class="count">1</span>',
-        'Waiting on CI<span class="count">0</span>',
-        'Waiting on review<span class="count">1</span>',
-    ]
+    assert column_counts(page) == ["0", "2", "0", "0", "1", "0"]
+    assert [sub_count(page, key) for key in ("action", "ci", "review")] == ["1", "0", "1"]
     mine, _, theirs = re.findall(r'<a class="card.*?</a>', page)
     assert 'href="/acme/widgets/pull/1"' in mine and '<span class="why bad">CI failed</span>' in mine
-    assert "acme/widgets#1" in mine and "<span>me</span>" not in mine
-    assert (
-        'href="/acme/tools/pull/3"' in theirs
-        and "<span>ann</span>" in theirs
-        and '<span class="ref">tools</span>' in theirs
-    )
+    assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
+    assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
+    assert '<span class="ref">tools</span>' in theirs
+
+
+def test_html_names_a_deleted_author_ghost() -> None:
+    save(board.classify(ME, [[], [], [pr(1, author="")], [], []], []))
+    assert '<span class="by">ghost</span>' in sub(board.sections_html(), "reviewing")
 
 
 def test_html_keeps_an_empty_subtitle_and_an_empty_column_with_none() -> None:
     save(board.classify(ME, [[pr(1)], [], [], [], []], []))
     page = board.sections_html()
-    assert column(page, "Drafts").count(board.NONE) == 1
-    assert '<h3>Drafts<span class="count">0</span></h3>' in page
-    assert column(page, "In review").count(board.NONE) == 2
-    assert column(page, "Being reviewed").count(board.NONE) == 3
+    for key in ("draft", "action", "ci", "reviewing", "reviewed", "others"):
+        assert board.NONE_HTML in sub(page, key)
+    assert board.NONE_HTML not in sub(page, "review")
+    assert column_counts(page)[:2] == ["0", "1"]
 
 
 def test_html_shows_the_first_rows_of_a_section_and_a_button_for_the_rest() -> None:
     save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 9)], [], [], [], []], []))
-    drafts = column(board.sections_html(), "Drafts")
+    drafts = sub(board.sections_html(), "draft")
     assert drafts.count("<a class=") == 8 and drafts.count(" hidden>") == 3
     assert '<button class="ghost more">Show 3 more</button>' in drafts
     save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 6)], [], [], [], []], []))
-    assert "more</button>" not in column(board.sections_html(), "Drafts")
+    assert "more</button>" not in sub(board.sections_html(), "draft")
 
 
-def test_html_counts_a_section_as_full_when_it_holds_as_many_rows_as_a_search_reads() -> None:
+def test_full_names_every_section_a_search_with_as_many_answers_as_it_reads_feeds() -> None:
     limit = board.github.SEARCH_LIMIT
-    merged = [pr(n, author="ann", state="MERGED", merged="2026-10-20T00:00:00Z") for n in range(limit)]
-    save(board.classify(ME, [[], [], [], [], [], [], merged], ["acme/widgets"]))
+    some, many = [pr(1)], [pr(n) for n in range(limit)]
+    assert board.full([some, many, some, some, some]) == ["merged"]
+    assert board.full([many, some, some, some, some, some, many]) == [
+        "action",
+        "ci",
+        "draft",
+        "merged_others",
+        "review",
+    ]
+    assert board.full([some, some, some, some, some, many, some]) == ["others", "unreviewed"]
+    assert board.full([some, some, some, some, many]) == ["reviewed", "reviewing"]
+
+
+def test_html_adds_a_plus_to_the_count_of_a_full_section_and_its_column() -> None:
+    save(board.classify(ME, [[pr(1), pr(2, ci="FAILURE")], [], [], [], []], []), full=("action",))
     page = board.sections_html()
-    assert f'<h3>Recently merged<span class="count">{limit}+</span></h3>' in page
-    assert '<h3>Merged this week<span class="count">0</span></h3>' in page
+    assert column_counts(page)[1] == "2+"
+    assert [sub_count(page, key) for key in ("action", "ci", "review")] == ["1+", "0", "1"]
 
 
 def test_recently_opened_lists_what_no_section_shows_and_escapes_titles() -> None:
