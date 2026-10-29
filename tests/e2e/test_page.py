@@ -108,28 +108,62 @@ def test_an_image_of_a_private_repository_in_the_description_loads_through_the_s
     expect(page.locator(".prbody a[href='https://example.com/pixel.png']")).to_have_text("A tracker")
 
 
-def test_a_click_on_an_image_opens_it_and_the_arrows_step_through_the_images_of_the_description(
+def test_a_click_on_an_image_opens_it_in_the_shell_and_the_arrows_step_through_the_images_of_the_description(
     page: Page, server_url: str, add_pr: AddPr, gh_state: Path
 ) -> None:
     path = add_pr({}, {"docs/a.txt": "a\n"})
-    meta_file = gh_state / f"pr{path.rsplit('/', 1)[1]}.json"
+    number = path.rsplit("/", 1)[1]
+    meta_file = gh_state / f"pr{number}.json"
     meta = json.loads(meta_file.read_text())
     shot = f"https://github.com/acme/widgets/blob/{meta['headRefOid']}/docs/{{}}.png?raw=true"
-    body = "\n\n".join(f"![{n}]({shot.format(n)})" for n in ("one", "two", "three"))
+    body = "\n\n".join(
+        [
+            f"[![one]({shot.format('one')})]({shot.format('one')})",
+            f"![two]({shot.format('two')})",
+            f"[![badge]({shot.format('badge')})](https://example.com/ci)",
+            f"![three]({shot.format('three')})",
+        ]
+    )
     meta_file.write_text(json.dumps({**meta, "body": body}))
-    open_pr(page, server_url, path)
-    viewer = page.locator("#viewer")
-    page.locator(".prbody img[alt='two']").click()
-    expect(viewer.locator("img")).to_have_attribute("alt", "two")
-    expect(viewer.locator(".count")).to_have_text("2 / 3")
-    page.keyboard.press("ArrowRight")
-    expect(viewer.locator("img")).to_have_attribute("alt", "three")
-    page.keyboard.press("ArrowRight")
-    expect(viewer.locator("img")).to_have_attribute("alt", "one")
-    page.keyboard.press("ArrowLeft")
-    expect(viewer.locator("img")).to_have_attribute("alt", "three")
+    page.goto(server_url + "/")
+    page.evaluate("window.opened = []; window.open = (url) => { opened.push(url); }; 0")
+    home = page.frame_locator("#panes iframe.on")
+    home.locator("input[name=pr]").fill(f"acme/widgets#{number}")
+    home.locator("input[name=pr]").press("Enter")
+    pane = page.locator("#panes iframe.on")
+    expect(pane.content_frame.locator(".prbody img[alt='one']")).to_be_visible(timeout=30000)
+    frame = pane.element_handle().content_frame()
+    assert frame
+    frame.evaluate(
+        "window.cancelled = [];"
+        "window.addEventListener('keydown', (e) => {"
+        " if (e.key === 'Escape') setTimeout(() => cancelled.push(e.defaultPrevented)); }, true)"
+    )
+    viewer = frame.locator("#viewer")
+    shown = viewer.locator("img")
+    # GitHub wraps an image in a link to its own file, which the viewer takes over.
+    frame.click(".prbody img[alt='one']")
+    expect(shown).to_have_attribute("alt", "one")
     page.keyboard.press("Escape")
-    expect(viewer).not_to_be_visible()
+    expect(viewer).to_be_hidden()
+    frame.wait_for_function("cancelled.length === 1")
+    assert frame.evaluate("cancelled") == [True]
+    frame.click(".prbody img[alt='two']")
+    expect(shown).to_have_attribute("alt", "two")
+    page.keyboard.press("ArrowRight")
+    expect(shown).to_have_attribute("alt", "three")
+    page.keyboard.press("ArrowRight")
+    expect(shown).to_have_attribute("alt", "one")
+    page.keyboard.press("ArrowLeft")
+    expect(shown).to_have_attribute("alt", "three")
+    viewer.click(position={"x": 4, "y": 4})
+    expect(viewer).to_be_hidden()
+    assert page.evaluate("opened") == []
+    # An image in a link to another page follows the link.
+    frame.click(".prbody img[alt='badge']")
+    expect(viewer).to_be_hidden()
+    page.wait_for_function("opened.length === 1")
+    assert page.evaluate("opened") == ["https://example.com/ci"]
 
 
 def test_a_file_the_pull_request_empties_shows_its_removed_lines(page: Page, server_url: str, add_pr: AddPr) -> None:

@@ -115,6 +115,12 @@ kbd { font: 11px var(--mono); background: var(--bg-inset); border: 1px solid var
 code { font: 12.5px var(--mono); background: var(--bg-inset); padding: 0 4px; border-radius: var(--radius-sm); }
 pre code { background: none; padding: 0; }
 
+/* A modal is a dialog that fills the window, dims it itself and centres what it holds: before 2024, browsers gave
+   ::backdrop none of the colour tokens. */
+dialog.modal { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: var(--backdrop); }
+dialog.modal[open] { display: flex; align-items: center; justify-content: center; }
+dialog.modal::backdrop { background: transparent; }
+
 /* The tooltip that shell/tooltip.js draws for every title: it fades in and out quickly. */
 .tooltip { position: fixed; top: 0; left: 0; z-index: 1000; max-width: 360px; padding: 4px 8px; border-radius: var(--radius); background: var(--text); color: var(--text-on-fill); font: 12px/1.4 var(--sans); white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; opacity: 0; transition: opacity .08s; }
 .tooltip.on { opacity: 1; }

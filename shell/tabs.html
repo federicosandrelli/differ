@@ -29,10 +29,6 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 #update .actions { flex: none; display: flex; gap: 8px; }
 #gear { position: fixed; left: 8px; bottom: 8px; }
 #gear svg { display: block; }
-/* The dialog fills the window and dims it itself: before 2024, browsers gave ::backdrop none of the colour tokens. */
-#settings { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: var(--backdrop); }
-#settings[open] { display: flex; align-items: center; justify-content: center; }
-#settings::backdrop { background: transparent; }
 /* A fixed height, so the box opens at its full size while the body loads. */
 #settings .box { display: flex; flex-direction: column; width: min(680px, calc(100vw - 48px)); height: 85vh; color: var(--text); }
 #settings .top { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid var(--border); }
@@ -71,7 +67,7 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 </style>
 </head><body><div id="tabs" data-tauri-drag-region></div><div id="panes"></div>
 <button id="gear" class="ghost" title="Settings (⌘,)" aria-label="Settings"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-<dialog id="settings"><div class="box card"><div class="top"><h1>Settings</h1><button class="ghost close" aria-label="Close">✕</button></div>
+<dialog id="settings" class="modal"><div class="box card"><div class="top"><h1>Settings</h1><button class="ghost close" aria-label="Close">✕</button></div>
 <div class="body"><section class="update-section" hidden><h2>Update</h2><div><span class="text"><span class="current"></span><span class="sub"></span></span><button class="act"></button></div></section><section><h2>Theme</h2><div><span class="seg"><button data-theme="light">Light</button><button data-theme="gruvbox">Gruvbox</button><button data-theme="dark">Dark</button></span></div></section><div class="state"><p class="hint loading">Loading…</p></div></div></div></dialog>
 <div id="update" class="card" role="status" hidden><div class="text"><span class="title"></span><span class="sub"></span></div><div class="actions"><button class="later">Later</button><button class="primary act"></button></div></div>
 <script>
