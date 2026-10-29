@@ -2,13 +2,13 @@
 // (this script sits in the head), the native window following it in the desktop app, every open document
 // following a change made in another, and the picker on the document that has one (buttons with data-theme).
 const Theme = (() => {
-  const THEMES = ['light', 'sepia', 'dark'], DEFAULT = 'dark', KEY = 'dr:theme';
+  const THEMES = ['light', 'gruvbox', 'dark'], DARK = ['gruvbox', 'dark'], DEFAULT = 'dark', KEY = 'dr:theme';
   const valid = (t) => THEMES.includes(t) ? t : DEFAULT;
   const get = () => { try { return valid(localStorage.getItem(KEY)); } catch { return DEFAULT; } };
   function apply(t) {
     document.documentElement.dataset.theme = t;
     const win = window.__TAURI__ && window.__TAURI__.window;
-    if (win) win.getCurrentWindow().setTheme(t === 'dark' ? 'dark' : 'light').catch(() => {});
+    if (win) win.getCurrentWindow().setTheme(DARK.includes(t) ? 'dark' : 'light').catch(() => {});
     for (const b of document.querySelectorAll('button[data-theme]')) b.classList.toggle('on', b.dataset.theme === t);
   }
   function set(t) { try { localStorage.setItem(KEY, t); } catch {} apply(t); }

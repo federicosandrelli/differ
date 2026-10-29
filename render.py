@@ -99,9 +99,10 @@ def palette(
     )
 
 
-# Greys, git colours and the font stack follow the Claude desktop app's design tokens (its "cds" scale,
-# text-git-added / text-git-removed, and the 20% mix it uses for diff backgrounds). The app has light and dark
-# only; sepia keeps the same structure on warm greys.
+# Light takes its greys, git colours and font stack from the Claude desktop app's design tokens (its "cds" scale,
+# text-git-added / text-git-removed, and the 20% mix it uses for diff backgrounds). Dark takes the colours of
+# Flexoki dark (stephango.com/flexoki), and Gruvbox those of the Gruvbox dark palette (github.com/morhetz/gruvbox).
+# In dark and Gruvbox, accent_bg and tree_active_bg mix the palette's blue over its canvas, at 16% and 34%.
 PALETTES = {
     "light": palette(
         canvas="#ffffff",
@@ -125,48 +126,48 @@ PALETTES = {
             kw="#c2410c", str_="#3f7d2a", cmt="#898781", num="#9a6a10", fn="#20201f", cls="#8a5a00", builtin="#c2410c"
         ),
     ),
-    "sepia": palette(
-        canvas="#f6efdc",
-        panel="#efe6cf",
-        inset="#e5d9bd",
-        text="#3b3328",
-        text_secondary="#6b5f4e",
-        text_muted="#9a8c74",
-        border="#dacdb0",
-        accent="#3a5a9a",
-        accent_bg="#dfe4ec",
-        tree_active_bg="#cfd9ec",
-        tree_active_fg="#3a5a9a",
-        add="#2f7d2a",
-        dele="#b8324d",
-        mod="#8a6410",
-        ren="#6a4a8a",
-        search_hit_bg="#f2d25b",
-        search_hit_fg="#3b3328",
+    "gruvbox": palette(
+        canvas="#282828",
+        panel="#1d2021",
+        inset="#32302f",
+        text="#ebdbb2",
+        text_secondary="#bdae93",
+        text_muted="#928374",
+        border="#3c3836",
+        accent="#83a598",
+        accent_bg="#373c3a",
+        tree_active_bg="#47524e",
+        tree_active_fg="#83a598",
+        add="#b8bb26",
+        dele="#fb4934",
+        mod="#fabd2f",
+        ren="#d3869b",
+        search_hit_bg="#fabd2f",
+        search_hit_fg="#282828",
         syntax=dict(
-            kw="#b2451a", str_="#4f7a2a", cmt="#9a8c74", num="#9a6a10", fn="#3b3328", cls="#8a5a00", builtin="#b2451a"
+            kw="#fb4934", str_="#b8bb26", cmt="#928374", num="#d3869b", fn="#ebdbb2", cls="#fabd2f", builtin="#fe8019"
         ),
     ),
     "dark": palette(
-        canvas="#1a1a19",
-        panel="#151515",
-        inset="#20201f",
-        text="#d2d1c7",
-        text_secondary="#a5a49a",
-        text_muted="#898781",
-        border="#2c2c2a",
-        accent="#6ea0ff",
-        accent_bg="#1a2742",
-        tree_active_bg="#2a4474",
-        tree_active_fg="#6ea0ff",
-        add="#32d74b",
-        dele="#ff2c56",
-        mod="#f0b45a",
-        ren="#c4a6ff",
-        search_hit_bg="#ffe066",
-        search_hit_fg="#1c1f26",
+        canvas="#100f0f",
+        panel="#1c1b1a",
+        inset="#282726",
+        text="#cecdc3",
+        text_secondary="#b7b5ac",
+        text_muted="#878580",
+        border="#343331",
+        accent="#4385be",
+        accent_bg="#18222b",
+        tree_active_bg="#21374a",
+        tree_active_fg="#4385be",
+        add="#879a39",
+        dele="#d14d41",
+        mod="#d0a215",
+        ren="#8b7ec8",
+        search_hit_bg="#d0a215",
+        search_hit_fg="#100f0f",
         syntax=dict(
-            kw="#f29b7a", str_="#9fcf8a", cmt="#898781", num="#e5c07b", fn="#d2d1c7", cls="#e5c07b", builtin="#f29b7a"
+            kw="#879a39", str_="#3aa99f", cmt="#878580", num="#8b7ec8", fn="#da702c", cls="#d0a215", builtin="#ce5d97"
         ),
     ),
 }
@@ -177,11 +178,11 @@ def vars_block(p: dict) -> str:
 
 
 def theme_css() -> str:
-    light, sepia, dark = (vars_block(PALETTES[k]) for k in ("light", "sepia", "dark"))
+    light, gruvbox, dark = (vars_block(PALETTES[k]) for k in ("light", "gruvbox", "dark"))
     return f"""
 :root {{ {dark} }}
 :root[data-theme="light"] {{ {light} }}
-:root[data-theme="sepia"] {{ {sepia} }}
+:root[data-theme="gruvbox"] {{ {gruvbox} }}
 """
 
 
