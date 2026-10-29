@@ -459,17 +459,17 @@ def reasons_html(reasons: list[Reason]) -> str:
 
 
 def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
-    """A pull request as a card: its title, then, for the viewer's own, its status icon and `owner/repo#number`, or,
-    for someone else's, the author's login and the repository's name, then the reasons and the age. A quiet card sits
-    on the canvas, the others on the panel."""
-    ref = ref_of(r)
+    """A pull request as a card: its title, then its status icon, then, for the viewer's own, `owner/repo#number`,
+    or, for someone else's, the author's login and the repository's name, then the reasons and the age. A quiet card
+    sits on the canvas, the others on the panel."""
+    ref, icon = ref_of(r), render.pr_icon(r["status"])
     if r["author"] == viewer:
-        who = f'{render.pr_icon(r["status"])}<span class="ref">{html.escape(str(ref))}</span>'
+        who = f'<span class="ref">{html.escape(str(ref))}</span>'
     else:
         who = f'<span class="by">{html.escape(r["author"] or "ghost")}</span><span class="ref">{html.escape(r["repo"])}</span>'
     return (
         f'<a class="card{"" if quiet else " panel"} pr" href="{html.escape(ref.path)}"{" hidden" if hidden else ""}>'
-        f'<span class="t">{html.escape(r["title"])}</span><span class="m">{who}<span class="spacer"></span>{reasons_html(r["reasons"])}'
+        f'<span class="t">{html.escape(r["title"])}</span><span class="m">{icon}{who}<span class="spacer"></span>{reasons_html(r["reasons"])}'
         f'<span class="age">{html.escape(ago(r["at"]))}</span></span></a>'
     )
 
