@@ -25,7 +25,8 @@ pull requests that matter to you, in sections:
 - Recently opened: the pull requests you opened in differ today, less the ones
   above.
 
-A row says why it is in its section when the section's name doesn't. An empty
+Each card shows, in pills, what is happening with the pull request,
+such as failed CI, conflicts, new comments or the reviewers it waits on. An empty
 section is left out, and a section closed with its chevron stays closed. The page draws the sections from
 GitHub's last answer at once, and asks GitHub again when it loads and each
 time its tab comes to the front, at most every 30 seconds. Paste any PR URL or

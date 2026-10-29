@@ -76,6 +76,11 @@ button.primary .count { background: var(--text-on-fill); color: var(--accent); }
 .split span { padding: 0 3px; }
 .split .a { background: var(--add-num); color: var(--add-fg); } .split .d { background: var(--del-num); color: var(--del-fg); }
 
+/* A reason pill: a few words on the inset in a rounded pill, with an icon before them, cut off with an ellipsis
+   when the pill runs out of room. */
+.reason { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: 11px; line-height: 16px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-inset); color: var(--text-secondary); white-space: nowrap; }
+.reason > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
 /* A status pill names a pull request's status in its colour, with its icon. */
 .status { display: inline-flex; align-items: center; gap: 4px; font: var(--control-font)/var(--control-line) var(--sans); padding: 2px 10px 2px 8px; border-radius: var(--radius-pill); color: var(--text-on-fill); }
 .status.st-open { background: var(--add-fg); } .status.st-draft { background: var(--text-muted); }

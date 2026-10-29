@@ -1526,7 +1526,7 @@ def test_the_start_page_lists_the_viewers_pull_requests_and_show_more_opens_the_
     try:
         page.goto(server_url + "/home")
         action = page.locator('#board .sub[data-key="action"]')
-        expect(action.locator(".card .why")).to_have_attribute("title", "CI failed")
+        expect(action.locator(".card .reason")).to_have_text("CI failed")
         drafts = page.locator('#board .sub[data-key="draft"]')
         cards = drafts.locator(".card")
         expect(cards).to_have_count(7)
