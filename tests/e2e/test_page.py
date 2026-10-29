@@ -108,6 +108,30 @@ def test_an_image_of_a_private_repository_in_the_description_loads_through_the_s
     expect(page.locator(".prbody a[href='https://example.com/pixel.png']")).to_have_text("A tracker")
 
 
+def test_a_click_on_an_image_opens_it_and_the_arrows_step_through_the_images_of_the_description(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    path = add_pr({}, {"docs/a.txt": "a\n"})
+    meta_file = gh_state / f"pr{path.rsplit('/', 1)[1]}.json"
+    meta = json.loads(meta_file.read_text())
+    shot = f"https://github.com/acme/widgets/blob/{meta['headRefOid']}/docs/{{}}.png?raw=true"
+    body = "\n\n".join(f"![{n}]({shot.format(n)})" for n in ("one", "two", "three"))
+    meta_file.write_text(json.dumps({**meta, "body": body}))
+    open_pr(page, server_url, path)
+    viewer = page.locator("#viewer")
+    page.locator(".prbody img[alt='two']").click()
+    expect(viewer.locator("img")).to_have_attribute("alt", "two")
+    expect(viewer.locator(".count")).to_have_text("2 / 3")
+    page.keyboard.press("ArrowRight")
+    expect(viewer.locator("img")).to_have_attribute("alt", "three")
+    page.keyboard.press("ArrowRight")
+    expect(viewer.locator("img")).to_have_attribute("alt", "one")
+    page.keyboard.press("ArrowLeft")
+    expect(viewer.locator("img")).to_have_attribute("alt", "three")
+    page.keyboard.press("Escape")
+    expect(viewer).not_to_be_visible()
+
+
 def test_a_file_the_pull_request_empties_shows_its_removed_lines(page: Page, server_url: str, add_pr: AddPr) -> None:
     open_pr(page, server_url, add_pr({"notes.txt": "one\ntwo\n"}, {"notes.txt": ""}))
     section = page.locator("section[data-file='notes.txt']")
