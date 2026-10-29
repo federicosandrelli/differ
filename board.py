@@ -88,17 +88,16 @@ Tone = Literal["", "bad", "warn", "ok", "accent"]
 
 
 class Reason(TypedDict):
-    """One reason a pull request is in its section: its words, the icon `kind` names, the colour `tone` names (empty
-    for the default colour), and the number it counts, or 0."""
+    """One reason a pull request is in its section: its words, the icon `kind` names, and the colour `tone` names
+    (empty for the default colour)."""
 
     text: str
     kind: render.ReasonKind
     tone: Tone
-    count: int
 
 
-def reason(text: str, kind: render.ReasonKind, tone: Tone = "", count: int = 0) -> Reason:
-    return Reason(text=text, kind=kind, tone=tone, count=count)
+def reason(text: str, kind: render.ReasonKind, tone: Tone = "") -> Reason:
+    return Reason(text=text, kind=kind, tone=tone)
 
 
 class Row(TypedDict):
@@ -223,23 +222,23 @@ def own(pr: dict, viewer: str) -> tuple[str, list[Reason]]:
     if ci in FAILED:
         reasons.append(reason("CI failed", "x-circle", "bad"))
     if conflicts:
-        reasons.append(reason("conflicts", "warning", "warn"))
+        reasons.append(reason("Conflicts", "warning", "warn"))
     if said:
         text = f"{len(said)} comment{'' if len(said) == 1 else 's'} from {names(said)}"
-        reasons.append(reason(text, "comment", "warn", len(said)))
+        reasons.append(reason(text, "comment", "warn"))
     if pr.get("reviewDecision") == "APPROVED" and ci in ("SUCCESS", "") and not conflicts and not said:
-        reasons.append(reason("approved and green", "check-circle", "ok"))
+        reasons.append(reason("Approved and green", "check-circle", "ok"))
     if pr.get("isDraft"):
         return "draft", reasons
     if reasons:
         return "action", reasons
     if ci in RUNNING:
-        return "ci", [reason("checks running", "clock")]
+        return "ci", [reason("Checks running", "clock")]
     if pr.get("reviewDecision") == "CHANGES_REQUESTED":
-        return "review", [reason("changes requested", "pencil")]
+        return "review", [reason("Changes requested", "pencil")]
     if asked := requested(pr):
-        return "review", [reason(f"review requested from {names(asked)}", "person")]
-    return "review", [reason("no reviewer yet", "person-plus")]
+        return "review", [reason(f"Review requested from {names(asked)}", "person")]
+    return "review", [reason("No reviewer yet", "person-plus")]
 
 
 def other(
@@ -249,26 +248,26 @@ def other(
     none. `reviewed_by_viewer` says GitHub found a review of the viewer's, which may be older than the
     reviews the pull request holds."""
     if asked_of_viewer or viewer in requested(pr):
-        return "reviewing", [reason("your review requested", "eye", "accent")]
+        return "reviewing", [reason("Your review requested", "eye", "accent")]
     mine = [r for r in reviews(pr) if login(r) == viewer]
     verdicts = [r["state"] for r in mine if r["state"] in ("APPROVED", "CHANGES_REQUESTED")]
     if verdicts:
         approved = verdicts[-1] == "APPROVED"
-        return "reviewed", [reason("you approved", "check") if approved else reason("you requested changes", "pencil")]
+        return "reviewed", [reason("You approved", "check") if approved else reason("You requested changes", "pencil")]
     if mine or any(login(c) == viewer for c in nodes(pr, "comments") + thread_comments(pr, True)):
-        return "reviewed", [reason("you commented", "comment")]
+        return "reviewed", [reason("You commented", "comment")]
     if reviewed_by_viewer:
-        return "reviewed", [reason("you reviewed", "comment")]
+        return "reviewed", [reason("You reviewed", "comment")]
     if not followed_repo or pr.get("isDraft"):
         return None
     people = [r for r in reviews(pr) if not is_bot(r) and login(r) != login(pr)]
     approvers = [login(r) for r in people if r["state"] == "APPROVED"]
     if approvers:
-        return "others", [reason(f"approved by {names(approvers)}", "check")]
+        return "others", [reason(f"Approved by {names(approvers)}", "check")]
     if people:
-        return "others", [reason(f"reviewed by {names([login(r) for r in people])}", "comment")]
+        return "others", [reason(f"Reviewed by {names([login(r) for r in people])}", "comment")]
     if asked := requested(pr):
-        return "others", [reason(f"review requested from {names(asked)}", "person")]
+        return "others", [reason(f"Review requested from {names(asked)}", "person")]
     return "unreviewed", []
 
 
@@ -448,11 +447,11 @@ def count_html(rows: int, full: bool) -> str:
 
 
 def reasons_html(reasons: list[Reason]) -> str:
-    """The reasons as count pills in their tones, each with its icon and its number when it counts one, and its words
-    as its title. Empty without reasons."""
+    """The reasons as reason pills in their tones, each with its icon and its words, and its words as its title for
+    when they are cut off. Empty without reasons."""
     pills = "".join(
-        f'<span class="count why{" " + r["tone"] if r["tone"] else ""}" role="img" aria-label="{html.escape(r["text"])}" '
-        f'title="{html.escape(r["text"])}">{render.reason_icon(r["kind"])}{r["count"] or ""}</span>'
+        f'<span class="reason{" " + r["tone"] if r["tone"] else ""}" title="{html.escape(r["text"])}">'
+        f"{render.reason_icon(r['kind'])}<span>{html.escape(r['text'])}</span></span>"
         for r in reasons
     )
     return f'<span class="reasons">{pills}</span>' if pills else ""
@@ -460,8 +459,8 @@ def reasons_html(reasons: list[Reason]) -> str:
 
 def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
     """A pull request as a card: its title, then its status icon, then, for the viewer's own, `owner/repo#number`,
-    or, for someone else's, the author's login and the repository's name, then the reasons and the age. A quiet card
-    sits on the canvas, the others on the panel."""
+    or, for someone else's, the author's login and the repository's name, then the age, and under them the reasons. A
+    quiet card sits on the canvas, the others on the panel."""
     ref, icon = ref_of(r), render.pr_icon(r["status"])
     if r["author"] == viewer:
         who = f'<span class="ref">{html.escape(str(ref))}</span>'
@@ -469,8 +468,8 @@ def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
         who = f'<span class="by">{html.escape(r["author"] or "ghost")}</span><span class="ref">{html.escape(r["repo"])}</span>'
     return (
         f'<a class="card{"" if quiet else " panel"} pr" href="{html.escape(ref.path)}"{" hidden" if hidden else ""}>'
-        f'<span class="t">{html.escape(r["title"])}</span><span class="m">{icon}{who}<span class="spacer"></span>{reasons_html(r["reasons"])}'
-        f'<span class="age">{html.escape(ago(r["at"]))}</span></span></a>'
+        f'<span class="t">{html.escape(r["title"])}</span><span class="m">{icon}{who}<span class="spacer"></span>'
+        f'<span class="age">{html.escape(ago(r["at"]))}</span></span>{reasons_html(r["reasons"])}</a>'
     )
 
 
