@@ -35,9 +35,11 @@ button.primary:enabled:hover { background: var(--accent-hover); }
 button.ghost { border-color: transparent; color: var(--text-secondary); padding: 1px 8px; }
 button.ghost:enabled:hover { color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
-/* A chevron is a ghost button that closes or opens what it heads, pointing down while open. A document sets its size. */
-button.chev { flex: none; padding: 0; transition: transform .12s ease; }
-button.chev.open { transform: rotate(90deg); }
+/* A chevron is a ghost button that closes or opens what it heads, pointing down while open, or the icon in the summary
+   of a details, pointing down while the details is open. A document sets its size. */
+.chev { flex: none; transition: transform .12s ease; }
+button.chev { padding: 0; }
+button.chev.open, details[open] > summary > .chev { transform: rotate(90deg); }
 /* A segmented control: buttons side by side in one bordered box. */
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .seg button { border: 0; border-radius: 0; }

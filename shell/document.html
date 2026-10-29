@@ -26,8 +26,6 @@ main:has(#board) { max-width: 1320px; }
 .folded > summary { display: flex; align-items: center; gap: 4px; list-style: none; cursor: pointer; color: var(--text-secondary); }
 .folded > summary::-webkit-details-marker { display: none; }
 .folded > summary:hover, .folded > summary:hover h3 { color: var(--accent); }
-.folded .chev { flex: none; transition: transform .12s ease; }
-.folded[open] .chev { transform: rotate(90deg); }
 .folded > .column { margin-top: 8px; }
 .sub h4 { margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
 .sub > [hidden] { display: none; }

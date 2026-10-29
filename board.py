@@ -1,4 +1,4 @@
-"""The start page's sections: the viewer's own pull requests, other people's, and the ones opened last that neither
+"""The start page's sections: the viewer's own pull requests, other people's, and the ones opened today that neither
 shows. GitHub's last answer, sorted into sections, is kept in board.json in the cache."""
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import json
 import os
 import threading
 import time
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import NamedTuple, TypedDict
 
 import build
@@ -341,14 +341,15 @@ def save(board: Board) -> None:
 
 def refresh() -> None:
     """Ask GitHub again and save the sections, unless GitHub answered less than REFRESH_SECONDS ago about the same
-    followed repositories. The merged sections hold the pull requests merged today. When GitHub can't answer, the
-    saved sections stay. A refresh that starts while another runs waits for it, and then finds its answer fresh."""
+    followed repositories. The merged sections hold the pull requests merged today, by GitHub's date (UTC). When
+    GitHub can't answer, the saved sections stay. A refresh that starts while another runs waits for it, and then
+    finds its answer fresh."""
     with refreshing:
         repos = followed.load()
         saved = load()
         if saved["repos"] == repos and time.time() - saved["fetched"] < REFRESH_SECONDS:
             return
-        answer = github.search_prs(queries(repos, date.today()))
+        answer = github.search_prs(queries(repos, datetime.now(UTC).date()))
         if answer is None:
             return
         viewer, found = answer
