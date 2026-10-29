@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from datetime import UTC, date, datetime
-from typing import NamedTuple, TypedDict
+from typing import Literal, NamedTuple, TypedDict
 
 import build
 import followed
@@ -84,23 +84,26 @@ lock = threading.Lock()
 refreshing = threading.Lock()
 
 
+Tone = Literal["", "bad", "warn", "ok", "accent"]
+
+
 class Reason(TypedDict):
-    """One reason a pull request is in its section: its words, the colour `tone` names (`bad`, `warn`, `ok`, `accent`
-    or none), the icon `kind` names (a key of `render.REASON_ICONS`), and the number it counts, or 0."""
+    """One reason a pull request is in its section: its words, the icon `kind` names, the colour `tone` names (empty
+    for the default colour), and the number it counts, or 0."""
 
     text: str
-    tone: str
-    kind: str
+    kind: render.ReasonKind
+    tone: Tone
     count: int
 
 
-def reason(text: str, kind: str, tone: str = "", count: int = 0) -> Reason:
-    return Reason(text=text, tone=tone, kind=kind, count=count)
+def reason(text: str, kind: render.ReasonKind, tone: Tone = "", count: int = 0) -> Reason:
+    return Reason(text=text, kind=kind, tone=tone, count=count)
 
 
 class Row(TypedDict):
-    """A pull request as a section lists it: why it is there, in order, and the time its age counts from, in seconds
-    since the epoch."""
+    """A pull request as a section lists it: its reasons, in the order `own` and `other` give them, and the time its
+    age counts from, in seconds since the epoch."""
 
     owner: str
     repo: str
@@ -218,14 +221,14 @@ def own(pr: dict, viewer: str) -> tuple[str, list[Reason]]:
     said = new_comments(pr, viewer)
     reasons = []
     if ci in FAILED:
-        reasons.append(reason("CI failed", "failed", "bad"))
+        reasons.append(reason("CI failed", "x-circle", "bad"))
     if conflicts:
         reasons.append(reason("conflicts", "warning", "warn"))
     if said:
         text = f"{len(said)} comment{'' if len(said) == 1 else 's'} from {names(said)}"
         reasons.append(reason(text, "comment", "warn", len(said)))
     if pr.get("reviewDecision") == "APPROVED" and ci in ("SUCCESS", "") and not conflicts and not said:
-        reasons.append(reason("approved and green", "green", "ok"))
+        reasons.append(reason("approved and green", "check-circle", "ok"))
     if pr.get("isDraft"):
         return "draft", reasons
     if reasons:
@@ -343,7 +346,9 @@ def load() -> Board:
     reasons."""
     try:
         data = json.loads(PATH.read_text())
-        if not all("reasons" in r for rows in data["sections"].values() for r in rows):
+        if not isinstance(data["sections"], dict) or not all(
+            "reasons" in r for rows in data["sections"].values() for r in rows
+        ):
             raise KeyError("reasons")
         return Board(
             viewer=data["viewer"],
@@ -515,9 +520,10 @@ def name_of(r: Row) -> str:
 
 def repos_html(board: Board, on: list[str]) -> str:
     """The strip above the groups: a toggle per followed repository, pressed when `on` names it, with the count of
-    its cards outside the folded columns, and a plus when a full section outside them has some of these cards, then a gear that opens the followed repositories in the Settings. A toggle shows the
-    repository's name, or `owner/repo` when another followed repository has the same name. Without followed
-    repositories, a hint and a button to follow one."""
+    its cards outside the folded columns, and a plus when a full section outside them has some of these cards, then
+    a gear that opens the followed repositories in the Settings. A toggle shows the repository's name, or `owner/repo`
+    when another followed repository has the same name. Without followed repositories, a hint and a button to follow
+    one."""
     if not board["repos"]:
         return (
             '<div class="repos" role="group" aria-label="Repositories"><span class="hint">Other people\'s pull '

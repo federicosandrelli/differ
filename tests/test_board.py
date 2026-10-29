@@ -103,13 +103,13 @@ def flat(placed: tuple[str, list[board.Reason]] | None) -> tuple[str, list[tuple
 @pytest.mark.parametrize(
     ("fields", "placed"),
     [
-        ({"ci": "FAILURE"}, ("action", [("CI failed", "bad", "failed", 0)])),
+        ({"ci": "FAILURE"}, ("action", [("CI failed", "bad", "x-circle", 0)])),
         (
             {"mergeable": "CONFLICTING", "ci": "ERROR"},
-            ("action", [("CI failed", "bad", "failed", 0), ("conflicts", "warn", "warning", 0)]),
+            ("action", [("CI failed", "bad", "x-circle", 0), ("conflicts", "warn", "warning", 0)]),
         ),
-        ({"decision": "APPROVED"}, ("action", [("approved and green", "ok", "green", 0)])),
-        ({"decision": "APPROVED", "ci": None}, ("action", [("approved and green", "ok", "green", 0)])),
+        ({"decision": "APPROVED"}, ("action", [("approved and green", "ok", "check-circle", 0)])),
+        ({"decision": "APPROVED", "ci": None}, ("action", [("approved and green", "ok", "check-circle", 0)])),
         ({"decision": "APPROVED", "ci": "PENDING"}, ("ci", [("checks running", "", "clock", 0)])),
         ({"ci": "EXPECTED"}, ("ci", [("checks running", "", "clock", 0)])),
         ({"decision": "CHANGES_REQUESTED"}, ("review", [("changes requested", "", "pencil", 0)])),
@@ -117,7 +117,7 @@ def flat(placed: tuple[str, list[board.Reason]] | None) -> tuple[str, list[tuple
         ({}, ("review", [("no reviewer yet", "", "person-plus", 0)])),
         ({"draft": True}, ("draft", [])),
         ({"draft": True, "mergeable": "CONFLICTING"}, ("draft", [("conflicts", "warn", "warning", 0)])),
-        ({"draft": True, "ci": "FAILURE"}, ("draft", [("CI failed", "bad", "failed", 0)])),
+        ({"draft": True, "ci": "FAILURE"}, ("draft", [("CI failed", "bad", "x-circle", 0)])),
     ],
 )
 def test_own_places_a_pull_request_by_its_checks_conflicts_and_reviews(fields: dict, placed: tuple) -> None:
@@ -129,7 +129,7 @@ def test_own_lists_every_reason_in_order_with_the_number_of_comments() -> None:
     assert flat(board.own(late, ME)) == (
         "action",
         [
-            ("CI failed", "bad", "failed", 0),
+            ("CI failed", "bad", "x-circle", 0),
             ("conflicts", "warn", "warning", 0),
             ("1 comment from ann", "warn", "comment", 1),
         ],
@@ -173,7 +173,7 @@ def test_own_counts_a_thread_reply_once_and_a_review_with_text_of_its_own() -> N
 
 def test_own_shows_approved_and_green_after_an_approval_since_the_last_push() -> None:
     approved = pr(decision="APPROVED", reviews=(by("bob", "2026-10-20T11:00:00Z", state="APPROVED", body=""),))
-    assert flat(board.own(approved, ME)) == ("action", [("approved and green", "ok", "green", 0)])
+    assert flat(board.own(approved, ME)) == ("action", [("approved and green", "ok", "check-circle", 0)])
 
 
 def test_own_counts_a_head_commit_as_the_viewers_reply_only_when_the_viewer_made_it() -> None:
@@ -341,6 +341,12 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
     assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
     assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
     assert '<span class="ref">tools</span>' in theirs
+
+
+@pytest.mark.parametrize("sections", [None, [], "rows"])
+def test_load_treats_a_board_with_broken_sections_as_empty(paths: Path, sections: object) -> None:
+    (paths / "board.json").write_text(json.dumps({"viewer": ME, "fetched": 0.0, "repos": [], "sections": sections}))
+    assert board.load()["sections"] == {}
 
 
 def test_load_treats_a_board_with_rows_without_reasons_as_empty(paths: Path) -> None:

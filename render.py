@@ -18,6 +18,7 @@ import sys
 import urllib.parse
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import commands
 from github import Status
@@ -235,11 +236,14 @@ def pr_icon(status: str) -> str:
     return f'<span class="pr-icon st-{status}" role="img" aria-label="{label}" title="{label}"></span>'
 
 
-# The icon of each kind of reason a pull request sits in its section, as the inner paths of a 24×24 stroked SVG.
-REASON_ICONS: dict[str, str] = {
-    "failed": '<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/>',
+ReasonKind = Literal[
+    "x-circle", "clock", "check-circle", "warning", "comment", "eye", "pencil", "person", "person-plus", "check"
+]
+# The icon of each kind of reason why a pull request sits in its section, as the inner paths of a 24×24 stroked SVG.
+REASON_ICONS: dict[ReasonKind, str] = {
+    "x-circle": '<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/>',
     "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    "green": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+    "check-circle": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
     "warning": '<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/>',
     "comment": '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
     "eye": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
@@ -250,9 +254,9 @@ REASON_ICONS: dict[str, str] = {
 }
 
 
-def reason_icon(kind: str) -> str:
-    """The icon of a kind of reason as HTML, in the colour of the text around it. Empty for an unknown kind."""
-    return f'<span class="reason-icon k-{kind}" aria-hidden="true"></span>' if kind in REASON_ICONS else ""
+def reason_icon(kind: ReasonKind) -> str:
+    """The icon of a kind of reason as HTML, in the colour of the text around it."""
+    return f'<span class="reason-icon k-{kind}" aria-hidden="true"></span>'
 
 
 def icon_url(paths: str) -> str:
@@ -264,7 +268,7 @@ def icon_url(paths: str) -> str:
     return "data:image/svg+xml," + urllib.parse.quote(svg)
 
 
-def pr_icon_css() -> str:
+def icon_css() -> str:
     """Draw each status icon and each reason icon as a mask over its colour, so any document can show one with a
     single span."""
     mask = (
@@ -303,10 +307,10 @@ def search_clear_css() -> str:
 
 
 def theme_head() -> str:
-    """The theme variables, the status icons, the base stylesheet, the search clear button and the scripts that
+    """The theme variables, the status and reason icons, the base stylesheet, the search clear button and the scripts that
     apply the saved theme and draw the tooltip, for the head of a document so it never flashes the default theme.
     The base stylesheet comes after the icons, so a component can recolour the icon it holds."""
-    css = "\n".join([theme_css(), pr_icon_css(), (SHELL_DIR / "base.css").read_text(), search_clear_css()])
+    css = "\n".join([theme_css(), icon_css(), (SHELL_DIR / "base.css").read_text(), search_clear_css()])
     js = "\n".join((SHELL_DIR / name).read_text() for name in ("theme.js", "tooltip.js"))
     return f"<style>{css}</style>\n<script>{js}</script>"
 
