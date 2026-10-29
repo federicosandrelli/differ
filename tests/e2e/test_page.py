@@ -166,6 +166,33 @@ def test_a_click_on_an_image_opens_it_in_the_shell_and_the_arrows_step_through_t
     assert page.evaluate("opened") == ["https://example.com/ci"]
 
 
+def test_the_arrows_step_through_the_images_of_one_thread_or_of_the_overview(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    comments_file = gh_state / "comments.json"
+    with kept_comments(gh_state):
+        state = json.loads(comments_file.read_text())
+        shot = f"https://github.com/acme/widgets/blob/{state['head']}/docs/{{}}.png?raw=true"
+        thread = next(t for t in state["threads"] if t["id"] == "T1")
+        thread["comments"]["nodes"][0]["body"] = f"![a]({shot.format('a')})\n\n![b]({shot.format('b')})"
+        next(c for c in state["comments"] if c["id"] == "K1")["body"] = f"![c]({shot.format('c')})"
+        comments_file.write_text(json.dumps(state))
+        open_pr(page, server_url)
+    viewer = page.locator("#viewer")
+    shown = viewer.locator("img")
+    page.click(".thread .cbody img[alt='a']")
+    expect(shown).to_have_attribute("alt", "a")
+    page.keyboard.press("ArrowRight")
+    expect(shown).to_have_attribute("alt", "b")
+    page.keyboard.press("ArrowRight")
+    expect(shown).to_have_attribute("alt", "a")
+    page.keyboard.press("Escape")
+    page.click("#overview .cbody img[alt='c']")
+    expect(shown).to_have_attribute("alt", "c")
+    page.keyboard.press("ArrowRight")
+    expect(shown).to_have_attribute("alt", "c")
+
+
 def test_a_file_the_pull_request_empties_shows_its_removed_lines(page: Page, server_url: str, add_pr: AddPr) -> None:
     open_pr(page, server_url, add_pr({"notes.txt": "one\ntwo\n"}, {"notes.txt": ""}))
     section = page.locator("section[data-file='notes.txt']")

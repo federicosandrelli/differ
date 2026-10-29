@@ -18,7 +18,8 @@
   // The file a URL names, through the server's /image as well.
   const file = (url) => {
     const u = new URL(url, location.href);
-    return (u.origin === location.origin && u.pathname === '/image' ? new URL(u.searchParams.get('src')) : u).pathname.split('/').pop();
+    const shown = u.origin === location.origin && u.pathname === '/image' ? new URL(u.searchParams.get('src') || '', location.href) : u;
+    return shown.pathname.split('/').pop();
   };
   // A click on an image of a summary opens its details, and one on an image in a link to another file follows the
   // link. GitHub wraps the images of a body in links to the same files.
@@ -26,9 +27,14 @@
     const a = i.closest('a[href]');
     return !i.closest('summary') && (!a || file(a.href) === file(i.src));
   };
+  const PLACES = '#overview .prbody img, #overview .cbody img, .thread .cbody img';
+  document.addEventListener('mouseover', (e) => {
+    const i = e.target.closest && e.target.closest(PLACES);
+    if (i) i.classList.toggle('viewable', viewable(i));
+  });
   // The capture on the window comes before the shell's, which would open the link around the image.
   window.addEventListener('click', (e) => {
-    const clicked = e.target.closest && e.target.closest('#overview .prbody img, #overview .cbody img, .thread .cbody img');
+    const clicked = e.target.closest && e.target.closest(PLACES);
     if (!clicked || !viewable(clicked) || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault(); e.stopPropagation();
     const all = [...clicked.closest('#overview, .thread').querySelectorAll('.prbody img, .cbody img')]
