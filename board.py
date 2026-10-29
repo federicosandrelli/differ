@@ -84,9 +84,23 @@ lock = threading.Lock()
 refreshing = threading.Lock()
 
 
+class Reason(TypedDict):
+    """One reason a pull request is in its section: its words, the colour `tone` names (`bad`, `warn`, `ok`, `accent`
+    or none), the icon `kind` names (a key of `render.REASON_ICONS`), and the number it counts, or 0."""
+
+    text: str
+    tone: str
+    kind: str
+    count: int
+
+
+def reason(text: str, kind: str, tone: str = "", count: int = 0) -> Reason:
+    return Reason(text=text, tone=tone, kind=kind, count=count)
+
+
 class Row(TypedDict):
-    """A pull request as a section lists it: why it is there (`reason`, drawn in the colour `tone` names: `bad`,
-    `warn`, `ok`, `accent` or none), and the time its age counts from, in seconds since the epoch."""
+    """A pull request as a section lists it: why it is there, in order, and the time its age counts from, in seconds
+    since the epoch."""
 
     owner: str
     repo: str
@@ -94,8 +108,7 @@ class Row(TypedDict):
     title: str
     status: str
     author: str
-    reason: str
-    tone: str
+    reasons: list[Reason]
     at: float
 
 
@@ -198,68 +211,69 @@ def names(logins: list[str]) -> str:
     return ", ".join(dict.fromkeys(name or "ghost" for name in logins))
 
 
-def own(pr: dict, viewer: str) -> tuple[str, str, str]:
-    """The section of one of the viewer's open pull requests, and the reason and tone its row shows."""
+def own(pr: dict, viewer: str) -> tuple[str, list[Reason]]:
+    """The section of one of the viewer's open pull requests, and the reasons its row shows."""
     ci = ci_state(pr)
     conflicts = pr.get("mergeable") == "CONFLICTING"
     said = new_comments(pr, viewer)
     reasons = []
     if ci in FAILED:
-        reasons.append(("CI failed", "bad"))
+        reasons.append(reason("CI failed", "failed", "bad"))
     if conflicts:
-        reasons.append(("conflicts", "warn"))
+        reasons.append(reason("conflicts", "warning", "warn"))
     if said:
-        reasons.append((f"{len(said)} comment{'' if len(said) == 1 else 's'} from {names(said)}", "warn"))
+        text = f"{len(said)} comment{'' if len(said) == 1 else 's'} from {names(said)}"
+        reasons.append(reason(text, "comment", "warn", len(said)))
     if pr.get("reviewDecision") == "APPROVED" and ci in ("SUCCESS", "") and not conflicts and not said:
-        reasons.append(("approved and green", "ok"))
-    reason, tone = " · ".join(r for r, _ in reasons), reasons[0][1] if reasons else ""
+        reasons.append(reason("approved and green", "green", "ok"))
     if pr.get("isDraft"):
-        return "draft", reason, tone
+        return "draft", reasons
     if reasons:
-        return "action", reason, tone
+        return "action", reasons
     if ci in RUNNING:
-        return "ci", "checks running", ""
+        return "ci", [reason("checks running", "clock")]
     if pr.get("reviewDecision") == "CHANGES_REQUESTED":
-        return "review", "changes requested", ""
+        return "review", [reason("changes requested", "pencil")]
     if asked := requested(pr):
-        return "review", f"review requested from {names(asked)}", ""
-    return "review", "no reviewer yet", ""
+        return "review", [reason(f"review requested from {names(asked)}", "person")]
+    return "review", [reason("no reviewer yet", "person-plus")]
 
 
 def other(
     pr: dict, viewer: str, asked_of_viewer: bool, reviewed_by_viewer: bool, followed_repo: bool
-) -> tuple[str, str, str] | None:
-    """The section of someone else's open pull request, and the reason and tone its row shows; None when it
-    belongs in none. `reviewed_by_viewer` says GitHub found a review of the viewer's, which may be older than the
+) -> tuple[str, list[Reason]] | None:
+    """The section of someone else's open pull request, and the reasons its row shows; None when it belongs in
+    none. `reviewed_by_viewer` says GitHub found a review of the viewer's, which may be older than the
     reviews the pull request holds."""
     if asked_of_viewer or viewer in requested(pr):
-        return "reviewing", "your review requested", "accent"
+        return "reviewing", [reason("your review requested", "eye", "accent")]
     mine = [r for r in reviews(pr) if login(r) == viewer]
     verdicts = [r["state"] for r in mine if r["state"] in ("APPROVED", "CHANGES_REQUESTED")]
     if verdicts:
-        return "reviewed", "you approved" if verdicts[-1] == "APPROVED" else "you requested changes", ""
+        approved = verdicts[-1] == "APPROVED"
+        return "reviewed", [reason("you approved", "check") if approved else reason("you requested changes", "pencil")]
     if mine or any(login(c) == viewer for c in nodes(pr, "comments") + thread_comments(pr, True)):
-        return "reviewed", "you commented", ""
+        return "reviewed", [reason("you commented", "comment")]
     if reviewed_by_viewer:
-        return "reviewed", "you reviewed", ""
+        return "reviewed", [reason("you reviewed", "comment")]
     if not followed_repo or pr.get("isDraft"):
         return None
     people = [r for r in reviews(pr) if not is_bot(r) and login(r) != login(pr)]
     approvers = [login(r) for r in people if r["state"] == "APPROVED"]
     if approvers:
-        return "others", f"approved by {names(approvers)}", ""
+        return "others", [reason(f"approved by {names(approvers)}", "check")]
     if people:
-        return "others", f"reviewed by {names([login(r) for r in people])}", ""
+        return "others", [reason(f"reviewed by {names([login(r) for r in people])}", "comment")]
     if asked := requested(pr):
-        return "others", f"review requested from {names(asked)}", ""
-    return "unreviewed", "", ""
+        return "others", [reason(f"review requested from {names(asked)}", "person")]
+    return "unreviewed", []
 
 
 def seconds(iso: str | None) -> float:
     return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() if iso else 0.0
 
 
-def row(pr: dict, reason: str, tone: str) -> Row:
+def row(pr: dict, reasons: list[Reason]) -> Row:
     owner, repo = pr["repository"]["nameWithOwner"].lower().split("/", 1)
     status = github.status_of(pr.get("state") or "", bool(pr.get("isDraft"))) or ""
     at = pr.get("mergedAt") if status == "merged" else pr.get("updatedAt")
@@ -270,8 +284,7 @@ def row(pr: dict, reason: str, tone: str) -> Row:
         title=pr.get("title") or "",
         status=status,
         author=login(pr),
-        reason=reason,
-        tone=tone,
+        reasons=reasons,
         at=seconds(at),
     )
 
@@ -285,10 +298,10 @@ def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str
     open_mine, merged, asked, involved, reviewed, *rest = found
     followed_open, merged_others = rest or ([], [])
     for pr in open_mine:
-        key, reason, tone = own(pr, viewer)
-        sections[key].append(row(pr, reason, tone))
+        key, reasons = own(pr, viewer)
+        sections[key].append(row(pr, reasons))
     for pr in merged:
-        sections["merged"].append(row(pr, "", ""))
+        sections["merged"].append(row(pr, []))
     asked_urls, reviewed_urls = {pr["url"] for pr in asked}, {pr["url"] for pr in reviewed}
     followed_repos = set(repos)
     seen: set[str] = set()
@@ -298,11 +311,11 @@ def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str
         seen.add(pr["url"])
         repo = pr["repository"]["nameWithOwner"].lower()
         if placed := other(pr, viewer, pr["url"] in asked_urls, pr["url"] in reviewed_urls, repo in followed_repos):
-            key, reason, tone = placed
-            sections[key].append(row(pr, reason, tone))
+            key, reasons = placed
+            sections[key].append(row(pr, reasons))
     for pr in merged_others:
         if pr["url"] not in seen and login(pr) != viewer:
-            sections["merged_others"].append(row(pr, "", ""))
+            sections["merged_others"].append(row(pr, []))
     for rows in sections.values():
         rows.sort(key=lambda r: r["at"], reverse=True)
     return sections
@@ -326,8 +339,12 @@ def full(found: list[list[dict]]) -> list[str]:
 
 
 def load() -> Board:
+    """The saved board; an empty one when board.json is missing, broken, or from a version with rows without
+    reasons."""
     try:
         data = json.loads(PATH.read_text())
+        if not all("reasons" in r for rows in data["sections"].values() for r in rows):
+            raise KeyError("reasons")
         return Board(
             viewer=data["viewer"],
             fetched=data["fetched"],
@@ -389,11 +406,10 @@ def ref_of(r: Row) -> PullRef:
 def row_html(r: Row, viewer: str) -> str:
     ref = ref_of(r)
     by = f"<span>{html.escape(r['author'])}</span>" if r["author"] and r["author"] != viewer else ""
-    why = f'<span class="why {r["tone"]}">{html.escape(r["reason"])}</span>' if r["reason"] else ""
     return (
         f'<a class="item" href="{html.escape(ref.path)}"><span class="t">{render.pr_icon(r["status"])}{html.escape(r["title"])}'
         f'</span><span class="w">{html.escape(ago(r["at"]))}</span>'
-        f'<span class="m"><span class="ref">{html.escape(str(ref))}</span>{by}{why}</span></a>'
+        f'<span class="m"><span class="ref">{html.escape(str(ref))}</span>{by}</span></a>'
     )
 
 
@@ -413,8 +429,7 @@ def opened_rows(shown: set[PullRef]) -> list[Row]:
             title=p["title"],
             status=p["status"],
             author=p["author"],
-            reason="",
-            tone="",
+            reasons=[],
             at=p["opened"],
         )
         for p in recent.load()["pages"]
@@ -427,19 +442,29 @@ def count_html(rows: int, full: bool) -> str:
     return f'<span class="count">{rows}{"+" if full else ""}</span>'
 
 
+def reasons_html(reasons: list[Reason]) -> str:
+    """The reasons as count pills in their tones, each with its icon and its number when it counts one, and its words
+    as its title. Empty without reasons."""
+    pills = "".join(
+        f'<span class="count why{" " + r["tone"] if r["tone"] else ""}" role="img" aria-label="{html.escape(r["text"])}" '
+        f'title="{html.escape(r["text"])}">{render.reason_icon(r["kind"])}{r["count"] or ""}</span>'
+        for r in reasons
+    )
+    return f'<span class="reasons">{pills}</span>' if pills else ""
+
+
 def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
     """A pull request as a card: its title, then, for the viewer's own, its status icon and `owner/repo#number`, or,
-    for someone else's, the author's login and the repository's name, then the reason and the age. A quiet card sits
+    for someone else's, the author's login and the repository's name, then the reasons and the age. A quiet card sits
     on the canvas, the others on the panel."""
     ref = ref_of(r)
     if r["author"] == viewer:
         who = f'{render.pr_icon(r["status"])}<span class="ref">{html.escape(str(ref))}</span>'
     else:
         who = f'<span class="by">{html.escape(r["author"] or "ghost")}</span><span class="ref">{html.escape(r["repo"])}</span>'
-    why = f'<span class="why {r["tone"]}">{html.escape(r["reason"])}</span>' if r["reason"] else ""
     return (
         f'<a class="card{"" if quiet else " panel"} pr" href="{html.escape(ref.path)}"{" hidden" if hidden else ""}>'
-        f'<span class="t">{html.escape(r["title"])}</span><span class="m">{who}<span class="spacer"></span>{why}'
+        f'<span class="t">{html.escape(r["title"])}</span><span class="m">{who}<span class="spacer"></span>{reasons_html(r["reasons"])}'
         f'<span class="age">{html.escape(ago(r["at"]))}</span></span></a>'
     )
 

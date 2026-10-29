@@ -235,20 +235,50 @@ def pr_icon(status: str) -> str:
     return f'<span class="pr-icon st-{status}" role="img" aria-label="{label}" title="{label}"></span>'
 
 
+# The icon of each kind of reason a pull request sits in its section, as the inner paths of a 24×24 stroked SVG.
+REASON_ICONS: dict[str, str] = {
+    "failed": '<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/>',
+    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    "green": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+    "warning": '<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/>',
+    "comment": '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    "eye": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    "pencil": '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    "person": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    "person-plus": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 4v4M21 6h-4"/>',
+    "check": '<path d="m5 12 5 5 9-10"/>',
+}
+
+
+def reason_icon(kind: str) -> str:
+    """The icon of a kind of reason as HTML, in the colour of the text around it. Empty for an unknown kind."""
+    return f'<span class="reason-icon k-{kind}" aria-hidden="true"></span>' if kind in REASON_ICONS else ""
+
+
+def icon_url(paths: str) -> str:
+    """A 24×24 stroked SVG of the paths, as a data URL."""
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" '
+        f'stroke-linecap="round" stroke-linejoin="round">{paths}</svg>'
+    )
+    return "data:image/svg+xml," + urllib.parse.quote(svg)
+
+
 def pr_icon_css() -> str:
-    """Draw each status icon as a mask over its colour, so any document can show one with a single span."""
-    rules = [
-        ".pr-icon { display: inline-block; flex: none; width: 14px; height: 14px; vertical-align: -2px; "
+    """Draw each status icon and each reason icon as a mask over its colour, so any document can show one with a
+    single span."""
+    mask = (
         "background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; "
         "mask: var(--icon) center / contain no-repeat; }"
+    )
+    rules = [
+        ".pr-icon { display: inline-block; flex: none; width: 14px; height: 14px; vertical-align: -2px; " + mask,
+        ".reason-icon { display: inline-block; flex: none; width: 12px; height: 12px; " + mask,
     ]
     for status, (paths, color) in PR_ICONS.items():
-        svg = (
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" '
-            f'stroke-linecap="round" stroke-linejoin="round">{paths}</svg>'
-        )
-        url = "data:image/svg+xml," + urllib.parse.quote(svg)
-        rules.append(f'.pr-icon.st-{status} {{ --icon: url("{url}"); color: var(--{color}); }}')
+        rules.append(f'.pr-icon.st-{status} {{ --icon: url("{icon_url(paths)}"); color: var(--{color}); }}')
+    for kind, paths in REASON_ICONS.items():
+        rules.append(f'.reason-icon.k-{kind} {{ --icon: url("{icon_url(paths)}"); }}')
     return "\n".join(rules)
 
 

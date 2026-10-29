@@ -34,9 +34,9 @@ main:has(#board) { max-width: 1320px; }
 .pr { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
 .pr .t { font-size: 13px; font-weight: 500; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .pr .m { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
-.pr .m .by, .pr .m .ref, .pr .m .why { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pr .m .by, .pr .m .ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pr .m .ref { flex: 0 100 auto; font-family: var(--mono); }
-.pr .m .why { flex: none; max-width: 50%; }
+.pr .m .reasons { flex: none; display: flex; gap: 4px; }
 .pr .m .age { flex: none; }
 .quiet .pr { gap: 2px; padding: 7px 12px; }
 .quiet .pr .t { font-weight: 400; color: var(--text-secondary); -webkit-line-clamp: 1; }
