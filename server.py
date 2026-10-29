@@ -9,9 +9,11 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /                                  the tabbed shell: the start page as a home tab, and a tab per open page
   /home                              the start page: a search bar and the sections of pull requests, drawn
                                      from GitHub's last answer
-  /board                             the sections of the start page, as an HTML fragment: your pull requests,
+  /board?repo=<owner/repo>&cached=1  the sections of the start page, as an HTML fragment: your pull requests,
                                      other people's, and the ones opened today, after asking GitHub again (at
-                                     most every 30 seconds, unless the followed repositories changed)
+                                     most every 30 seconds, unless the followed repositories changed). With
+                                     repo, once per followed repository, only the rows of those repositories;
+                                     with cached=1, from GitHub's last answer, without asking again
   /settings                          the body of the settings modal, as an HTML fragment: the followed
                                      repositories, the shortcuts, the file type rules, the folds, the editors,
                                      the cache and the version
@@ -200,11 +202,12 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/home":
                 return self.send(200, start_page())
             if url.path == "/board":
-                statuses = threading.Thread(target=recent.refresh)
-                statuses.start()
-                board.refresh()
-                statuses.join()
-                return self.send(200, board.sections_html().encode())
+                if "cached" not in query:
+                    statuses = threading.Thread(target=recent.refresh)
+                    statuses.start()
+                    board.refresh()
+                    statuses.join()
+                return self.send(200, board.sections_html(repos_in(query)).encode())
             if url.path == "/settings":
                 return self.send(200, settings.settings_html().encode())
             if url.path in ("/open", "/image") or STATUS.match(url.path) or PAGE.match(url.path):
@@ -379,6 +382,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args) -> None:
         sys.stderr.write(f"{self.address_string()} {format % args}\n")
+
+
+def repos_in(query: dict[str, list[str]]) -> list[str]:
+    """The repositories named by a query's `repo` parameters, in lower case, as `followed.json` names them."""
+    return [name.strip().lower() for name in query.get("repo", [])]
 
 
 def one_of(value: object, kind: object) -> Any:

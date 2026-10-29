@@ -10,7 +10,7 @@ const SHELL = window.parent === window ? null : {
   external(url) { this.tell({ type: 'external', url }); },
   step(dir) { this.tell({ type: 'step', dir }); },
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
-  settings() { this.tell({ type: 'settings' }); },
+  settings(section) { this.tell({ type: 'settings', section }); },
   badge(n) { this.tell({ type: 'badge', n }); },
   status(status) { this.tell({ type: 'status', status }); },
   page(url, title, status) { this.tell({ type: 'page', url, title, status }); },

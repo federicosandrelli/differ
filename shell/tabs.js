@@ -99,7 +99,7 @@
 
   // The desktop app's Cmd+W menu item sends 'close-tab', and its "Settings…" menu item 'open-settings'.
   window.addEventListener('close-tab', () => closeAsked(active));
-  window.addEventListener('open-settings', openSettings);
+  window.addEventListener('open-settings', () => openSettings());
 
   bar.addEventListener('click', (e) => {
     const c = e.target.closest('[data-close]');
@@ -117,7 +117,7 @@
     if (m.type === 'open') { open(m.url); return; }
     if (m.type === 'step') { step(m.dir === -1 ? -1 : 1); return; }
     if (m.type === 'zoom') { if ([-1, 0, 1].includes(m.dir)) zoomStep(m.dir); return; }
-    if (m.type === 'settings') { openSettings(); return; }
+    if (m.type === 'settings') { openSettings(m.section); return; }
     if (m.type === 'external') { if (APP) location.href = m.url; else window.open(m.url, '_blank', 'noopener'); return; }
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
@@ -135,9 +135,10 @@
   // The settings: a modal in the middle of the window, opened by the gear in the bottom left, by Cmd+, (a page
   // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker is
   // the shell's own, and so is the Update section, since only the shell knows the app's version; the rest of the
-  // body comes from /settings on each open, so the editors, the cache and the commit are current.
+  // body comes from /settings on each open, so the editors, the cache and the commit are current. A page may name a
+  // section of that body, which the dialog scrolls to once the body has loaded.
   const settings = document.getElementById('settings');
-  function openSettings() {
+  function openSettings(section) {
     // A change made while the body loads is newer than the list the body holds, so the fields keep that change.
     const before = followed.newest;
     const loading = settings.querySelector('.state .loading');
@@ -147,6 +148,7 @@
       const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
       if (followed.newest === before) followed.saved = saved;
       followed.draw(followed.newest === before ? saved : followed.repos);
+      if (section) settings.querySelector(`[data-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: 'start' });
     }).catch(() => {
       if (loading) { loading.textContent = 'Could not load the settings.'; loading.classList.add('err'); }
     });
@@ -217,7 +219,7 @@
     row.remove();
     followed.save();
   });
-  document.getElementById('gear').addEventListener('click', openSettings);
+  document.getElementById('gear').addEventListener('click', () => openSettings());
   // A click on the dialog itself, outside its box, is a click on the backdrop.
   settings.addEventListener('click', (e) => { if (e.target === settings || e.target.closest('.close')) settings.close(); });
   // The page in front hears that it shows again, so the start page asks for its sections, which the followed

@@ -75,10 +75,20 @@ def test_board_asks_github_again_and_answers_the_sections(tmp_path: Path, monkey
     asked = []
     monkeypatch.setattr(server.board, "refresh", lambda: asked.append("board"))
     monkeypatch.setattr(server.recent, "refresh", lambda: asked.append("recent"))
-    monkeypatch.setattr(server.board, "sections_html", lambda: "<h2>Your pull requests</h2>")
+    monkeypatch.setattr(server.board, "sections_html", lambda on: f"<h2>{on}</h2>")
     status, body = get("/board")
-    assert status == 200 and body == b"<h2>Your pull requests</h2>"
+    assert status == 200 and body == b"<h2>[]</h2>"
     assert sorted(asked) == ["board", "recent"]
+
+
+def test_board_draws_the_repositories_named_and_answers_from_the_cache_on_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(server.board, "refresh", lambda: pytest.fail("a cached board asked GitHub"))
+    monkeypatch.setattr(server.recent, "refresh", lambda: pytest.fail("a cached board asked GitHub"))
+    monkeypatch.setattr(server.board, "sections_html", lambda on: f"<h2>{on}</h2>")
+    status, body = get("/board?repo=Acme/API&repo=acme%2Fweb&cached=1")
+    assert status == 200 and body == b"<h2>['acme/api', 'acme/web']</h2>"
 
 
 def test_settings_serves_the_settings_body(monkeypatch: pytest.MonkeyPatch) -> None:

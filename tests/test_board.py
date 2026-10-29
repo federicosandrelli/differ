@@ -92,26 +92,48 @@ def test_queries_search_the_followed_repositories_for_open_and_merged_pull_reque
     ]
 
 
+def flat(placed: tuple[str, list[board.Reason]] | None) -> tuple[str, list[tuple]] | None:
+    """A section and its reasons as (text, tone, kind, count) tuples, or None."""
+    if placed is None:
+        return None
+    section, reasons = placed
+    return section, [(r["text"], r["tone"], r["kind"], r["count"]) for r in reasons]
+
+
 @pytest.mark.parametrize(
-    ("fields", "section", "reason", "tone"),
+    ("fields", "placed"),
     [
-        ({"ci": "FAILURE"}, "action", "CI failed", "bad"),
-        ({"mergeable": "CONFLICTING", "ci": "ERROR"}, "action", "CI failed · conflicts", "bad"),
-        ({"decision": "APPROVED"}, "action", "approved and green", "ok"),
-        ({"decision": "APPROVED", "ci": None}, "action", "approved and green", "ok"),
-        ({"decision": "APPROVED", "ci": "PENDING"}, "ci", "checks running", ""),
-        ({"ci": "EXPECTED"}, "ci", "checks running", ""),
-        ({"decision": "CHANGES_REQUESTED"}, "review", "changes requested", ""),
-        ({"requested": ("ann", "core")}, "review", "review requested from ann, core", ""),
-        ({}, "review", "no reviewer yet", ""),
-        ({"draft": True, "mergeable": "CONFLICTING"}, "draft", "conflicts", "warn"),
-        ({"draft": True, "ci": "FAILURE"}, "draft", "CI failed", "bad"),
+        ({"ci": "FAILURE"}, ("action", [("CI failed", "bad", "x-circle", 0)])),
+        (
+            {"mergeable": "CONFLICTING", "ci": "ERROR"},
+            ("action", [("CI failed", "bad", "x-circle", 0), ("conflicts", "warn", "warning", 0)]),
+        ),
+        ({"decision": "APPROVED"}, ("action", [("approved and green", "ok", "check-circle", 0)])),
+        ({"decision": "APPROVED", "ci": None}, ("action", [("approved and green", "ok", "check-circle", 0)])),
+        ({"decision": "APPROVED", "ci": "PENDING"}, ("ci", [("checks running", "", "clock", 0)])),
+        ({"ci": "EXPECTED"}, ("ci", [("checks running", "", "clock", 0)])),
+        ({"decision": "CHANGES_REQUESTED"}, ("review", [("changes requested", "", "pencil", 0)])),
+        ({"requested": ("ann", "core")}, ("review", [("review requested from ann, core", "", "person", 0)])),
+        ({}, ("review", [("no reviewer yet", "", "person-plus", 0)])),
+        ({"draft": True}, ("draft", [])),
+        ({"draft": True, "mergeable": "CONFLICTING"}, ("draft", [("conflicts", "warn", "warning", 0)])),
+        ({"draft": True, "ci": "FAILURE"}, ("draft", [("CI failed", "bad", "x-circle", 0)])),
     ],
 )
-def test_own_places_a_pull_request_by_its_checks_conflicts_and_reviews(
-    fields: dict, section: str, reason: str, tone: str
-) -> None:
-    assert board.own(pr(**fields), ME) == (section, reason, tone)
+def test_own_places_a_pull_request_by_its_checks_conflicts_and_reviews(fields: dict, placed: tuple) -> None:
+    assert flat(board.own(pr(**fields), ME)) == placed
+
+
+def test_own_lists_every_reason_in_order_with_the_number_of_comments() -> None:
+    late = pr(ci="FAILURE", mergeable="CONFLICTING", comments=(by("ann", "2026-10-21T00:00:00Z"),))
+    assert flat(board.own(late, ME)) == (
+        "action",
+        [
+            ("CI failed", "bad", "x-circle", 0),
+            ("conflicts", "warn", "warning", 0),
+            ("1 comment from ann", "warn", "comment", 1),
+        ],
+    )
 
 
 def test_own_counts_what_people_said_after_the_last_push_or_reply() -> None:
@@ -129,13 +151,13 @@ def test_own_counts_what_people_said_after_the_last_push_or_reply() -> None:
             thread(by("ci-bot[bot]", "2026-10-20T15:00:00Z")),
         ),
     )
-    assert board.own(said, ME) == ("action", "3 comments from ann, bob", "warn")
+    assert flat(board.own(said, ME)) == ("action", [("3 comments from ann, bob", "warn", "comment", 3)])
     # A reply of the viewer's after them answers them all, in a resolved thread too.
     answered = dict(said)
     answered["reviewThreads"] = {
         "nodes": said["reviewThreads"]["nodes"] + [thread(by(ME, "2026-10-20T16:00:00Z"), resolved=True)]
     }
-    assert board.own(answered, ME) == ("review", "changes requested", "")
+    assert flat(board.own(answered, ME)) == ("review", [("changes requested", "", "pencil", 0)])
 
 
 def test_own_counts_a_thread_reply_once_and_a_review_with_text_of_its_own() -> None:
@@ -146,84 +168,87 @@ def test_own_counts_a_thread_reply_once_and_a_review_with_text_of_its_own() -> N
         ),
         threads=(thread(by("ann", "2026-10-20T11:00:00Z")),),
     )
-    assert board.own(replied, ME) == ("action", "2 comments from ann, bob", "warn")
+    assert flat(board.own(replied, ME)) == ("action", [("2 comments from ann, bob", "warn", "comment", 2)])
 
 
 def test_own_shows_approved_and_green_after_an_approval_since_the_last_push() -> None:
     approved = pr(decision="APPROVED", reviews=(by("bob", "2026-10-20T11:00:00Z", state="APPROVED", body=""),))
-    assert board.own(approved, ME) == ("action", "approved and green", "ok")
+    assert flat(board.own(approved, ME)) == ("action", [("approved and green", "ok", "check-circle", 0)])
 
 
 def test_own_counts_a_head_commit_as_the_viewers_reply_only_when_the_viewer_made_it() -> None:
     teammate = pr(pushed="2026-10-20T12:00:00Z", committer="ann", comments=(by("bob", "2026-10-20T11:00:00Z"),))
-    assert board.own(teammate, ME) == ("action", "1 comment from bob", "warn")
+    assert flat(board.own(teammate, ME)) == ("action", [("1 comment from bob", "warn", "comment", 1)])
 
 
 def test_own_names_a_deleted_account_ghost() -> None:
     gone = pr(comments=({"author": None, "createdAt": "2026-10-21T00:00:00Z"},))
-    assert board.own(gone, ME) == ("action", "1 comment from ghost", "warn")
+    assert flat(board.own(gone, ME)) == ("action", [("1 comment from ghost", "warn", "comment", 1)])
 
 
 def test_own_names_one_comment_in_the_singular_and_drops_approved_and_green_for_it() -> None:
     one = pr(decision="APPROVED", comments=(by("ann", "2026-10-21T00:00:00Z"),))
-    assert board.own(one, ME) == ("action", "1 comment from ann", "warn")
+    assert flat(board.own(one, ME)) == ("action", [("1 comment from ann", "warn", "comment", 1)])
 
 
 @pytest.mark.parametrize(
     ("fields", "asked", "followed", "placed"),
     [
-        ({}, True, False, ("reviewing", "your review requested", "accent")),
-        ({"requested": (ME,)}, False, False, ("reviewing", "your review requested", "accent")),
+        ({}, True, False, ("reviewing", [("your review requested", "accent", "eye", 0)])),
+        ({"requested": (ME,)}, False, False, ("reviewing", [("your review requested", "accent", "eye", 0)])),
         (
             {"reviews": (by(ME, "2026-10-20T00:00:00Z", state="APPROVED"),)},
             False,
             False,
-            ("reviewed", "you approved", ""),
+            ("reviewed", [("you approved", "", "check", 0)]),
         ),
         (
             {"reviews": (by(ME, "2026-10-20T00:00:00Z", state="CHANGES_REQUESTED"),)},
             False,
             False,
-            ("reviewed", "you requested changes", ""),
+            ("reviewed", [("you requested changes", "", "pencil", 0)]),
         ),
         (
             {"threads": (thread(by(ME, "2026-10-20T00:00:00Z"), resolved=True),)},
             False,
             False,
-            ("reviewed", "you commented", ""),
+            ("reviewed", [("you commented", "", "comment", 0)]),
         ),
         ({}, False, False, None),
-        ({}, False, True, ("unreviewed", "", "")),
+        ({}, False, True, ("unreviewed", [])),
         ({"draft": True}, False, True, None),
         (
             {"reviews": (by("bob", "2026-10-20T00:00:00Z", state="APPROVED"),)},
             False,
             True,
-            ("others", "approved by bob", ""),
+            ("others", [("approved by bob", "", "check", 0)]),
         ),
         (
             {"reviews": (by("bob", "2026-10-20T00:00:00Z", state="COMMENTED"),)},
             False,
             True,
-            ("others", "reviewed by bob", ""),
+            ("others", [("reviewed by bob", "", "comment", 0)]),
         ),
-        ({"requested": ("ann",)}, False, True, ("others", "review requested from ann", "")),
+        ({"requested": ("ann",)}, False, True, ("others", [("review requested from ann", "", "person", 0)])),
         (
             {"reviews": (by("dep[bot]", "2026-10-20T00:00:00Z", state="COMMENTED"),)},
             False,
             True,
-            ("unreviewed", "", ""),
+            ("unreviewed", []),
         ),
     ],
 )
 def test_other_places_someone_elses_pull_request(
-    fields: dict, asked: bool, followed: bool, placed: tuple[str, str, str] | None
+    fields: dict, asked: bool, followed: bool, placed: tuple | None
 ) -> None:
-    assert board.other(pr(author="ann", **fields), ME, asked, False, followed) == placed
+    assert flat(board.other(pr(author="ann", **fields), ME, asked, False, followed)) == placed
 
 
 def test_other_keeps_a_pull_request_the_viewer_reviewed_long_ago_and_names_the_last_verdict() -> None:
-    assert board.other(pr(author="ann"), ME, False, True, False) == ("reviewed", "you reviewed", "")
+    assert flat(board.other(pr(author="ann"), ME, False, True, False)) == (
+        "reviewed",
+        [("you reviewed", "", "comment", 0)],
+    )
     approved_then_replied = pr(
         author="ann",
         reviews=(
@@ -231,7 +256,10 @@ def test_other_keeps_a_pull_request_the_viewer_reviewed_long_ago_and_names_the_l
             by(ME, "2026-10-20T01:00:00Z", state="COMMENTED"),
         ),
     )
-    assert board.other(approved_then_replied, ME, False, False, False) == ("reviewed", "you approved", "")
+    assert flat(board.other(approved_then_replied, ME, False, False, False)) == (
+        "reviewed",
+        [("you approved", "", "check", 0)],
+    )
 
 
 def test_classify_puts_each_pull_request_in_one_section_newest_first() -> None:
@@ -259,8 +287,8 @@ def test_classify_puts_each_pull_request_in_one_section_newest_first() -> None:
     assert sections["unreviewed"][0]["owner"] == "acme" and sections["unreviewed"][0]["repo"] == "tools"
 
 
-def save(sections: dict, viewer: str = ME, full: tuple[str, ...] = ()) -> None:
-    board.save(board.Board(viewer=viewer, fetched=time.time(), repos=[], sections=sections, full=list(full)))
+def save(sections: dict, viewer: str = ME, full: tuple[str, ...] = (), repos: tuple[str, ...] = ()) -> None:
+    board.save(board.Board(viewer=viewer, fetched=time.time(), repos=list(repos), sections=sections, full=list(full)))
 
 
 def test_classify_lists_other_peoples_merges_newest_merge_first_and_leaves_out_the_viewers_own() -> None:
@@ -306,10 +334,28 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
     assert column_counts(page) == ["0", "2", "0", "0", "1", "0"]
     assert [sub_count(page, key) for key in ("action", "ci", "review")] == ["1", "0", "1"]
     mine, _, theirs = re.findall(r'<a class="card.*?</a>', page)
-    assert 'href="/acme/widgets/pull/1"' in mine and '<span class="why bad">CI failed</span>' in mine
+    assert (
+        'href="/acme/widgets/pull/1"' in mine
+        and 'class="count why bad" role="img" aria-label="CI failed" title="CI failed"' in mine
+    )
     assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
     assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
     assert '<span class="ref">tools</span>' in theirs
+
+
+@pytest.mark.parametrize("sections", [None, [], "rows"])
+def test_load_treats_a_board_with_broken_sections_as_empty(paths: Path, sections: object) -> None:
+    (paths / "board.json").write_text(json.dumps({"viewer": ME, "fetched": 0.0, "repos": [], "sections": sections}))
+    assert board.load()["sections"] == {}
+
+
+def test_load_treats_a_board_with_rows_without_reasons_as_empty(paths: Path) -> None:
+    old_row = {"owner": "acme", "repo": "widgets", "number": 1, "title": "PR 1", "status": "open", "author": ME}
+    old_row |= {"reason": "CI failed", "tone": "bad", "at": 0.0}
+    old = {"viewer": ME, "fetched": time.time(), "repos": [], "sections": {"action": [old_row]}, "full": []}
+    (paths / "board.json").write_text(json.dumps(old))
+    assert board.load() == board.Board(viewer="", fetched=0.0, repos=[], sections={}, full=[])
+    assert board.sections_html().startswith('<div class="empty">No pull requests yet.</div>')
 
 
 def test_footer_names_the_viewer_and_the_last_answer_only_once_github_has_answered() -> None:
@@ -375,6 +421,67 @@ def test_html_adds_a_plus_to_the_count_of_a_full_section_and_its_column() -> Non
     page = board.sections_html()
     assert column_counts(page)[1] == "2+"
     assert [sub_count(page, key) for key in ("action", "ci", "review")] == ["1+", "0", "1"]
+
+
+FOLLOWED = ("acme/api", "acme/web")
+
+
+def save_two_repos(full: tuple[str, ...] = ()) -> None:
+    """A board with draft 1 to 7 in acme/web, draft 8, review 9 and merged 11 in acme/api, and someone else's 10 in
+    acme/tools, which the viewer does not follow."""
+    drafts = [pr(n, draft=True, repo="acme/web") for n in range(1, 8)] + [pr(8, draft=True, repo="acme/api")]
+    merged = pr(11, repo="acme/api", state="MERGED", merged="2026-10-22T00:00:00Z")
+    found = [[*drafts, pr(9, repo="acme/api")], [merged], [pr(10, author="ann", repo="acme/tools")], [], []]
+    save(board.classify(ME, found, list(FOLLOWED)), full=full, repos=FOLLOWED)
+
+
+def toggles(page: str) -> dict[str, tuple[bool, str]]:
+    """Each toggle of the strip: whether it is pressed, and its count."""
+    found = re.findall(
+        r'<button( class="on")? aria-pressed="\w+" data-repo="([^"]+)"[^>]*>[^<]*<span class="count">([^<]*)', page
+    )
+    return {repo: (bool(on), count) for on, repo, count in found}
+
+
+def test_html_shows_the_rows_of_the_repositories_turned_on_and_counts_them() -> None:
+    save_two_repos()
+    page = board.sections_html(["acme/api"])
+    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["8", "9", "11"]
+    assert column_counts(page)[:2] == ["1", "1"] and sub_count(page, "review") == "1"
+    assert "more</button>" not in sub(page, "draft") and board.NONE_HTML in sub(page, "reviewing")
+    page = board.sections_html(["acme/web", "acme/api"])
+    assert column_counts(page)[:2] == ["8", "1"] and "Show 3 more" in sub(page, "draft")
+    assert 'href="/acme/tools/pull/10"' not in page
+
+
+def test_html_shows_every_row_when_no_followed_repository_is_on_and_drops_an_unfollowed_one() -> None:
+    save_two_repos()
+    for on in (None, [], ["acme/gone"]):
+        page = board.sections_html(on)
+        assert 'href="/acme/tools/pull/10"' in page and column_counts(page)[:2] == ["8", "1"]
+        assert toggles(page) == {"acme/api": (False, "2"), "acme/web": (False, "7")}
+    assert toggles(board.sections_html(["acme/gone", "acme/api"]))["acme/api"] == (True, "2")
+
+
+def test_a_toggle_counts_its_cards_outside_the_merged_columns_with_a_plus_for_a_full_section() -> None:
+    save_two_repos(full=("review", "merged"))
+    page = board.sections_html(["acme/web"])
+    assert toggles(page) == {"acme/api": (False, "2+"), "acme/web": (True, "7")}
+    assert sub_count(page, "review") == "0" and column_counts(page)[1:3] == ["0", "0"]
+    assert toggles(board.sections_html(["acme/api", "acme/web"])) == {
+        "acme/api": (True, "2+"),
+        "acme/web": (True, "7"),
+    }
+
+
+def test_recently_opened_follows_the_repositories_turned_on_and_leaves_out_hidden_cards() -> None:
+    save_two_repos()
+    recent.note_opened(PullRef("acme", "web", 1), "In a section", "open", ME)
+    recent.note_opened(PullRef("acme", "web", 20), "Web", "open", "ann")
+    recent.note_opened(PullRef("acme", "api", 21), "Api", "open", "ann")
+    page = board.sections_html(["acme/api"])
+    opened = page[page.index('<section class="group opened">') :]
+    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', opened) == ["21"]
 
 
 def test_recently_opened_lists_what_no_section_shows_and_escapes_titles() -> None:
