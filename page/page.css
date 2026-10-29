@@ -73,7 +73,7 @@ html.framed #side .foot { padding-left: 44px; }
 .prbody { max-width: 78ch; } .prbody h3, .prbody h4 { font-size: 14px; margin: 16px 0 6px; } .prbody ul { padding-left: 20px; } .prbody li { margin: 4px 0; }
 .prbody pre { margin: 8px 0; padding: 8px 10px; background: var(--bg-inset); border-radius: var(--radius); overflow-x: auto; }
 .prbody details, .cbody details { margin: 6px 0; } .prbody summary, .cbody summary { cursor: pointer; }
-.prbody img, .cbody img { max-width: 100%; } .prbody blockquote, .cbody blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border); color: var(--text-secondary); }
+.prbody img, .cbody img { max-width: 100%; } .prbody img.viewable, .cbody img.viewable { cursor: zoom-in; } .prbody blockquote, .cbody blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border); color: var(--text-secondary); }
 .prbody .contains-task-list, .cbody .contains-task-list { list-style: none; padding-left: 4px; }
 .scrollx { overflow-x: auto; }
 table.plain { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -203,3 +203,10 @@ tr.notes > td > div.notes > :last-child { margin-bottom: 9px; }
 .page .form.conv { margin: 10px 0 0; max-width: 78ch; }
 table.plain.threads tr.resolved td { color: var(--text-muted); }
 table.plain td.wrap { white-space: normal; min-width: 240px; }
+/* The viewer takes the focus itself and fills the window, so it draws no focus outline. */
+#viewer { outline: none; }
+#viewer img { max-width: calc(100vw - 96px); max-height: calc(100vh - 96px); object-fit: contain; background: var(--bg-canvas); border-radius: var(--radius-lg); }
+#viewer .bar { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 8px; }
+/* The count sits on the panel surface, so it takes the canvas to stay visible. */
+#viewer .count { background: var(--bg-canvas); }
+#viewer .count[hidden] { display: none; }
