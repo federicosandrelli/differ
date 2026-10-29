@@ -2,7 +2,7 @@
 // and right arrows step through the other images of the same place that the reader can see, going round at the ends.
 (function imageViewer() {
   const box = document.createElement('dialog');
-  box.id = 'viewer'; box.className = 'modal'; box.autofocus = true;
+  box.id = 'viewer'; box.className = 'modal'; box.tabIndex = -1;
   box.innerHTML = '<img alt=""><div class="bar card panel"><span class="count"></span><button class="ghost close" aria-label="Close">✕</button></div>';
   document.body.append(box);
   const img = box.querySelector('img'), count = box.querySelector('.count');
@@ -41,7 +41,8 @@
       .filter(i => i === clicked || (i.getClientRects().length && viewable(i)));
     images = all.map(i => ({ src: i.currentSrc || i.src, alt: i.alt }));
     show(all.indexOf(clicked));
-    box.showModal();
+    // The dialog takes the focus itself, so the ✕ shows no focus ring.
+    box.showModal(); box.focus();
   }, true);
   // A click on the dialog itself, outside the image, is a click on the backdrop.
   box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('.close')) box.close(); });

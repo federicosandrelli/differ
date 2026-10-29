@@ -203,6 +203,8 @@ tr.notes > td > div.notes > :last-child { margin-bottom: 9px; }
 .page .form.conv { margin: 10px 0 0; max-width: 78ch; }
 table.plain.threads tr.resolved td { color: var(--text-muted); }
 table.plain td.wrap { white-space: normal; min-width: 240px; }
+/* The viewer takes the focus itself and fills the window, so it draws no focus outline. */
+#viewer { outline: none; }
 #viewer img { max-width: calc(100vw - 96px); max-height: calc(100vh - 96px); object-fit: contain; background: var(--bg-canvas); border-radius: var(--radius-lg); }
 #viewer .bar { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 8px; }
 /* The count sits on the panel surface, so it takes the canvas to stay visible. */
