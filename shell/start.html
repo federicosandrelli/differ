@@ -22,21 +22,47 @@ board.addEventListener('toggle', (e) => {
   if (!folded) return;
   if (folded.open) openedColumns.add(folded.dataset.key); else openedColumns.delete(folded.dataset.key);
 }, true);
+// The repositories the reader turned on in the strip above the groups. The server draws the board with their rows
+// only, and presses their toggles; a repository the reader no longer follows has no toggle, so it drops out.
+const REPOS_KEY = 'dr:boardRepos';
+let on = (() => { try { return JSON.parse(localStorage.getItem(REPOS_KEY)) || []; } catch { return []; } })();
+const saveOn = () => { try { localStorage.setItem(REPOS_KEY, JSON.stringify(on)); } catch {} };
 board.addEventListener('click', (e) => {
-  if (e.target.closest('[data-settings]')) { SHELL?.settings(); return; }
+  const settings = e.target.closest('[data-settings]');
+  if (settings) { SHELL?.settings(settings.dataset.settings); return; }
+  const toggle = e.target.closest('[data-repo]');
+  if (toggle) {
+    const repo = toggle.dataset.repo;
+    on = on.includes(repo) ? on.filter(r => r !== repo) : [...on, repo];
+    saveOn();
+    loadBoard(true);
+    return;
+  }
   const more = e.target.closest('.sub > .more');
   if (!more) return;
   opened.add(more.parentElement.dataset.key);
   showOpened();
 });
+// A cached load draws the board from GitHub's last answer at once; the others ask GitHub again first.
 let loading = null;
-const loadBoard = () => {
+const loadBoard = (cached) => {
   if (loading) loading.abort();
   loading = new AbortController();
-  fetch('/board', { signal: loading.signal }).then(r => r.ok ? r.text() : Promise.reject()).then(h => { board.innerHTML = h; showOpened(); }).catch(() => {});
+  const query = new URLSearchParams(on.map(repo => ['repo', repo]));
+  if (cached) query.set('cached', '1');
+  return fetch(`/board?${query}`, { signal: loading.signal }).then(r => r.ok ? r.text() : Promise.reject()).then((h) => {
+    board.innerHTML = h;
+    showOpened();
+    if (board.querySelector('nav.repos')) {
+      on = [...board.querySelectorAll('[data-repo].on')].map(b => b.dataset.repo);
+      saveOn();
+    }
+    return true;
+  }).catch(() => false);
 };
-loadBoard();
-document.addEventListener('tab-shown', loadBoard);
+// The server drew the board without the saved repositories, so the page draws them from the last answer first.
+(on.length ? loadBoard(true) : Promise.resolve(true)).then(drawn => { if (drawn) loadBoard(); });
+document.addEventListener('tab-shown', () => loadBoard());
 // Focus selects the whole field, so a pasted link replaces the old one. A click that focuses the field would put the
 // caret where it lands on mouseup, so that one mouseup keeps the selection.
 const pr = document.querySelector('input[name=pr]');

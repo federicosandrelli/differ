@@ -70,6 +70,16 @@ CHEVRON_SVG = (
     '<svg class="chev" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" '
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 )
+GEAR_SVG = (
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-widt'
+    'h="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.6'
+    "5 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 "
+    "1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0"
+    " .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 "
+    "2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 "
+    "1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0"
+    ' 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+)
 lock = threading.Lock()
 refreshing = threading.Lock()
 
@@ -455,15 +465,12 @@ def footer_html(board: Board) -> str:
     return f'<footer class="start hint">{known}<button class="ghost" data-settings>Settings <kbd>⌘,</kbd></button></footer>'
 
 
-def column_html(column: Column, board: Board, shown: set[PullRef]) -> str:
+def column_html(column: Column, board: Board) -> str:
     """A column: its label and the count of the rows of its sections, with a plus when one of them is full, then its
-    sections. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary. Adds
-    the rows' pull requests to `shown`."""
+    sections. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary."""
     lists = [
         (key, subtitle, board["sections"].get(key) or [], key in board["full"]) for key, subtitle in column.sections
     ]
-    for _, _, rows, _ in lists:
-        shown.update(ref_of(r) for r in rows)
     total = sum(len(rows) for _, _, rows, _ in lists)
     full = any(full for _, _, _, full in lists)
     head = f"<h3>{html.escape(column.label)}{count_html(total, full)}</h3>"
@@ -477,25 +484,65 @@ def column_html(column: Column, board: Board, shown: set[PullRef]) -> str:
     return f"<div {classes}>{head}{body}</div>"
 
 
-def sections_html() -> str:
-    """The start page's board, once GitHub has answered: a group for the viewer's pull requests and one for other
-    people's, each a row of columns, their widths in the shares the columns name, with its folded columns under the
-    row; then the pull requests opened today that no section shows, then the footer."""
+def name_of(r: Row) -> str:
+    return f"{r['owner']}/{r['repo']}"
+
+
+def repos_html(board: Board, on: list[str]) -> str:
+    """The strip above the groups: a toggle per followed repository, pressed when `on` names it, with the count of
+    its cards on the whole board and a plus when a full section has some of them, then a gear that opens the
+    followed repositories in the Settings. A toggle shows the repository's name, or `owner/repo` when another
+    followed repository has the same name. Without followed repositories, a hint and a button to follow one."""
+    if not board["repos"]:
+        return (
+            '<nav class="repos" aria-label="Repositories"><span class="hint">Other people\'s pull requests come from '
+            "the repositories you follow.</span>"
+            '<button class="ghost" data-settings="repositories">Follow a repository</button></nav>'
+        )
+    short = [name.split("/", 1)[1] for name in board["repos"]]
+    toggles = []
+    for name, repo in zip(board["repos"], short, strict=True):
+        cards = [(key, r) for key, rows in board["sections"].items() for r in rows if name_of(r) == name]
+        label, title = (name, "") if short.count(repo) > 1 else (repo, f' title="{html.escape(name)}"')
+        pressed = ' class="on" aria-pressed="true"' if name in on else ' aria-pressed="false"'
+        toggles.append(
+            f'<button{pressed} data-repo="{html.escape(name)}"{title}>{html.escape(label)}'
+            f"{count_html(len(cards), any(key in board['full'] for key, _ in cards))}</button>"
+        )
+    return (
+        f'<nav class="repos" aria-label="Repositories"><span class="hint">Repositories</span>{"".join(toggles)}'
+        '<button class="ghost" data-settings="repositories" title="Followed repositories" '
+        f'aria-label="Followed repositories">{GEAR_SVG}</button></nav>'
+    )
+
+
+def sections_html(on: list[str] | None = None) -> str:
+    """The start page's board, once GitHub has answered: the strip of followed repositories, a group for the viewer's
+    pull requests and one for other people's, each a row of columns, their widths in the shares the columns name, with
+    its folded columns under the row; then the pull requests opened today that no section holds, then the footer.
+    The board shows the rows of the followed repositories that `on` names, or every row when it names none."""
     board = load()
-    viewer, shown, groups = board["viewer"], set(), []
+    on = [name for name in board["repos"] if name in (on or [])]
+    shown = {ref_of(r) for rows in board["sections"].values() for r in rows}
+    kept: Board = {
+        **board,
+        "sections": {key: [r for r in rows if not on or name_of(r) in on] for key, rows in board["sections"].items()},
+    }
+    groups = []
     if board["sections"]:
+        groups.append(repos_html(board, on))
         for name, columns in GROUPS:
             row = [c for c in columns if not c.folded]
             split = " ".join(f"{c.share}fr" for c in row)
-            parts = "".join(column_html(c, board, shown) for c in row)
-            folded = "".join(column_html(c, board, shown) for c in columns if c.folded)
+            parts = "".join(column_html(c, kept) for c in row)
+            folded = "".join(column_html(c, kept) for c in columns if c.folded)
             groups.append(
                 f'<section class="group"><h2>{html.escape(name)}</h2>'
                 f'<div class="columns" style="--split: {split}">{parts}</div>{folded}</section>'
             )
-    if opened := opened_rows(shown):
+    if opened := [r for r in opened_rows(shown) if not on or name_of(r) in on]:
         groups.append(
             f'<section class="group opened"><h2>Recently opened<span class="count">{len(opened)}</span></h2>'
-            f'<div class="list card">{"".join(row_html(r, viewer) for r in opened)}</div></section>'
+            f'<div class="list card">{"".join(row_html(r, board["viewer"]) for r in opened)}</div></section>'
         )
     return ("".join(groups) or '<div class="empty">No pull requests yet.</div>') + footer_html(board)

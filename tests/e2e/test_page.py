@@ -1292,7 +1292,7 @@ def test_the_shell_opens_the_settings_on_cmd_comma_and_closes_them_on_escape_and
 
 def test_the_start_pages_settings_button_opens_the_settings(page: Page, server_url: str) -> None:
     page.goto(server_url + "/")
-    page.frame_locator("#panes iframe.on").locator("[data-settings]").click()
+    page.frame_locator("#panes iframe.on").locator("footer.start [data-settings]").click()
     expect(page.locator("#settings")).to_be_visible()
 
 
@@ -1491,32 +1491,33 @@ def test_a_click_dismisses_the_tooltip_even_when_the_click_redraws_the_element(p
     expect(tip).to_have_class(re.compile(r"\bon\b"), timeout=1000)
 
 
+def own_pr(number: int, draft: bool, ci: str, repo: str = "acme/widgets") -> dict:
+    return {
+        "number": number,
+        "title": f"{TITLE} {number}",
+        "url": f"https://github.com/{repo}/pull/{number}",
+        "isDraft": draft,
+        "state": "OPEN",
+        "updatedAt": f"2026-10-{number:02d}T10:00:00Z",
+        "mergedAt": None,
+        "mergeable": "MERGEABLE",
+        "reviewDecision": None,
+        "repository": {"nameWithOwner": repo},
+        "author": {"__typename": "User", "login": "tester"},
+        "commits": {
+            "nodes": [{"commit": {"committedDate": "2026-10-01T10:00:00Z", "statusCheckRollup": {"state": ci}}}]
+        },
+        "reviewRequests": {"nodes": []},
+        "reviews": {"nodes": []},
+        "comments": {"nodes": []},
+        "reviewThreads": {"nodes": []},
+    }
+
+
 def test_the_start_page_lists_the_viewers_pull_requests_and_show_more_opens_the_rest(
     page: Page, server_url: str, gh_state: Path, cache_dir: Path
 ) -> None:
-    def mine(number: int, draft: bool, ci: str) -> dict:
-        return {
-            "number": number,
-            "title": f"{TITLE} {number}",
-            "url": f"https://github.com/acme/widgets/pull/{number}",
-            "isDraft": draft,
-            "state": "OPEN",
-            "updatedAt": f"2026-10-{number:02d}T10:00:00Z",
-            "mergedAt": None,
-            "mergeable": "MERGEABLE",
-            "reviewDecision": None,
-            "repository": {"nameWithOwner": "acme/widgets"},
-            "author": {"__typename": "User", "login": "tester"},
-            "commits": {
-                "nodes": [{"commit": {"committedDate": "2026-10-01T10:00:00Z", "statusCheckRollup": {"state": ci}}}]
-            },
-            "reviewRequests": {"nodes": []},
-            "reviews": {"nodes": []},
-            "comments": {"nodes": []},
-            "reviewThreads": {"nodes": []},
-        }
-
-    found = [mine(1, False, "FAILURE"), *(mine(n, True, "SUCCESS") for n in range(2, 9))]
+    found = [own_pr(1, False, "FAILURE"), *(own_pr(n, True, "SUCCESS") for n in range(2, 9))]
     (gh_state / "search.json").write_text(
         json.dumps({"is:pr is:open archived:false author:@me sort:updated-desc": found})
     )
@@ -1704,3 +1705,38 @@ def test_choosing_an_editor_in_a_file_s_menu_opens_the_file_in_it_and_keeps_the_
     page.click("section[data-file='README.md'] [data-open-editor]")
     page.wait_for_function("!EDITOR.opening.size")
     assert opened[-1] == {"editor": "pycharm", "path": "README.md", "line": 2}
+
+
+def test_the_start_pages_repository_toggles_filter_the_board_and_survive_a_reload(
+    page: Page, server_url: str, gh_state: Path, cache_dir: Path
+) -> None:
+    found = [own_pr(1, False, "SUCCESS"), own_pr(2, False, "SUCCESS", repo="acme/tools")]
+    (gh_state / "search.json").write_text(
+        json.dumps({"is:pr is:open archived:false author:@me sort:updated-desc": found})
+    )
+    followed = cache_dir / "followed.json"
+    before = followed.read_text() if followed.exists() else None
+    followed.write_text(json.dumps(["acme/widgets", "acme/tools"]))
+    (cache_dir / "board.json").unlink(missing_ok=True)
+    try:
+        page.goto(server_url + "/")
+        home = page.frame_locator("#panes iframe.on")
+        cards = home.locator("#board .card.pr")
+        expect(cards).to_have_count(2)
+        home.locator('[data-repo="acme/tools"]').click()
+        expect(cards).to_have_count(1)
+        expect(cards.first).to_have_attribute("href", "/acme/tools/pull/2")
+        expect(home.locator('[data-repo="acme/tools"] .count')).to_have_text("1")
+        page.reload()
+        home = page.frame_locator("#panes iframe.on")
+        expect(home.locator('[data-repo="acme/tools"]')).to_have_attribute("aria-pressed", "true")
+        expect(home.locator("#board .card.pr")).to_have_count(1)
+        home.get_by_role("button", name="Followed repositories").click()
+        expect(page.locator('#settings [data-section="repositories"]')).to_be_in_viewport()
+    finally:
+        (gh_state / "search.json").unlink()
+        (cache_dir / "board.json").unlink(missing_ok=True)
+        if before is None:
+            followed.unlink()
+        else:
+            followed.write_text(before)

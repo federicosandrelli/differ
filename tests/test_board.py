@@ -259,8 +259,8 @@ def test_classify_puts_each_pull_request_in_one_section_newest_first() -> None:
     assert sections["unreviewed"][0]["owner"] == "acme" and sections["unreviewed"][0]["repo"] == "tools"
 
 
-def save(sections: dict, viewer: str = ME, full: tuple[str, ...] = ()) -> None:
-    board.save(board.Board(viewer=viewer, fetched=time.time(), repos=[], sections=sections, full=list(full)))
+def save(sections: dict, viewer: str = ME, full: tuple[str, ...] = (), repos: tuple[str, ...] = ()) -> None:
+    board.save(board.Board(viewer=viewer, fetched=time.time(), repos=list(repos), sections=sections, full=list(full)))
 
 
 def test_classify_lists_other_peoples_merges_newest_merge_first_and_leaves_out_the_viewers_own() -> None:
@@ -375,6 +375,64 @@ def test_html_adds_a_plus_to_the_count_of_a_full_section_and_its_column() -> Non
     page = board.sections_html()
     assert column_counts(page)[1] == "2+"
     assert [sub_count(page, key) for key in ("action", "ci", "review")] == ["1+", "0", "1"]
+
+
+FOLLOWED = ("acme/api", "acme/web")
+
+
+def save_two_repos(full: tuple[str, ...] = ()) -> None:
+    """A board with draft 1 to 7 in acme/web, draft 8 and review 9 in acme/api, and someone else's 10 in
+    acme/tools, which the viewer does not follow."""
+    drafts = [pr(n, draft=True, repo="acme/web") for n in range(1, 8)] + [pr(8, draft=True, repo="acme/api")]
+    found = [[*drafts, pr(9, repo="acme/api")], [], [pr(10, author="ann", repo="acme/tools")], [], []]
+    save(board.classify(ME, found, list(FOLLOWED)), full=full, repos=FOLLOWED)
+
+
+def toggles(page: str) -> dict[str, tuple[bool, str]]:
+    """Each toggle of the strip: whether it is pressed, and its count."""
+    found = re.findall(
+        r'<button( class="on")? aria-pressed="\w+" data-repo="([^"]+)"[^>]*>[^<]*<span class="count">([^<]*)', page
+    )
+    return {repo: (bool(on), count) for on, repo, count in found}
+
+
+def test_html_shows_the_rows_of_the_repositories_turned_on_and_counts_them() -> None:
+    save_two_repos()
+    page = board.sections_html(["acme/api"])
+    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["8", "9"]
+    assert column_counts(page)[:2] == ["1", "1"] and sub_count(page, "review") == "1"
+    assert "more</button>" not in sub(page, "draft") and board.NONE_HTML in sub(page, "reviewing")
+    page = board.sections_html(["acme/web", "acme/api"])
+    assert column_counts(page)[:2] == ["8", "1"] and "Show 3 more" in sub(page, "draft")
+    assert 'href="/acme/tools/pull/10"' not in page
+
+
+def test_html_shows_every_row_when_no_followed_repository_is_on_and_drops_an_unfollowed_one() -> None:
+    save_two_repos()
+    for on in (None, [], ["acme/gone"]):
+        page = board.sections_html(on)
+        assert 'href="/acme/tools/pull/10"' in page and column_counts(page)[:2] == ["8", "1"]
+        assert toggles(page) == {"acme/api": (False, "2"), "acme/web": (False, "7")}
+    assert toggles(board.sections_html(["acme/gone", "acme/api"]))["acme/api"] == (True, "2")
+
+
+def test_a_toggle_counts_its_cards_on_the_whole_board_with_a_plus_for_a_full_section() -> None:
+    save_two_repos(full=("review",))
+    assert toggles(board.sections_html(["acme/web"])) == {"acme/api": (False, "2+"), "acme/web": (True, "7")}
+    assert toggles(board.sections_html(["acme/api", "acme/web"])) == {
+        "acme/api": (True, "2+"),
+        "acme/web": (True, "7"),
+    }
+
+
+def test_recently_opened_follows_the_repositories_turned_on_and_leaves_out_hidden_cards() -> None:
+    save_two_repos()
+    recent.note_opened(PullRef("acme", "web", 1), "In a section", "open", ME)
+    recent.note_opened(PullRef("acme", "web", 20), "Web", "open", "ann")
+    recent.note_opened(PullRef("acme", "api", 21), "Api", "open", "ann")
+    page = board.sections_html(["acme/api"])
+    opened = page[page.index('<section class="group opened">') :]
+    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', opened) == ["21"]
 
 
 def test_recently_opened_lists_what_no_section_shows_and_escapes_titles() -> None:
