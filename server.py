@@ -10,7 +10,7 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /home                              the start page: a search bar and the sections of pull requests, drawn
                                      from GitHub's last answer
   /board                             the sections of the start page, as an HTML fragment: your pull requests,
-                                     other people's, and the ones opened last, after asking GitHub again (at
+                                     other people's, and the ones opened today, after asking GitHub again (at
                                      most every 30 seconds, unless the followed repositories changed)
   /settings                          the body of the settings modal, as an HTML fragment: the followed
                                      repositories, the shortcuts, the file type rules, the folds, the editors,

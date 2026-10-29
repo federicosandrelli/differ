@@ -16,12 +16,13 @@ pull requests that matter to you, in sections:
 
 - Your pull requests: the ones that need your action (comments since your last
   push or reply, failed CI, conflicts, or approved and green), the ones waiting
-  on CI, the ones waiting on review, your drafts, and the ones merged in the
-  last 7 days.
+  on CI, the ones waiting on review, your drafts, and, folded under them, the
+  ones merged today.
 - Other people's pull requests: the ones that ask for your review, the ones
   you reviewed or commented on, and, in the repositories you follow (set in the
-  settings), the ones that need a reviewer and the ones someone else reviews.
-- Recently opened: the pull requests you opened in differ last, less the ones
+  settings), the ones that need a reviewer, the ones someone else reviews and,
+  folded under them, the ones merged today.
+- Recently opened: the pull requests you opened in differ today, less the ones
   above.
 
 A row says why it is in its section when the section's name doesn't. An empty

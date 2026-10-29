@@ -75,7 +75,7 @@ def test_splash_page_is_written_from_the_dark_palette() -> None:
 
 def test_every_token_is_used_and_every_used_token_is_defined() -> None:
     defined = {f"--{k.rstrip('_').replace('_', '-')}" for k in render.PALETTES["light"]}
-    non_colour = {"--mono", "--sans", "--dim", "--d", "--titlebar", "--side", "--cols"}
+    non_colour = {"--mono", "--sans", "--dim", "--d", "--titlebar", "--side", "--cols", "--split"}
     non_colour |= {"--radius-sm", "--radius", "--radius-lg", "--radius-pill", "--control-font", "--control-line"}
     used: set[str] = set()
     for path in styled_sources():

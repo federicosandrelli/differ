@@ -1,4 +1,4 @@
-"""The start page's sections: the viewer's own pull requests, other people's, and the ones opened last that neither
+"""The start page's sections: the viewer's own pull requests, other people's, and the ones opened today that neither
 shows. GitHub's last answer, sorted into sections, is kept in board.json in the cache."""
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import json
 import os
 import threading
 import time
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import NamedTuple, TypedDict
 
 import build
@@ -20,7 +20,6 @@ import render
 from github import PullRef
 
 PATH = build.CACHE / "board.json"
-MERGED_DAYS = 7
 REFRESH_SECONDS = 30
 FOLLOWED_QUERY = "is:pr is:open archived:false draft:false -author:@me sort:updated-desc"
 MERGED_QUERY = "is:pr is:merged -author:@me sort:updated-desc"
@@ -32,22 +31,27 @@ NONE_HTML = '<span class="hint none">None</span>'
 
 class Column(NamedTuple):
     """A column of the start page: its label, its sections as (key, subtitle) pairs, the subtitle empty when the column
-    has one section, and whether its rows are quiet."""
+    has one section, its share of the row's width, whether its rows are quiet, and whether it is folded: drawn under
+    the row, closed until the reader opens it."""
 
     label: str
     sections: tuple[tuple[str, str], ...]
+    share: int = 1
     quiet: bool = False
+    folded: bool = False
 
 
 GROUPS = (
     (
         "Your pull requests",
         (
-            Column("Drafts", (("draft", ""),)),
+            Column("Drafts", (("draft", ""),), share=3),
             Column(
-                "In review", (("action", "Needs your action"), ("ci", "Waiting on CI"), ("review", "Waiting on review"))
+                "In review",
+                (("action", "Needs your action"), ("ci", "Waiting on CI"), ("review", "Waiting on review")),
+                share=7,
             ),
-            Column("Merged this week", (("merged", ""),), quiet=True),
+            Column("Merged today", (("merged", ""),), quiet=True, folded=True),
         ),
     ),
     (
@@ -58,9 +62,13 @@ GROUPS = (
                 "Being reviewed",
                 (("reviewing", "Waiting on your review"), ("reviewed", "By you"), ("others", "By someone else")),
             ),
-            Column("Recently merged", (("merged_others", ""),), quiet=True),
+            Column("Merged today", (("merged_others", ""),), quiet=True, folded=True),
         ),
     ),
+)
+CHEVRON_SVG = (
+    '<svg class="chev" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" '
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 )
 lock = threading.Lock()
 refreshing = threading.Lock()
@@ -333,14 +341,15 @@ def save(board: Board) -> None:
 
 def refresh() -> None:
     """Ask GitHub again and save the sections, unless GitHub answered less than REFRESH_SECONDS ago about the same
-    followed repositories. When GitHub can't answer, the saved sections stay. A refresh that starts while another
-    runs waits for it, and then finds its answer fresh."""
+    followed repositories. The merged sections hold the pull requests merged today, by GitHub's date (UTC). When
+    GitHub can't answer, the saved sections stay. A refresh that starts while another runs waits for it, and then
+    finds its answer fresh."""
     with refreshing:
         repos = followed.load()
         saved = load()
         if saved["repos"] == repos and time.time() - saved["fetched"] < REFRESH_SECONDS:
             return
-        answer = github.search_prs(queries(repos, date.today() - timedelta(days=MERGED_DAYS)))
+        answer = github.search_prs(queries(repos, datetime.now(UTC).date()))
         if answer is None:
             return
         viewer, found = answer
@@ -378,8 +387,14 @@ def row_html(r: Row, viewer: str) -> str:
     )
 
 
+def today_start() -> float:
+    """Midnight today, local time, in seconds since the epoch."""
+    return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+
 def opened_rows(shown: set[PullRef]) -> list[Row]:
-    """The pull requests opened last, newest first, less the ones the sections show."""
+    """The pull requests opened today, newest first, less the ones the sections show."""
+    since = today_start()
     return [
         Row(
             owner=p["owner"],
@@ -393,7 +408,7 @@ def opened_rows(shown: set[PullRef]) -> list[Row]:
             at=p["opened"],
         )
         for p in recent.load()["pages"]
-        if recent.ref_of(p) not in shown
+        if p["opened"] >= since and recent.ref_of(p) not in shown
     ]
 
 
@@ -440,31 +455,43 @@ def footer_html(board: Board) -> str:
     return f'<footer class="start hint">{known}<button class="ghost" data-settings>Settings <kbd>⌘,</kbd></button></footer>'
 
 
+def column_html(column: Column, board: Board, shown: set[PullRef]) -> str:
+    """A column: its label and the count of the rows of its sections, with a plus when one of them is full, then its
+    sections. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary. Adds
+    the rows' pull requests to `shown`."""
+    lists = [
+        (key, subtitle, board["sections"].get(key) or [], key in board["full"]) for key, subtitle in column.sections
+    ]
+    for _, _, rows, _ in lists:
+        shown.update(ref_of(r) for r in rows)
+    total = sum(len(rows) for _, _, rows, _ in lists)
+    full = any(full for _, _, _, full in lists)
+    head = f"<h3>{html.escape(column.label)}{count_html(total, full)}</h3>"
+    body = "".join(section_html(*section, board["viewer"], column.quiet) for section in lists)
+    classes = f'class="column{" quiet" if column.quiet else ""}"'
+    if column.folded:
+        return (
+            f'<details class="folded" data-key="{column.sections[0][0]}"><summary>{CHEVRON_SVG}{head}</summary>'
+            f"<div {classes}>{body}</div></details>"
+        )
+    return f"<div {classes}>{head}{body}</div>"
+
+
 def sections_html() -> str:
-    """The start page's board, once GitHub has answered: a group of columns for the viewer's pull requests and one
-    for other people's, then the pull requests opened last that no section shows, then the footer. A column counts
-    the rows of its sections, with a plus when one of them is full."""
+    """The start page's board, once GitHub has answered: a group for the viewer's pull requests and one for other
+    people's, each a row of columns, their widths in the shares the columns name, with its folded columns under the
+    row; then the pull requests opened today that no section shows, then the footer."""
     board = load()
     viewer, shown, groups = board["viewer"], set(), []
     if board["sections"]:
         for name, columns in GROUPS:
-            parts = []
-            for column in columns:
-                lists = [
-                    (key, subtitle, board["sections"].get(key) or [], key in board["full"])
-                    for key, subtitle in column.sections
-                ]
-                for _, _, rows, _ in lists:
-                    shown.update(ref_of(r) for r in rows)
-                total = sum(len(rows) for _, _, rows, _ in lists)
-                full = any(full for _, _, _, full in lists)
-                body = "".join(section_html(*section, viewer, column.quiet) for section in lists)
-                parts.append(
-                    f'<div class="column{" quiet" if column.quiet else ""}">'
-                    f"<h3>{html.escape(column.label)}{count_html(total, full)}</h3>{body}</div>"
-                )
+            row = [c for c in columns if not c.folded]
+            split = " ".join(f"{c.share}fr" for c in row)
+            parts = "".join(column_html(c, board, shown) for c in row)
+            folded = "".join(column_html(c, board, shown) for c in columns if c.folded)
             groups.append(
-                f'<section class="group"><h2>{html.escape(name)}</h2><div class="columns">{"".join(parts)}</div></section>'
+                f'<section class="group"><h2>{html.escape(name)}</h2>'
+                f'<div class="columns" style="--split: {split}">{parts}</div>{folded}</section>'
             )
     if opened := opened_rows(shown):
         groups.append(
