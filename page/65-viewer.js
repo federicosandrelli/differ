@@ -54,6 +54,6 @@
     if (e.key === 'Escape') { e.preventDefault(); box.close(); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
     e.preventDefault();
-    show(at + (e.key === 'ArrowLeft' ? -1 : 1));
+    if (images.length > 1) show(at + (e.key === 'ArrowLeft' ? -1 : 1));
   }, true);
 })();
