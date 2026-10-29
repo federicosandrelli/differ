@@ -3,16 +3,25 @@
 __BANNER__
 <div id="board">__BOARD__</div>
 <script>
-// The sections the reader opened with Show N more, by key, so they stay open when the board draws again.
+// The sections the reader opened with Show N more, and the folded columns the reader opened, by key, so they stay
+// open when the board draws again.
 const board = document.getElementById('board');
 const opened = new Set();
+const openedColumns = new Set();
 const showOpened = () => {
   for (const more of board.querySelectorAll('.sub > .more')) {
     if (!opened.has(more.parentElement.dataset.key)) continue;
     for (const card of more.parentElement.querySelectorAll(':scope > [hidden]')) card.hidden = false;
     more.remove();
   }
+  for (const folded of board.querySelectorAll('.folded')) folded.open = openedColumns.has(folded.dataset.key);
 };
+// A toggle event does not bubble, so the board hears it in the capture phase.
+board.addEventListener('toggle', (e) => {
+  const folded = e.target.closest('.folded');
+  if (!folded) return;
+  if (folded.open) openedColumns.add(folded.dataset.key); else openedColumns.delete(folded.dataset.key);
+}, true);
 board.addEventListener('click', (e) => {
   if (e.target.closest('[data-settings]')) { SHELL?.settings(); return; }
   const more = e.target.closest('.sub > .more');

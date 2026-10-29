@@ -358,6 +358,18 @@ def test_full_names_every_section_a_search_with_as_many_answers_as_it_reads_feed
     assert board.full([some, some, some, some, many]) == ["reviewed", "reviewing"]
 
 
+def test_html_splits_each_row_in_shares_and_folds_the_merged_column_under_it() -> None:
+    save(board.classify(ME, [[pr(1)], [pr(2, state="MERGED", merged="2026-10-20T00:00:00Z")], [], [], []], []))
+    page = board.sections_html()
+    assert re.findall(r'<div class="columns" style="--split: ([^"]*)">', page) == ["3fr 7fr", "1fr 1fr"]
+    mine, theirs = re.findall(r'<details class="folded" data-key="(\w+)"><summary><svg class="chev"', page)
+    assert (mine, theirs) == ("merged", "merged_others")
+    folded = page[page.index('<details class="folded" data-key="merged">') : page.index("</details>")]
+    assert "<h3>Merged today" in folded and 'href="/acme/widgets/pull/2"' in folded
+    assert folded.index("</summary>") < folded.index('<div class="column quiet">')
+    assert column_counts(page) == ["0", "1", "1", "0", "0", "0"]
+
+
 def test_html_adds_a_plus_to_the_count_of_a_full_section_and_its_column() -> None:
     save(board.classify(ME, [[pr(1), pr(2, ci="FAILURE")], [], [], [], []], []), full=("action",))
     page = board.sections_html()
@@ -374,6 +386,17 @@ def test_recently_opened_lists_what_no_section_shows_and_escapes_titles() -> Non
     assert '<h2>Recently opened<span class="count">1</span></h2>' in opened
     assert 'href="/acme/widgets/pull/9"' in opened and "a &lt;b&gt;" in opened
     assert "pull/1" not in opened
+
+
+def test_recently_opened_leaves_out_the_pull_requests_opened_before_today() -> None:
+    save(board.classify(ME, [[], [], [], [], []], []))
+    recent.note_opened(PullRef("acme", "widgets", 1), "Today", "open", "ann")
+    recent.note_opened(PullRef("acme", "widgets", 2), "Yesterday", "open", "ann")
+    pages = recent.load()
+    pages["pages"][0]["opened"] = board.today_start() - 1
+    recent.save(pages)
+    page = board.sections_html()
+    assert "pull/1" in page and "pull/2" not in page
 
 
 def answer(*found: list[dict]) -> tuple[str, list[list[dict]]]:

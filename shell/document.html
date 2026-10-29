@@ -14,11 +14,21 @@ header.start form { flex: 1 1 420px; display: flex; flex-direction: column; gap:
 header.start .row { display: flex; gap: 8px; }
 input { flex: 1; }
 main:has(#board) { max-width: 1320px; }
-.group > h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 28px 0 12px; }
+.group > h2 { display: flex; align-items: center; gap: 8px; font-size: 20px; margin: 32px 0 14px; }
 .group.opened > h2 { margin-bottom: 8px; }
-.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 20px; align-items: start; }
+/* A row's columns take the shares the board names in --split, such as 3fr 7fr; a narrow window stacks them. */
+.columns { display: grid; grid-template-columns: var(--split); gap: 20px; align-items: start; }
+@media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
 .column, .sub { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.column h3, .sub h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.column h3, .folded h3, .sub h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+/* A folded column opens under the row, from a summary that holds the column's chevron and its head. */
+.folded { margin-top: 16px; }
+.folded > summary { display: flex; align-items: center; gap: 4px; list-style: none; cursor: pointer; color: var(--text-secondary); }
+.folded > summary::-webkit-details-marker { display: none; }
+.folded > summary:hover, .folded > summary:hover h3 { color: var(--accent); }
+.folded .chev { flex: none; transition: transform .12s ease; }
+.folded[open] .chev { transform: rotate(90deg); }
+.folded > .column { margin-top: 8px; }
 .sub h4 { margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
 .sub > [hidden] { display: none; }
 .sub > .more { align-self: flex-start; }
