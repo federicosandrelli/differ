@@ -490,19 +490,20 @@ def name_of(r: Row) -> str:
 
 def repos_html(board: Board, on: list[str]) -> str:
     """The strip above the groups: a toggle per followed repository, pressed when `on` names it, with the count of
-    its cards on the whole board and a plus when a full section has some of them, then a gear that opens the
-    followed repositories in the Settings. A toggle shows the repository's name, or `owner/repo` when another
-    followed repository has the same name. Without followed repositories, a hint and a button to follow one."""
+    its cards outside the folded columns, and a plus when a full section outside them has some of these cards, then a gear that opens the followed repositories in the Settings. A toggle shows the
+    repository's name, or `owner/repo` when another followed repository has the same name. Without followed
+    repositories, a hint and a button to follow one."""
     if not board["repos"]:
         return (
-            '<nav class="repos" aria-label="Repositories"><span class="hint">Other people\'s pull requests come from '
-            "the repositories you follow.</span>"
-            '<button class="ghost" data-settings="repositories">Follow a repository</button></nav>'
+            '<div class="repos" role="group" aria-label="Repositories"><span class="hint">Other people\'s pull '
+            "requests come from the repositories you follow.</span>"
+            '<button class="ghost" data-settings="repositories">Follow a repository</button></div>'
         )
+    counted = [key for _, columns in GROUPS for c in columns if not c.folded for key, _ in c.sections]
     short = [name.split("/", 1)[1] for name in board["repos"]]
     toggles = []
     for name, repo in zip(board["repos"], short, strict=True):
-        cards = [(key, r) for key, rows in board["sections"].items() for r in rows if name_of(r) == name]
+        cards = [(key, r) for key in counted for r in board["sections"].get(key) or [] if name_of(r) == name]
         label, title = (name, "") if short.count(repo) > 1 else (repo, f' title="{html.escape(name)}"')
         pressed = ' class="on" aria-pressed="true"' if name in on else ' aria-pressed="false"'
         toggles.append(
@@ -510,39 +511,47 @@ def repos_html(board: Board, on: list[str]) -> str:
             f"{count_html(len(cards), any(key in board['full'] for key, _ in cards))}</button>"
         )
     return (
-        f'<nav class="repos" aria-label="Repositories"><span class="hint">Repositories</span>{"".join(toggles)}'
-        '<button class="ghost" data-settings="repositories" title="Followed repositories" '
-        f'aria-label="Followed repositories">{GEAR_SVG}</button></nav>'
+        '<div class="repos" role="group" aria-label="Repositories"><span class="hint">Repositories</span>'
+        f'{"".join(toggles)}<button class="ghost" data-settings="repositories" title="Followed repositories" '
+        f'aria-label="Followed repositories">{GEAR_SVG}</button></div>'
     )
 
 
 def sections_html(on: list[str] | None = None) -> str:
     """The start page's board, once GitHub has answered: the strip of followed repositories, a group for the viewer's
     pull requests and one for other people's, each a row of columns, their widths in the shares the columns name, with
-    its folded columns under the row; then the pull requests opened today that no section holds, then the footer.
-    The board shows the rows of the followed repositories that `on` names, or every row when it names none."""
+    its folded columns under the row; then the pull requests opened today and missing from every section, then the
+    footer. The board shows the rows of the followed repositories that `on` names, or every row when `on` names no
+    followed repository. A full section keeps its plus while the board shows only some repositories when it still
+    has rows."""
     board = load()
-    on = [name for name in board["repos"] if name in (on or [])]
+    chosen = [name for name in board["repos"] if name in (on or [])]
+
+    def kept(rows: list[Row]) -> list[Row]:
+        return [r for r in rows if not chosen or name_of(r) in chosen]
+
+    sections = {key: kept(rows) for key, rows in board["sections"].items()}
     shown = {ref_of(r) for rows in board["sections"].values() for r in rows}
-    kept: Board = {
+    filtered: Board = {
         **board,
-        "sections": {key: [r for r in rows if not on or name_of(r) in on] for key, rows in board["sections"].items()},
+        "sections": sections,
+        "full": [key for key in board["full"] if not chosen or sections.get(key)],
     }
-    groups = []
+    strip, groups = "", []
     if board["sections"]:
-        groups.append(repos_html(board, on))
+        strip = repos_html(board, chosen)
         for name, columns in GROUPS:
             row = [c for c in columns if not c.folded]
             split = " ".join(f"{c.share}fr" for c in row)
-            parts = "".join(column_html(c, kept) for c in row)
-            folded = "".join(column_html(c, kept) for c in columns if c.folded)
+            parts = "".join(column_html(c, filtered) for c in row)
+            folded = "".join(column_html(c, filtered) for c in columns if c.folded)
             groups.append(
                 f'<section class="group"><h2>{html.escape(name)}</h2>'
                 f'<div class="columns" style="--split: {split}">{parts}</div>{folded}</section>'
             )
-    if opened := [r for r in opened_rows(shown) if not on or name_of(r) in on]:
+    if opened := kept(opened_rows(shown)):
         groups.append(
             f'<section class="group opened"><h2>Recently opened<span class="count">{len(opened)}</span></h2>'
             f'<div class="list card">{"".join(row_html(r, board["viewer"]) for r in opened)}</div></section>'
         )
-    return ("".join(groups) or '<div class="empty">No pull requests yet.</div>') + footer_html(board)
+    return strip + ("".join(groups) or '<div class="empty">No pull requests yet.</div>') + footer_html(board)

@@ -148,7 +148,7 @@
       const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
       if (followed.newest === before) followed.saved = saved;
       followed.draw(followed.newest === before ? saved : followed.repos);
-      if (typeof section === 'string') settings.querySelector(`[data-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: 'start' });
+      if (section) settings.querySelector(`[data-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: 'start' });
     }).catch(() => {
       if (loading) { loading.textContent = 'Could not load the settings.'; loading.classList.add('err'); }
     });

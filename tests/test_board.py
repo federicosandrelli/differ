@@ -381,10 +381,11 @@ FOLLOWED = ("acme/api", "acme/web")
 
 
 def save_two_repos(full: tuple[str, ...] = ()) -> None:
-    """A board with draft 1 to 7 in acme/web, draft 8 and review 9 in acme/api, and someone else's 10 in
+    """A board with draft 1 to 7 in acme/web, draft 8, review 9 and merged 11 in acme/api, and someone else's 10 in
     acme/tools, which the viewer does not follow."""
     drafts = [pr(n, draft=True, repo="acme/web") for n in range(1, 8)] + [pr(8, draft=True, repo="acme/api")]
-    found = [[*drafts, pr(9, repo="acme/api")], [], [pr(10, author="ann", repo="acme/tools")], [], []]
+    merged = pr(11, repo="acme/api", state="MERGED", merged="2026-10-22T00:00:00Z")
+    found = [[*drafts, pr(9, repo="acme/api")], [merged], [pr(10, author="ann", repo="acme/tools")], [], []]
     save(board.classify(ME, found, list(FOLLOWED)), full=full, repos=FOLLOWED)
 
 
@@ -399,7 +400,7 @@ def toggles(page: str) -> dict[str, tuple[bool, str]]:
 def test_html_shows_the_rows_of_the_repositories_turned_on_and_counts_them() -> None:
     save_two_repos()
     page = board.sections_html(["acme/api"])
-    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["8", "9"]
+    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["8", "9", "11"]
     assert column_counts(page)[:2] == ["1", "1"] and sub_count(page, "review") == "1"
     assert "more</button>" not in sub(page, "draft") and board.NONE_HTML in sub(page, "reviewing")
     page = board.sections_html(["acme/web", "acme/api"])
@@ -416,9 +417,11 @@ def test_html_shows_every_row_when_no_followed_repository_is_on_and_drops_an_unf
     assert toggles(board.sections_html(["acme/gone", "acme/api"]))["acme/api"] == (True, "2")
 
 
-def test_a_toggle_counts_its_cards_on_the_whole_board_with_a_plus_for_a_full_section() -> None:
-    save_two_repos(full=("review",))
-    assert toggles(board.sections_html(["acme/web"])) == {"acme/api": (False, "2+"), "acme/web": (True, "7")}
+def test_a_toggle_counts_its_cards_outside_the_merged_columns_with_a_plus_for_a_full_section() -> None:
+    save_two_repos(full=("review", "merged"))
+    page = board.sections_html(["acme/web"])
+    assert toggles(page) == {"acme/api": (False, "2+"), "acme/web": (True, "7")}
+    assert sub_count(page, "review") == "0" and column_counts(page)[1:3] == ["0", "0"]
     assert toggles(board.sections_html(["acme/api", "acme/web"])) == {
         "acme/api": (True, "2+"),
         "acme/web": (True, "7"),

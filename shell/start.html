@@ -25,7 +25,7 @@ board.addEventListener('toggle', (e) => {
 // The repositories the reader turned on in the strip above the groups. The server draws the board with their rows
 // only, and presses their toggles; a repository the reader no longer follows has no toggle, so it drops out.
 const REPOS_KEY = 'dr:boardRepos';
-let on = (() => { try { return JSON.parse(localStorage.getItem(REPOS_KEY)) || []; } catch { return []; } })();
+let on = (() => { try { const saved = JSON.parse(localStorage.getItem(REPOS_KEY)); return Array.isArray(saved) ? saved : []; } catch { return []; } })();
 const saveOn = () => { try { localStorage.setItem(REPOS_KEY, JSON.stringify(on)); } catch {} };
 board.addEventListener('click', (e) => {
   const settings = e.target.closest('[data-settings]');
@@ -43,25 +43,29 @@ board.addEventListener('click', (e) => {
   opened.add(more.parentElement.dataset.key);
   showOpened();
 });
-// A cached load draws the board from GitHub's last answer at once; the others ask GitHub again first.
-let loading = null;
+// A cached load draws the board from GitHub's last answer at once; the others ask GitHub again first. The board is
+// stale until a load that asks GitHub draws it, so a cached load that ends while the board is stale asks GitHub
+// next: a toggle click may have cancelled the load that asked. The redraw keeps the focus on the toggle it had.
+let loading = null, stale = true;
 const loadBoard = (cached) => {
   if (loading) loading.abort();
-  loading = new AbortController();
+  const { signal } = loading = new AbortController();
   const query = new URLSearchParams(on.map(repo => ['repo', repo]));
   if (cached) query.set('cached', '1');
-  return fetch(`/board?${query}`, { signal: loading.signal }).then(r => r.ok ? r.text() : Promise.reject()).then((h) => {
+  fetch(`/board?${query}`, { signal }).then(r => r.ok ? r.text() : Promise.reject()).then((h) => {
+    const focused = document.activeElement?.dataset?.repo;
     board.innerHTML = h;
     showOpened();
-    if (board.querySelector('nav.repos')) {
+    if (focused) board.querySelector(`[data-repo="${CSS.escape(focused)}"]`)?.focus();
+    if (board.querySelector('.repos')) {
       on = [...board.querySelectorAll('[data-repo].on')].map(b => b.dataset.repo);
       saveOn();
     }
-    return true;
-  }).catch(() => false);
+    if (!cached) stale = false;
+  }).catch(() => {}).finally(() => { if (cached && stale && !signal.aborted) loadBoard(); });
 };
-// The server drew the board without the saved repositories, so the page draws them from the last answer first.
-(on.length ? loadBoard(true) : Promise.resolve(true)).then(drawn => { if (drawn) loadBoard(); });
+// The server drew the board with every row, so saved toggles first need a cached load.
+loadBoard(on.length > 0);
 document.addEventListener('tab-shown', () => loadBoard());
 // Focus selects the whole field, so a pasted link replaces the old one. A click that focuses the field would put the
 // caret where it lands on mouseup, so that one mouseup keeps the selection.

@@ -385,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def repos_in(query: dict[str, list[str]]) -> list[str]:
-    """The repositories the repo parameters of a query name, in lower case, as `followed.json` names them."""
+    """The repositories named by a query's `repo` parameters, in lower case, as `followed.json` names them."""
     return [name.strip().lower() for name in query.get("repo", [])]
 
 
