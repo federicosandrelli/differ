@@ -102,7 +102,10 @@ def palette(
 # Light takes its greys, git colours and font stack from the Claude desktop app's design tokens (its "cds" scale,
 # text-git-added / text-git-removed, and the 20% mix it uses for diff backgrounds). Dark takes the colours of
 # Flexoki dark (stephango.com/flexoki), and Gruvbox those of the Gruvbox dark palette (github.com/morhetz/gruvbox).
-# In dark and Gruvbox, accent_bg and tree_active_bg mix the palette's blue over its canvas, at 16% and 34%.
+# Claude takes the desktop app's dark greys, moved up one step so that the canvas sits darker than the panels and the
+# cards stand out; its border is one step lighter than the app's.
+# In dark and Gruvbox, accent_bg and tree_active_bg mix the palette's blue over its canvas, at 16% and 34%. Claude keeps
+# the app's own.
 PALETTES = {
     "light": palette(
         canvas="#ffffff",
@@ -148,6 +151,28 @@ PALETTES = {
             kw="#fb4934", str_="#b8bb26", cmt="#928374", num="#d3869b", fn="#ebdbb2", cls="#fabd2f", builtin="#fe8019"
         ),
     ),
+    "claude": palette(
+        canvas="#151515",
+        panel="#20201f",
+        inset="#2c2c2a",
+        text="#d2d1c7",
+        text_secondary="#a5a49a",
+        text_muted="#898781",
+        border="#363634",
+        accent="#6ea0ff",
+        accent_bg="#1a2742",
+        tree_active_bg="#2a4474",
+        tree_active_fg="#6ea0ff",
+        add="#32d74b",
+        dele="#ff2c56",
+        mod="#f0b45a",
+        ren="#c4a6ff",
+        search_hit_bg="#ffe066",
+        search_hit_fg="#1c1f26",
+        syntax=dict(
+            kw="#f29b7a", str_="#9fcf8a", cmt="#898781", num="#e5c07b", fn="#d2d1c7", cls="#e5c07b", builtin="#f29b7a"
+        ),
+    ),
     "dark": palette(
         canvas="#100f0f",
         panel="#1c1b1a",
@@ -178,11 +203,12 @@ def vars_block(p: dict) -> str:
 
 
 def theme_css() -> str:
-    light, gruvbox, dark = (vars_block(PALETTES[k]) for k in ("light", "gruvbox", "dark"))
+    light, gruvbox, claude, dark = (vars_block(PALETTES[k]) for k in ("light", "gruvbox", "claude", "dark"))
     return f"""
 :root {{ {dark} }}
 :root[data-theme="light"] {{ {light} }}
 :root[data-theme="gruvbox"] {{ {gruvbox} }}
+:root[data-theme="claude"] {{ {claude} }}
 """
 
 
