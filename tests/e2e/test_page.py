@@ -71,6 +71,25 @@ def test_tree_hides_noise_only_and_generated_files_until_asked(page: Page, serve
     expect(page.locator("#side .leaf")).to_have_count(5)
 
 
+def test_the_file_type_buttons_keep_their_counts_when_webkit_rounds_their_scroll_width_up(
+    page: Page, server_url: str
+) -> None:
+    # WebKit under page zoom reports a scrollWidth 1 px above the clientWidth of a box that fits its content.
+    page.add_init_script("""
+        const real = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollWidth').get;
+        Object.defineProperty(Element.prototype, 'scrollWidth', {
+          get() { const w = real.call(this); return this.matches('#side .seg') ? Math.max(w, this.clientWidth + 1) : w; },
+        });
+    """)
+    open_pr(page, server_url)
+    implementation = page.locator("#side .seg button[data-filter='implementation']")
+    expect(implementation.locator(".count")).to_be_visible()
+    expect(implementation.locator(".split")).to_be_visible()
+    page.evaluate("document.documentElement.style.setProperty('--side', '260px')")
+    expect(implementation.locator(".count")).to_be_hidden()
+    expect(implementation.locator(".split")).to_be_hidden()
+
+
 def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_url: str, add_pr: AddPr) -> None:
     open_pr(page, server_url, add_pr({}, {"src/logo.png": b"\x89PNG\0" * 1000}))
     section = page.locator("section[data-file='src/logo.png']")

@@ -117,11 +117,12 @@ function renderSide() {
   fitFilterCounts();
 }
 // The file type buttons drop their file counts when the buttons don't fit on one line, then their line counts.
+// WebKit rounds scrollWidth up under page zoom, so the buttons only count as cut off when they are 2 px too wide.
 function fitFilterCounts() {
   const seg = document.querySelector('#side .seg');
   if (!seg) return;
   seg.classList.remove('no-files', 'no-lines');
-  for (const cls of ['no-files', 'no-lines']) if (seg.scrollWidth > seg.clientWidth) seg.classList.add(cls);
+  for (const cls of ['no-files', 'no-lines']) if (seg.scrollWidth > seg.clientWidth + 1) seg.classList.add(cls);
 }
 function revealActive() {
   const active = document.querySelector('#side .row.active');
