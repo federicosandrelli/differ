@@ -205,10 +205,10 @@ def vars_block(p: dict) -> str:
 def theme_css() -> str:
     light, gruvbox, claude, dark = (vars_block(PALETTES[k]) for k in ("light", "gruvbox", "claude", "dark"))
     return f"""
-:root {{ {dark} }}
+:root {{ {claude} }}
 :root[data-theme="light"] {{ {light} }}
 :root[data-theme="gruvbox"] {{ {gruvbox} }}
-:root[data-theme="claude"] {{ {claude} }}
+:root[data-theme="dark"] {{ {dark} }}
 """
 
 
@@ -229,9 +229,9 @@ SPLASH = """<!doctype html>
 
 def splash_html() -> str:
     """The desktop app's first page, shown until the server answers. It loads before any server document, so
-    its two colours come from the dark palette at write time: `render.py --splash` writes it to web/index.html."""
-    dark = PALETTES["dark"]
-    return fill(SPLASH, TEXT=dark["text_secondary"], BG=dark["bg_canvas"])
+    its two colours come from the Claude palette at write time: `render.py --splash` writes it to web/index.html."""
+    claude = PALETTES["claude"]
+    return fill(SPLASH, TEXT=claude["text_secondary"], BG=claude["bg_canvas"])
 
 
 # The icon of each pull request status, as the inner paths of a 24×24 stroked SVG, and the palette colour it takes.

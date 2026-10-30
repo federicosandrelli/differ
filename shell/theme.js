@@ -2,7 +2,7 @@
 // (this script sits in the head), the native window following it in the desktop app, every open document
 // following a change made in another, and the picker on the document that has one (buttons with data-theme).
 const Theme = (() => {
-  const THEMES = ['light', 'gruvbox', 'claude', 'dark'], DARK = ['gruvbox', 'claude', 'dark'], DEFAULT = 'dark', KEY = 'dr:theme';
+  const THEMES = ['light', 'gruvbox', 'claude', 'dark'], DARK = ['gruvbox', 'claude', 'dark'], DEFAULT = 'claude', KEY = 'dr:theme';
   const valid = (t) => THEMES.includes(t) ? t : DEFAULT;
   const get = () => { try { return valid(localStorage.getItem(KEY)); } catch { return DEFAULT; } };
   function apply(t) {
