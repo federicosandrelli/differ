@@ -33,7 +33,7 @@ def test_start_page_builds_and_opens_a_pull_request(page: Page, server_url: str)
     expect(page.locator("#log")).to_be_visible()
     page.wait_for_selector("#side .tree", timeout=30000)
     expect(page.locator("#side h1")).to_have_text(f"#2 {TITLE}")
-    expect(page.locator("#side .leaf")).to_have_count(2)
+    expect(page.locator("#side .leaf")).to_have_count(1)
     expect(page.locator("#overview h1")).to_have_text(TITLE)
 
 
@@ -68,7 +68,25 @@ def test_tree_hides_noise_only_and_generated_files_until_asked(page: Page, serve
     expect(page.locator("#side .list .notice").nth(0)).to_have_text("Showing 2 files with only noise · hide")
     page.click("#side .list .notice a[data-generated]")
     expect(page.locator("#side .leaf[data-path='package-lock.json']")).to_be_visible()
-    expect(page.locator("#side .leaf")).to_have_count(5)
+    expect(page.locator("#side .leaf")).to_have_count(4)
+
+
+def test_each_kind_button_lists_the_files_of_its_kind_only(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.click("#side .list .notice a[data-noiseonly]")
+    paths = page.locator("#side .leaf")
+    expect(paths.first).to_be_visible()
+    assert sorted(paths.evaluate_all("ls => ls.map(l => l.dataset.path)")) == [
+        "notes/notes.txt",
+        "src/app.py",
+        "src/cli.py",
+    ]
+    page.click("#side [data-filter=docs]")
+    expect(paths).to_have_count(1)
+    expect(paths).to_have_attribute("data-path", "README.md")
+    expect(page.locator("section[data-file]")).to_have_count(1)
+    page.click("#side [data-filter=test]")
+    expect(page.locator("#side .list .notice")).to_have_text("No test files · show all")
 
 
 def test_a_binary_file_shows_its_size_instead_of_line_counts(page: Page, server_url: str, add_pr: AddPr) -> None:
@@ -747,6 +765,7 @@ def test_typing_a_space_in_the_search_keeps_it(page: Page, server_url: str) -> N
 
 def test_search_skips_closed_folds_and_counts_closed_sections(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
+    page.click("#side [data-filter=all]")
     section = page.locator(APP)
     page.fill("#side .search", "i")
     expect(page.locator("#searchmeta")).to_have_text("2 files · 6 lines")
@@ -1209,6 +1228,7 @@ def test_request_changes_waits_for_a_review_summary(page: Page, server_url: str,
 
 def test_a_comment_draft_survives_opening_another_box_and_escape(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
+    page.click("#side [data-filter=all]")
     hello = page.locator(APP).locator("tr.add", has_text='print("hello")').locator("td.n.key")
     hello.click()
     box = page.locator("textarea[data-compose-text]")
@@ -1232,6 +1252,7 @@ def test_a_comment_draft_survives_opening_another_box_and_escape(page: Page, ser
 
 def test_a_comment_draft_stays_on_its_line_and_joins_a_box_extended_onto_it(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
+    page.click("#side [data-filter=all]")
     section = page.locator(APP)
     hello = section.locator("tr.add", has_text='print("hello")').locator("td.n.key")
     main = section.locator("tr.add", has_text="print(new_name(2))").locator("td.n.key")
@@ -1787,6 +1808,7 @@ def test_choosing_an_editor_in_a_file_s_menu_opens_the_file_in_it_and_keeps_the_
     page.wait_for_function("!EDITOR.opening.size")
     assert opened == [{"editor": "pycharm", "path": "src/app.py", "line": 2}]
     assert page.evaluate("localStorage.getItem('dr:editor')") == "pycharm"
+    page.click("#side [data-filter=docs]")
     page.click("section[data-file='README.md'] [data-open-editor]")
     page.wait_for_function("!EDITOR.opening.size")
     assert opened[-1] == {"editor": "pycharm", "path": "README.md", "line": 2}

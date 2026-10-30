@@ -1,6 +1,5 @@
 html, body { height: 100%; }
 body { display: flex; }
-.seg.no-files .count, .seg.no-lines .split { display: none; }
 /* A mark wraps a whole match, highlighter tokens and all, so the tokens take its colour. */
 mark { background: var(--search-hit-bg); color: var(--search-hit-fg); border-radius: 2px; padding: 0 1px; }
 mark * { color: inherit !important; }

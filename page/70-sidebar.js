@@ -93,8 +93,7 @@ function renderSide() {
   const h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
     ${commentNotices()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}
-    <div class="controls"><span class="seg">
-      ${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}</span></div>
+    <div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>
     <div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
@@ -114,14 +113,6 @@ function renderSide() {
   else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus(); el.setSelectionRange(...selection); } }
   revealActive();
   updateSearchMeta();
-  fitFilterCounts();
-}
-// The file type buttons drop their file counts when the buttons don't fit on one line, then their line counts.
-function fitFilterCounts() {
-  const seg = document.querySelector('#side .seg');
-  if (!seg) return;
-  seg.classList.remove('no-files', 'no-lines');
-  for (const cls of ['no-files', 'no-lines']) if (seg.scrollWidth > seg.clientWidth) seg.classList.add(cls);
 }
 function revealActive() {
   const active = document.querySelector('#side .row.active');
