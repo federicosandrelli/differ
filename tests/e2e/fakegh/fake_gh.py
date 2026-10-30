@@ -13,10 +13,13 @@ gh 2.86.0 runs, and fails with git's error when one fails.
 does nothing.
 `gh api -H <accept> repos/o/r/contents/<path>?ref=<ref>` prints the file at that ref of the repo named in repo.txt,
 or fails when it has none.
-`gh api graphql --input -` answers a search with the nodes search.json lists for its query, or none; any other
-read query from comments.json. A mutation waits while hold.txt exists, then fails when fail.txt lists it by then,
-else is appended to mutations.log. A review posted with threads and a reply add their comments to comments.json, so
-the page sees what it sent, and the answer holds the new comment's id.
+`gh api graphql --input -` answers a search with the nodes search.json lists for its query, or none; a merge state
+query from merge<n>.json, over a merge state without checks; any other read query from comments.json, with the
+status of pr<n>.json. A mutation waits while hold.txt exists, then fails when fail.txt lists it by then, else is
+appended to mutations.log. A review posted with threads and a reply add their comments to comments.json, so the page
+sees what it sent, and the answer holds the new comment's id. A merge, a close, a reopen or a mark ready moves the
+status in pr<n>.json, and turning auto-merge on or off changes merge<n>.json.
+`gh api -X POST <endpoint>` does nothing.
 """
 
 import json
@@ -43,6 +46,72 @@ def pr_view(args: list[str]) -> None:
         print(meta[args[args.index("--jq") + 1].lstrip(".")])
     else:
         print(json.dumps(meta))
+
+
+def pr_file(number: object) -> Path:
+    return state_dir() / f"pr{number}.json"
+
+
+def merge_state(number: object) -> dict:
+    """The repository and pull request fields of a merge state query: a clean pull request without checks, with the
+    fields merge<n>.json gives over them. GitHub answers UNKNOWN mergeability for a merged pull request."""
+    path = state_dir() / f"merge{number}.json"
+    given = json.loads(path.read_text()) if path.exists() else {}
+    meta = json.loads(pr_file(number).read_text())
+    pr = {
+        "headRefOid": meta["headRefOid"],
+        "title": meta["title"],
+        "body": meta["body"],
+        "state": meta["state"],
+        "isDraft": meta["isDraft"],
+        "baseRefName": meta["baseRefName"],
+        "headRefName": meta["headRefName"],
+        "headRepositoryOwner": {"login": "acme"},
+        "mergeable": "UNKNOWN" if meta["state"] == "MERGED" else "MERGEABLE",
+        "mergeStateStatus": "UNKNOWN" if meta["state"] == "MERGED" else "CLEAN",
+        "reviewDecision": None,
+        "autoMergeRequest": None,
+        "latestReviews": {"nodes": []},
+        "commits": {"totalCount": 1, "nodes": [{"commit": {"statusCheckRollup": None}}]},
+    } | given.get("pullRequest", {})
+    repo = {
+        "squashMergeAllowed": True,
+        "mergeCommitAllowed": True,
+        "rebaseMergeAllowed": True,
+        "autoMergeAllowed": True,
+        "deleteBranchOnMerge": True,
+    } | given.get("repository", {})
+    return repo | {"pullRequest": pr}
+
+
+# The status fields each mutation that moves a pull request sets in its pr<n>.json.
+MOVES = {
+    "mergePullRequest(": {"state": "MERGED"},
+    "closePullRequest(": {"state": "CLOSED"},
+    "reopenPullRequest(": {"state": "OPEN"},
+    "markPullRequestReadyForReview(": {"isDraft": False},
+}
+
+
+def move(query: str, variables: dict) -> None:
+    """Move the pull request the mutation names to the status it asks for, and turn its auto-merge on or off."""
+    number = str(variables.get("pr", "")).removeprefix("PR_")
+    for name, fields in MOVES.items():
+        if name in query:
+            path = pr_file(number)
+            path.write_text(json.dumps(json.loads(path.read_text()) | fields))
+    if "PullRequestAutoMerge(" in query:
+        path = state_dir() / f"merge{number}.json"
+        given = json.loads(path.read_text()) if path.exists() else {}
+        auto = None
+        if "enablePullRequestAutoMerge(" in query:
+            auto = {
+                "mergeMethod": variables["method"],
+                "enabledAt": datetime.now(UTC).isoformat(),
+                "enabledBy": {"login": "tester"},
+            }
+        given.setdefault("pullRequest", {})["autoMergeRequest"] = auto
+        path.write_text(json.dumps(given))
 
 
 def git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -148,6 +217,7 @@ def mutate(args: list[str], request: dict) -> None:
         with (state_dir() / "mutations.log").open("a") as log:
             log.write(json.dumps(request) + "\n")
         data: dict = {}
+        move(query, variables)
         if "addPullRequestReview(" in query:
             added = [
                 thread_node(f"T{len(state['threads']) + 1 + i}", d)
@@ -179,13 +249,18 @@ def graphql(args: list[str]) -> None:
     if query.lstrip().startswith("mutation"):
         mutate(args, request)
         return
+    number = variables.get("number", 1)
+    if "mergeStateStatus" in query:
+        print(json.dumps({"data": {"repository": merge_state(number)}}))
+        return
     state = json.loads((state_dir() / "comments.json").read_text())
+    meta = json.loads(pr_file(number).read_text()) if pr_file(number).exists() else {"state": "OPEN", "isDraft": False}
     pr = {
-        "id": "PR_1",
+        "id": f"PR_{number}",
         "headRefOid": state["head"],
         "bodyHTML": "",
-        "state": "OPEN",
-        "isDraft": False,
+        "state": meta["state"],
+        "isDraft": meta["isDraft"],
         "reviews": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": state["reviews"]},
         "pending": {"nodes": [r for r in state["reviews"] if r["state"] == "PENDING"]},
         "verdicts": {
@@ -225,6 +300,8 @@ def main() -> None:
     elif args[:2] == ["repo", "clone"]:
         repo_clone(args[2:])
     elif args[:2] == ["repo", "set-default"]:
+        pass
+    elif args[:3] == ["api", "-X", "POST"]:
         pass
     elif args[:2] == ["api", "graphql"]:
         graphql(args)

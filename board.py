@@ -450,7 +450,7 @@ def reasons_html(reasons: list[Reason]) -> str:
     """The reasons as reason pills in their tones, each with its icon and its words, and its words as its title for
     when they are cut off. Empty without reasons."""
     pills = "".join(
-        f'<span class="reason{" " + r["tone"] if r["tone"] else ""}" title="{html.escape(r["text"])}">'
+        f'<span class="reason{" tone-" + r["tone"] if r["tone"] else ""}" title="{html.escape(r["text"])}">'
         f"{render.reason_icon(r['kind'])}<span>{html.escape(r['text'])}</span></span>"
         for r in reasons
     )

@@ -23,6 +23,9 @@ const state = {
   expanded: new Set(), unfolded: new Set(),
   compose: null, drafts: new Map(), replyOpen: new Map(), openThreads: new Set(), showOutdated: new Set(),
   reviewPanel: false, reviewText: '', convText: '', busy: false, focus: null,
+  // The merge panel, its method menu, the reader's choice to show or hide its checks (null: the default), and the
+  // commit message the reader typed for each merge method.
+  mergePanel: false, mergeMenu: false, checksOpen: null, mergeText: {},
   bug: { open: false, text: '', prompt: '', copied: null },
 };
 

@@ -38,6 +38,9 @@ document.addEventListener('click', (e) => {
   if (bug) { e.preventDefault(); bugClick(bug); return; }
   // A click anywhere but on the open editor menu or its button closes the menu, and does what it would do anyway.
   if (EDITOR.menu !== null && !e.target.closest('.editor-pick')) { EDITOR.menu = null; render(); }
+  if (state.mergeMenu && !e.target.closest('.merge-pick')) { state.mergeMenu = false; renderSide(); }
+  const merge = e.target.closest(MERGE_ATTRS);
+  if (merge) { e.preventDefault(); mergeClick(merge); return; }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
   // The number cell that shows a code row's line is its comment button.
   const cell = API && e.target.closest('table.diff td.n.key');
@@ -77,6 +80,7 @@ document.addEventListener('input', (e) => {
   if (d.replyText !== undefined) { state.replyOpen.set(d.replyText, box.value); return; }
   if (d.reviewText !== undefined) { state.reviewText = box.value; const b = document.querySelector('[data-submit="REQUEST_CHANGES"]'); if (b) updateRequestChanges(b); return; }
   if (d.convText !== undefined) { state.convText = box.value; return; }
+  if (d.mergeText !== undefined) { state.mergeText[d.mergeText] = box.value; return; }
   if (d.bugText !== undefined) { state.bug.text = box.value; return; }
   if (!box.classList.contains('search')) return;
   state.q = box.value.trim(); state.hit = null;
@@ -145,6 +149,7 @@ document.addEventListener('keydown', (e) => {
   if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? openFileSearch() : openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.key === 'Escape' && EDITOR.menu !== null) { EDITOR.menu = null; render(); return; }
+  if (e.key === 'Escape' && state.mergeMenu) { state.mergeMenu = false; renderSide(); return; }
   if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
@@ -230,12 +235,12 @@ window.addEventListener('hashchange', () => {
   const t = hashTarget();
   if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
   else if (t) go(t.path, t.key);
-  loadComments();
+  loadComments().then(loadMerge);
   loadEditors();
   // A reload rebuilds the forms, so it waits while a comment box has focus.
   const refresh = () => {
     const typing = document.activeElement && document.activeElement.tagName === 'TEXTAREA';
-    if (C.loaded && !state.busy && !typing && Date.now() - C.loadedAt > 30000) loadComments();
+    if (C.loaded && !state.busy && !typing && Date.now() - C.loadedAt > 30000) loadComments().then(loadMerge);
   };
   window.addEventListener('focus', refresh);
   document.addEventListener('tab-shown', refresh);

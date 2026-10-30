@@ -351,12 +351,23 @@ def test_a_reference_that_names_no_pull_request_answers_400() -> None:
         ("conversation", ["b"], "the request is not a JSON object"),
         ("open", {"editor": "vscode", "path": "a.py", "line": 0}, "0 is not a line number"),
         ("open", {"editor": "vscode", "line": 1}, "'path'"),
+        (
+            "merge",
+            {"method": "FAST_FORWARD", "head": "abc"},
+            "'FAST_FORWARD' is not one of 'SQUASH', 'MERGE', 'REBASE'",
+        ),
+        ("automerge", {"method": "SQUASH"}, "'on'"),
+        ("automerge", {"on": "false"}, "'false' is not true or false"),
+        ("rerun", {"run": "41"}, "'41' is not a workflow run id"),
+        ("rerun", {"run": 0}, "0 is not a workflow run id"),
     ],
 )
 def test_a_request_field_outside_its_type_answers_400(
     action: str, fields: object, why: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(server.comments, "graphql", lambda *args, **kwargs: pytest.fail("GitHub was called"))
+    monkeypatch.setattr(server.merge, "graphql", lambda *args, **kwargs: pytest.fail("GitHub was called"))
+    monkeypatch.setattr(server.merge.github, "gh", lambda *args, **kwargs: pytest.fail("GitHub was called"))
     h = request("POST", f"/api/o/r/1/{action}", json.dumps(fields).encode())
     h.do_POST()
     code, body = response(h)
