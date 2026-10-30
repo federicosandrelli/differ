@@ -35,6 +35,9 @@ button.primary:enabled:hover { background: var(--accent-hover); }
 button.ghost { border-color: transparent; color: var(--text-secondary); padding: 1px 8px; }
 button.ghost:enabled:hover { color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
+/* An icon in a button is at least as tall as a line of text, so a button that holds only an icon is as tall as one
+   with text. */
+button > svg { min-height: var(--control-line); }
 /* A chevron is a ghost button that closes or opens what it heads, pointing down while open, or the icon in the summary
    of a details, pointing down while the details is open. A document sets its size. */
 .chev { flex: none; transition: transform .12s ease; }
