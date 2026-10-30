@@ -39,6 +39,13 @@ class FileType(Enum):
     XML = auto()
     SVG = auto()
     MARKDOWN = auto()
+    RESTRUCTUREDTEXT = auto()
+    ASCIIDOC = auto()
+    RDOC = auto()
+    POD = auto()
+    RD = auto()
+    DOXYGEN = auto()
+    TEXT = auto()
     DIFF = auto()
     GRAPHQL = auto()
     MAKEFILE = auto()
@@ -53,17 +60,27 @@ class FileType(Enum):
     OTHER = auto()
 
 
+class Docs(Enum):
+    """Where a file of a type is documentation: anywhere, only inside a documentation folder, or nowhere. A type
+    that can hold code is never documentation."""
+
+    ALWAYS = auto()
+    IN_DOCS_FOLDER = auto()
+    NEVER = auto()
+
+
 @dataclass(frozen=True)
 class FileTypeSupport:
     """How the app knows a file type, and what it does with one: `suffixes` (lower case) and `names` find the type,
-    `highlight` is the highlight.js language name, `language` is its programming language or None, `docs` marks documentation, a name ending in one of
-    `generated_suffixes` is generated, and `image_type` is the media type of an image."""
+    `highlight` is the highlight.js language name, `language` is its programming language or None, `docs` says where
+    a file of the type is documentation, a name ending in one of `generated_suffixes` is generated, and `image_type` is
+    the media type of an image."""
 
     suffixes: tuple[str, ...]
     names: tuple[str, ...]
     highlight: str
     language: languages.Language | None
-    docs: bool
+    docs: Docs
     generated_suffixes: tuple[str, ...]
     image_type: str | None
 
@@ -76,7 +93,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="python",
                 language=languages.Language.PYTHON,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"),
                 image_type=None,
             )
@@ -86,7 +103,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="javascript",
                 language=languages.Language.JAVASCRIPT,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(".min.js",),
                 image_type=None,
             )
@@ -96,7 +113,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="typescript",
                 language=languages.Language.TYPESCRIPT,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -106,7 +123,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="java",
                 language=languages.Language.JAVA,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -116,7 +133,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="kotlin",
                 language=languages.Language.KOTLIN,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -126,7 +143,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="swift",
                 language=languages.Language.SWIFT,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -136,7 +153,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="csharp",
                 language=languages.Language.CSHARP,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -146,7 +163,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="php",
                 language=languages.Language.PHP,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -156,7 +173,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="go",
                 language=languages.Language.GO,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(".pb.go",),
                 image_type=None,
             )
@@ -166,7 +183,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="ruby",
                 language=languages.Language.RUBY,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -176,7 +193,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=languages.Language.DART,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -186,7 +203,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=languages.Language.ELIXIR,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -196,7 +213,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="rust",
                 language=languages.Language.RUST,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -206,7 +223,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="c",
                 language=languages.Language.C,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -216,7 +233,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="cpp",
                 language=languages.Language.CPP,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -226,7 +243,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="lua",
                 language=languages.Language.LUA,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -236,7 +253,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="bash",
                 language=languages.Language.SHELL,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -246,7 +263,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="sql",
                 language=languages.Language.SQL,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -256,7 +273,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="r",
                 language=languages.Language.R,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -266,7 +283,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="perl",
                 language=languages.Language.PERL,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -276,7 +293,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="json",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -286,7 +303,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="yaml",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -296,7 +313,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="ini",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -306,7 +323,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="ini",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -316,7 +333,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="css",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(".min.css",),
                 image_type=None,
             )
@@ -326,7 +343,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="scss",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -336,7 +353,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="xml",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -346,7 +363,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="xml",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -356,17 +373,87 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="xml",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/svg+xml",
             )
         case FileType.MARKDOWN:
             return FileTypeSupport(
-                suffixes=(".md",),
+                suffixes=(".md", ".markdown", ".cheatmd"),
                 names=(),
                 highlight="markdown",
                 language=None,
-                docs=True,
+                docs=Docs.ALWAYS,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.RESTRUCTUREDTEXT:
+            return FileTypeSupport(
+                suffixes=(".rst",),
+                names=(),
+                highlight="text",
+                language=None,
+                docs=Docs.ALWAYS,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.ASCIIDOC:
+            return FileTypeSupport(
+                suffixes=(".adoc", ".asciidoc"),
+                names=(),
+                highlight="text",
+                language=None,
+                docs=Docs.ALWAYS,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.RDOC:
+            return FileTypeSupport(
+                suffixes=(".rdoc",),
+                names=(),
+                highlight="text",
+                language=None,
+                docs=Docs.ALWAYS,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.POD:
+            return FileTypeSupport(
+                suffixes=(".pod",),
+                names=(),
+                highlight="text",
+                language=None,
+                docs=Docs.ALWAYS,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.RD:
+            return FileTypeSupport(
+                suffixes=(".rd",),
+                names=(),
+                highlight="text",
+                language=None,
+                docs=Docs.ALWAYS,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.DOXYGEN:
+            return FileTypeSupport(
+                suffixes=(".dox",),
+                names=(),
+                highlight="text",
+                language=None,
+                docs=Docs.ALWAYS,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.TEXT:
+            return FileTypeSupport(
+                suffixes=(".txt",),
+                names=(),
+                highlight="text",
+                language=None,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -376,7 +463,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="diff",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -386,7 +473,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="graphql",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -396,7 +483,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=("Makefile",),
                 highlight="makefile",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -406,7 +493,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=("Dockerfile",),
                 highlight="dockerfile",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -416,7 +503,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/png",
             )
@@ -426,7 +513,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/jpeg",
             )
@@ -436,7 +523,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/gif",
             )
@@ -446,7 +533,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/webp",
             )
@@ -456,7 +543,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/avif",
             )
@@ -466,7 +553,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/bmp",
             )
@@ -476,7 +563,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.IN_DOCS_FOLDER,
                 generated_suffixes=(),
                 image_type="image/x-icon",
             )
@@ -486,7 +573,7 @@ def support(file_type: FileType) -> FileTypeSupport:
                 names=(),
                 highlight="text",
                 language=None,
-                docs=False,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )

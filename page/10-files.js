@@ -1,7 +1,7 @@
 // Which files the page shows, in which order, and where the search hits are.
 
 // Whether the file type button `filter` lists f.
-function ofKind(f, filter) { return filter === 'all' || (filter === 'test' ? f.kind === 'test' : f.kind !== 'test'); }
+function ofKind(f, filter) { return filter === 'all' || f.kind === filter; }
 function kindVisible(f) { return ofKind(f, state.filter); }
 // The files the filters list.
 function fileListed(f) {

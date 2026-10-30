@@ -177,7 +177,6 @@ window.addEventListener('hashchange', () => {
   document.addEventListener('mousedown', (e) => { const g = e.target.closest('#side .grip'); if (!g) return; dragging = g; g.classList.add('dragging'); e.preventDefault(); });
   document.addEventListener('mousemove', (e) => { if (!dragging) return; const w = Math.max(260, Math.min(e.clientX, window.innerWidth * 0.7)); document.documentElement.style.setProperty('--side', w + 'px'); });
   document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; lsSet('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); });
-  new ResizeObserver(fitFilterCounts).observe(document.getElementById('side'));
 })();
 
 // Pressing a row's comment button and dragging to another row of the same file and side opens a comment on the

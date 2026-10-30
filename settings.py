@@ -54,10 +54,18 @@ def code(value: str) -> str:
 
 
 def docs_rules() -> str:
-    folders = " or ".join(code(d) for d in classify.DOCS_DIRS)
-    docs_types = (file_types.support(t) for t in file_types.FileType)
-    suffixes = ", ".join(code(suffix) for t in docs_types if t.docs for suffix in t.suffixes)
-    return items([f"A path under {folders}.", f"The suffix {suffixes}."])
+    def suffixes(docs: file_types.Docs) -> str:
+        types = (file_types.support(t) for t in file_types.FileType)
+        return ", ".join(code(suffix) for t in types if t.docs is docs for suffix in t.suffixes)
+
+    folders = ", ".join(code(d) for d in sorted(classify.DOCS_DIRS))
+    return items(
+        [
+            f"The suffix {suffixes(file_types.Docs.ALWAYS)}.",
+            f"The suffix {suffixes(file_types.Docs.IN_DOCS_FOLDER)}, and a folder named {folders}, or ending in "
+            f"{code(classify.DOCS_DIR_SUFFIX)}, anywhere in the path.",
+        ]
+    )
 
 
 def test_rules() -> str:
