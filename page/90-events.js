@@ -156,6 +156,8 @@ document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
   if (e.altKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); stepFile(e.key === 'ArrowUp' ? -1 : 1); return; }
   if (e.key === 'o') scrollToFile('overview');
+  // The collapse can pull the previous file up into the active place, so keep this one active.
+  if (e.key === 'r') { const f = BY_PATH[state.view]; if (f && !isReviewed(f)) { toggleReviewed(f); reshow(f); } }
 });
 
 // #path or #path:line, the line being one of the file as shown

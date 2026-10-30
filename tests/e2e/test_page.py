@@ -574,6 +574,40 @@ def test_option_down_and_up_go_to_the_next_and_previous_file(page: Page, server_
     expect(active).to_have_attribute("data-path", "src/config.py")
 
 
+def test_r_marks_the_current_file_reviewed_and_a_second_press_keeps_it_reviewed(
+    page: Page, server_url: str, config_pr: str
+) -> None:
+    open_pr(page, server_url, config_pr)
+    meta = page.locator("#side .head .meta")
+    page.keyboard.press("r")
+    expect(meta).to_contain_text("0 reviewed")
+    page.keyboard.press("Alt+ArrowDown")
+    leaf = page.locator("#side .leaf[data-path='src/config.py']")
+    expect(leaf).to_have_class(re.compile(r"\bactive\b"))
+    page.keyboard.press("r")
+    expect(leaf).to_have_class(re.compile(r"\breviewed\b"))
+    expect(meta).to_contain_text("1 reviewed")
+    page.keyboard.press("r")
+    expect(leaf).to_have_class(re.compile(r"\breviewed\b"))
+    expect(meta).to_contain_text("1 reviewed")
+
+
+def test_r_twice_after_a_wheel_scroll_near_the_end_marks_one_file(page: Page, server_url: str, config_pr: str) -> None:
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_pr(page, server_url, config_pr)
+    page.mouse.move(900, 400)
+    for _ in range(200):
+        if page.evaluate("state.view") == "src/jobs.py":
+            break
+        page.mouse.wheel(0, 40)
+        page.wait_for_timeout(20)
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "src/jobs.py")
+    page.keyboard.press("r")
+    page.keyboard.press("r")
+    expect(page.locator("#side .leaf.reviewed")).to_have_count(1)
+    expect(page.locator("#side .leaf.reviewed")).to_have_attribute("data-path", "src/jobs.py")
+
+
 def hit_row(page: Page) -> str:
     """The element id of the row of the search hit Enter goes on from."""
     return page.evaluate("rowId(BY_PATH[state.hit.path], state.hit.key)")
