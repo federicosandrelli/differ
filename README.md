@@ -329,8 +329,9 @@ Keys in the page: arrow keys in the tree, Option+Up and Option+Down for the
 previous and next shown file, Cmd+F search (it starts from the selected text)
 and Enter for the next hit, Shift+Cmd+F to search the file paths instead (the
 tree then lists only the files found, and Enter goes to the next one) and Cmd+F
-to go back, `o` back to the top, Cmd+, the settings. Escape leaves the focused
-element and ends the search; in a comment box it only leaves the box.
+to go back, `r` to mark the current file reviewed, `o` back to the top, Cmd+,
+the settings. Escape leaves the focused element and ends the search; in a
+comment box it only leaves the box.
 
 The search looks at the added, removed and unchanged lines of the shown files,
 in open and closed sections alike, so it also finds the lines of reviewed
