@@ -39,13 +39,10 @@ class FileType(Enum):
     XML = auto()
     SVG = auto()
     MARKDOWN = auto()
-    DOCUMENTATION = auto()
-    TEXT = auto()
-    PIP_REQUIREMENTS = auto()
+    MARKUP = auto()
     DIFF = auto()
     GRAPHQL = auto()
     MAKEFILE = auto()
-    CMAKE = auto()
     DOCKERFILE = auto()
     PNG = auto()
     JPEG = auto()
@@ -384,33 +381,13 @@ def support(file_type: FileType) -> FileTypeSupport:
                 generated_suffixes=(),
                 image_type=None,
             )
-        case FileType.DOCUMENTATION:
+        case FileType.MARKUP:
             return FileTypeSupport(
                 suffixes=(".rst", ".adoc", ".asciidoc", ".rdoc", ".pod", ".rd", ".dox"),
                 names=(),
                 highlight="text",
                 language=None,
                 docs=Docs.ALWAYS,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.TEXT:
-            return FileTypeSupport(
-                suffixes=(".txt",),
-                names=(),
-                highlight="text",
-                language=None,
-                docs=Docs.IN_DOCS_FOLDER,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.PIP_REQUIREMENTS:
-            return FileTypeSupport(
-                suffixes=(),
-                names=("requirements.txt", "constraints.txt"),
-                highlight="text",
-                language=None,
-                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -439,16 +416,6 @@ def support(file_type: FileType) -> FileTypeSupport:
                 suffixes=(),
                 names=("Makefile",),
                 highlight="makefile",
-                language=None,
-                docs=Docs.NEVER,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.CMAKE:
-            return FileTypeSupport(
-                suffixes=(".cmake",),
-                names=("CMakeLists.txt",),
-                highlight="text",
                 language=None,
                 docs=Docs.NEVER,
                 generated_suffixes=(),

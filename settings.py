@@ -58,12 +58,13 @@ def docs_rules() -> str:
         types = (file_types.support(t) for t in file_types.FileType)
         return ", ".join(code(suffix) for t in types if t.docs is docs for suffix in t.suffixes)
 
-    folders = ", ".join(code(d) for d in sorted(classify.DOCS_DIRS))
+    *rest, last = sorted(classify.DOCS_DIRS)
+    folders = f"{', '.join(code(d) for d in rest)} or {code(last)}"
     return items(
         [
             f"The suffix {suffixes(file_types.Docs.ALWAYS)}.",
-            f"The suffix {suffixes(file_types.Docs.IN_DOCS_FOLDER)}, and a folder named {folders} in any case, or ending in "
-            f"{code(classify.DOCS_DIR_SUFFIX)}, anywhere in the path.",
+            f"The suffix {suffixes(file_types.Docs.IN_DOCS_FOLDER)}, and a folder named {folders} in any case, or a "
+            f"folder ending in {code(classify.DOCS_DIR_SUFFIX)}, anywhere in the path.",
         ]
     )
 

@@ -3,7 +3,7 @@ from collections import Counter
 import pytest
 
 import file_types
-from file_types import FileType
+from file_types import Docs, FileType
 from languages import NO_LANGUAGE, Language
 
 
@@ -14,6 +14,12 @@ def test_no_suffix_or_name_belongs_to_two_file_types() -> None:
 
 def test_every_language_has_a_file_type() -> None:
     assert set(Language) - {file_types.support(t).language for t in FileType} == set()
+
+
+def test_no_file_type_with_a_language_is_documentation() -> None:
+    assert [
+        t for t in FileType if file_types.support(t).language and file_types.support(t).docs is not Docs.NEVER
+    ] == []
 
 
 def test_every_suffix_is_lower_case() -> None:
