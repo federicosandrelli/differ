@@ -23,6 +23,9 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 .hint { color: var(--text-muted); font-size: 12px; }
 .kind { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
 .err { color: var(--del-fg) !important; }
+/* A tone colours the text of a thing that reports how something stands: bad, warn, ok or accent. A reason pill, a
+   check and the merge button take one. */
+.tone-bad { color: var(--del-fg); } .tone-warn { color: var(--mod-fg); } .tone-ok { color: var(--add-fg); } .tone-accent { color: var(--accent); }
 
 /* A button is a control: control-sized text in a bordered box, 24px tall. .primary fills it with the accent, .on
    tints it for a toggle that is on, .ghost drops the border, quietens it and tightens it, for icon buttons and side

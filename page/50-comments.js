@@ -312,6 +312,7 @@ function draftText(box) {
   if (d.replyText !== undefined) return state.replyOpen.get(d.replyText) || '';
   if (d.reviewText !== undefined) return state.reviewText;
   if (d.convText !== undefined) return state.convText;
+  if (d.mergeText !== undefined) return mergeText(d.mergeText);
   return box.value;
 }
 // The heights the reader dragged textareas to, by the textarea's data attributes.

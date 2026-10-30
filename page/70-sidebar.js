@@ -79,6 +79,13 @@ function reviewButton() {
   const look = state.reviewPanel ? 'on' : cls && !n ? cls : 'primary';
   return `<button data-review-panel class="review ${look}">${label}${n ? `<span class="count">${n}</span>` : ''}</button>`;
 }
+// The buttons at the end of the head, once the comments name the viewer: on the viewer's own pull request the merge
+// button, and the Review button only while a pending review waits to go out; on someone else's, the Review button.
+function headButtons() {
+  if (!C.viewer) return '';
+  const own = isOwn(), buttons = (own ? mergeButton() : '') + (!own || C.pending ? reviewButton() : '');
+  return buttons ? `<span class="acts">${buttons}</span>` : '';
+}
 function renderSide() {
   // The box keeps the spaces the reader typed around the query, which the search ignores.
   const box = document.querySelector('#side .search');
@@ -91,8 +98,8 @@ function renderSide() {
     return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}${extra}</button>`;
   };
   const h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
-    <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? reviewButton() : ''}</div></div>
-    ${commentNotices()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}
+    <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? headButtons() : ''}</div></div>
+    ${commentNotices()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}${state.mergePanel && isOwn() ? mergePanelHtml() : ''}
     <div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>
     <div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
@@ -101,7 +108,7 @@ function renderSide() {
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
   const ae = document.activeElement;
-  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : ae.dataset.bugText !== undefined ? '[data-bug-text]' : null);
+  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : ae.dataset.bugText !== undefined ? '[data-bug-text]' : ae.dataset.mergeText !== undefined ? '[data-merge-text]' : null);
   const selection = focused && focused !== '.list' ? [ae.selectionStart, ae.selectionEnd, ae.selectionDirection] : null;
   const side = document.getElementById('side');
   keepBoxHeights(side);

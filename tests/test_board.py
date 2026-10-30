@@ -334,7 +334,7 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
     assert column_counts(page) == ["0", "2", "0", "0", "1", "0"]
     assert [sub_count(page, key) for key in ("action", "ci", "review")] == ["1", "0", "1"]
     mine, _, theirs = re.findall(r'<a class="card.*?</a>', page)
-    assert 'href="/acme/widgets/pull/1"' in mine and '<span class="reason bad" title="CI failed">' in mine
+    assert 'href="/acme/widgets/pull/1"' in mine and '<span class="reason tone-bad" title="CI failed">' in mine
     assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
     assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
     assert '<span class="ref">tools</span>' in theirs

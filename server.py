@@ -31,8 +31,11 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
   /api/<owner>/<repo>/<number>/editors    GET: the editors installed (GitHub always is), and the names of all the editors
                                      the app knows
+  /api/<owner>/<repo>/<number>/merge      GET: the merge state: the checks, the review decision, whether GitHub can
+                                     merge, the auto-merge request and the merge methods allowed
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
-                                     conversation, open (opens a file in an editor, on the pull request's branch)
+                                     conversation, open (opens a file in an editor, on the pull request's branch),
+                                     merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed jobs)
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -65,6 +68,7 @@ import editors
 import file_types
 import followed
 import github
+import merge
 import recent
 import render
 import settings
@@ -244,6 +248,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, progress_page(ref))
             if (m := API.match(url.path)) and m["action"] == "comments":
                 return self.send_json(comments.fetch(PullRef.from_match(m)))
+            if (m := API.match(url.path)) and m["action"] == "merge":
+                return self.send_json(merge.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "editors":
                 return self.send_json(
                     {
@@ -342,6 +348,27 @@ class Handler(BaseHTTPRequestHandler):
                 result = comments.discard(ref)
             elif action == "conversation":
                 result = comments.add_conversation_comment(ref, body=body["body"])
+            elif action == "merge":
+                result = merge.merge(
+                    ref,
+                    method=one_of(body["method"], merge.Method),
+                    head=str(body["head"]),
+                    headline=str(body.get("headline", "")),
+                    body=str(body.get("body", "")),
+                )
+            elif action == "automerge":
+                result = merge.auto_merge(
+                    ref,
+                    on=bool(body["on"]),
+                    method=one_of(body.get("method", "SQUASH"), merge.Method),
+                    head=str(body.get("head", "")),
+                    headline=str(body.get("headline", "")),
+                    body=str(body.get("body", "")),
+                )
+            elif action in merge.MOVES:
+                result = merge.move(ref, action)
+            elif action == "rerun":
+                result = merge.rerun_failed(ref, run_id(body["run"]))
             elif action == "open":
                 editors.open_file(ref, str(body["editor"]), str(body["path"]), line_number(body["line"]))
                 result = {}
@@ -393,6 +420,13 @@ def one_of(value: object, kind: object) -> Any:
     """The value of a request's field when the Literal type allows it; else a ValueError, which answers 400."""
     if value not in get_args(kind):
         raise ValueError(f"{value!r} is not one of {', '.join(map(repr, get_args(kind)))}")
+    return value
+
+
+def run_id(value: object) -> int:
+    """The workflow run id a request's field names; else a ValueError, which answers 400."""
+    if type(value) is not int or value <= 0:
+        raise ValueError(f"{value!r} is not a workflow run id")
     return value
 
 

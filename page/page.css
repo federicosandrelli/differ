@@ -193,11 +193,30 @@ tr.notes > td > div.notes > :last-child { margin-bottom: 9px; }
 .form.reply { border: 0; border-top: 1px solid var(--border); border-radius: 0; max-width: none; }
 .form.reply textarea { min-height: 60px; }
 .outdated { padding: 6px 20px 2px; font-size: 12px; } .outdated .thread { margin: 6px 0; }
-/* The Review button names the viewer's verdict in the verdict's colour. */
-#side .head .meta button.review { margin-left: auto; flex: none; }
+/* The Review button names the viewer's verdict in the verdict's colour; the merge button names where the viewer's own
+   pull request stands, in its tone. */
+#side .head .meta .acts { margin-left: auto; flex: none; display: inline-flex; gap: 6px; }
 #side .head .meta button.review.approved { color: var(--add-fg); } #side .head .meta button.review.changes { color: var(--del-fg); }
-#side .form.review { margin: 8px 12px; }
-#side .form.review textarea { min-height: 64px; }
+#side .form.review, #side .form.merge { margin: 8px 12px; }
+#side .form.review textarea, #side .form.merge textarea { min-height: 64px; }
+/* The merge panel: a line for the checks and one for the review, the list of checks, and the merge button with the ⋮
+   that opens the menu of merge methods, as the editor menu opens. */
+.form.merge .line { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 6px; }
+.form.merge .line .chev { margin-left: -4px; }
+.form.merge .banner { margin-bottom: 8px; }
+.form.merge .actions + .hint { margin-top: 6px; }
+.form.merge .merge-pick { position: relative; display: inline-flex; }
+.form.merge .merge-pick .more { padding: 1px 3px; }
+.form.merge .merge-pick .menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 6; }
+.checks { margin-bottom: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-panel); }
+.checks .crow { display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 12px; }
+.checks .crow + .crow, .checks .fail + .crow, .checks .fail { border-top: 1px solid var(--border); }
+.checks .crow .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checks .crow .wf { color: var(--text-muted); }
+.checks .crow .hint { flex: none; }
+.checks .fail { padding: 6px 8px 8px 26px; font-size: 12px; }
+.checks .fail pre { margin: 4px 0 6px; padding: 6px 8px; font: 11.5px/1.45 var(--mono); background: var(--bg-inset); border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; }
+.checks .fail .row { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 .page .comment { margin: 8px 0; max-width: 78ch; }
 .page .form.conv { margin: 10px 0 0; max-width: 78ch; }
 table.plain.threads tr.resolved td { color: var(--text-muted); }

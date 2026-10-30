@@ -73,6 +73,20 @@ reply box only leaves the box, and keeps it open with its text. A comment box
 with text stays as a draft when another line's box opens, and comes back when
 the last line number of its range is clicked again.
 
+## Merging
+
+On a pull request you opened, the sidebar's button says where it stands
+(Ready to merge, Checks running, Checks failed, Conflicts, Auto-merge on, and
+so on) in place of Review, and opens the merge panel. The panel lists the
+checks of the head commit, with the failing step and the error lines of a
+failed check, a button that re-runs its failed jobs and a link to its logs.
+It shows the review decision, and the squash or merge commit message, which
+you can edit. Its buttons merge with the method chosen in the ⋮ menu (kept
+per repository), turn auto-merge on while checks run or off again, close,
+reopen, or mark a draft ready for review. A merge names the head commit the
+page shows, so GitHub refuses it when the branch has moved. While a check runs,
+the panel asks GitHub again every 20 seconds.
+
 Comments load from GitHub after the page, through `/api/...` on the server, so
 they need the server (not a page opened from disk). They refresh after every
 change and when the window regains focus after 30 seconds away, unless a
@@ -287,7 +301,7 @@ editors open, stay too.
   file: its rows, blocks and folds, and `reveal`, which opens whatever hides a
   row; `35-marks.js` the search matches and word changes marked inside a
   line; `40-code.js` draws that view as the diff table; `50-comments.js` the
-  review threads and forms; `60-overview.js` the overview; `70-sidebar.js` the tree;
+  review threads and forms; `55-merge.js` the merge button and panel; `60-overview.js` the overview; `70-sidebar.js` the tree;
   `75-bugreport.js` the bug report prompt; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its
   header; its diff table is cut into chunks of 100 rows that hold their rows
@@ -310,6 +324,10 @@ editors open, stay too.
   settings, in `followed.json` in the cache.
 - `comments.py` reads and writes review threads, reviews and conversation
   comments through GitHub's GraphQL API.
+- `merge.py` reads the merge state of a pull request (its checks, review
+  decision, mergeability, auto-merge request and merge methods) and merges,
+  turns auto-merge on or off, closes, reopens, marks ready, and re-runs failed
+  jobs.
 - `github.py` is the one place that talks to GitHub: every `gh` command the
   app runs goes through its `gh`, and it holds `PullRef`, the name of a pull
   request (`owner/repo#123`).
