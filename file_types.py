@@ -39,16 +39,13 @@ class FileType(Enum):
     XML = auto()
     SVG = auto()
     MARKDOWN = auto()
-    RESTRUCTUREDTEXT = auto()
-    ASCIIDOC = auto()
-    RDOC = auto()
-    POD = auto()
-    RD = auto()
-    DOXYGEN = auto()
+    DOCUMENTATION = auto()
     TEXT = auto()
+    PIP_REQUIREMENTS = auto()
     DIFF = auto()
     GRAPHQL = auto()
     MAKEFILE = auto()
+    CMAKE = auto()
     DOCKERFILE = auto()
     PNG = auto()
     JPEG = auto()
@@ -387,59 +384,9 @@ def support(file_type: FileType) -> FileTypeSupport:
                 generated_suffixes=(),
                 image_type=None,
             )
-        case FileType.RESTRUCTUREDTEXT:
+        case FileType.DOCUMENTATION:
             return FileTypeSupport(
-                suffixes=(".rst",),
-                names=(),
-                highlight="text",
-                language=None,
-                docs=Docs.ALWAYS,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.ASCIIDOC:
-            return FileTypeSupport(
-                suffixes=(".adoc", ".asciidoc"),
-                names=(),
-                highlight="text",
-                language=None,
-                docs=Docs.ALWAYS,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.RDOC:
-            return FileTypeSupport(
-                suffixes=(".rdoc",),
-                names=(),
-                highlight="text",
-                language=None,
-                docs=Docs.ALWAYS,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.POD:
-            return FileTypeSupport(
-                suffixes=(".pod",),
-                names=(),
-                highlight="text",
-                language=None,
-                docs=Docs.ALWAYS,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.RD:
-            return FileTypeSupport(
-                suffixes=(".rd",),
-                names=(),
-                highlight="text",
-                language=None,
-                docs=Docs.ALWAYS,
-                generated_suffixes=(),
-                image_type=None,
-            )
-        case FileType.DOXYGEN:
-            return FileTypeSupport(
-                suffixes=(".dox",),
+                suffixes=(".rst", ".adoc", ".asciidoc", ".rdoc", ".pod", ".rd", ".dox"),
                 names=(),
                 highlight="text",
                 language=None,
@@ -454,6 +401,16 @@ def support(file_type: FileType) -> FileTypeSupport:
                 highlight="text",
                 language=None,
                 docs=Docs.IN_DOCS_FOLDER,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.PIP_REQUIREMENTS:
+            return FileTypeSupport(
+                suffixes=(),
+                names=("requirements.txt", "constraints.txt"),
+                highlight="text",
+                language=None,
+                docs=Docs.NEVER,
                 generated_suffixes=(),
                 image_type=None,
             )
@@ -482,6 +439,16 @@ def support(file_type: FileType) -> FileTypeSupport:
                 suffixes=(),
                 names=("Makefile",),
                 highlight="makefile",
+                language=None,
+                docs=Docs.NEVER,
+                generated_suffixes=(),
+                image_type=None,
+            )
+        case FileType.CMAKE:
+            return FileTypeSupport(
+                suffixes=(".cmake",),
+                names=("CMakeLists.txt",),
+                highlight="text",
                 language=None,
                 docs=Docs.NEVER,
                 generated_suffixes=(),

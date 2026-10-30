@@ -383,7 +383,7 @@ def link_moves(files: list[FileDiff]) -> None:
                 target_run.moved_to = Place(path=fd.path, line=run.removed[0][0])
 
 
-DOCS_DIRS = {"docs", "doc", "Documentation"}
+DOCS_DIRS = {"docs", "doc", "documentation"}
 DOCS_DIR_SUFFIX = ".docc"
 TOP_LEVEL_TEST_DIRS = {"tests", "test", "e2e", "spec", "cypress", "playwright"}
 TEST_DIRS = {"__tests__", "__snapshots__", "test_helpers"}
@@ -395,7 +395,7 @@ TEST_NAME_PREFIX = "test_"
 def file_kind(path: str) -> Literal["docs", "test", "implementation"]:
     *dirs, name = path.split("/")
     docs = file_types.support_of(path).docs
-    in_docs_dir = any(d in DOCS_DIRS or d.endswith(DOCS_DIR_SUFFIX) for d in dirs)
+    in_docs_dir = any(d.lower() in DOCS_DIRS or d.endswith(DOCS_DIR_SUFFIX) for d in dirs)
     if docs is file_types.Docs.ALWAYS or (docs is file_types.Docs.IN_DOCS_FOLDER and in_docs_dir):
         return "docs"
     if (

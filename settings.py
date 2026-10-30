@@ -62,7 +62,7 @@ def docs_rules() -> str:
     return items(
         [
             f"The suffix {suffixes(file_types.Docs.ALWAYS)}.",
-            f"The suffix {suffixes(file_types.Docs.IN_DOCS_FOLDER)}, and a folder named {folders}, or ending in "
+            f"The suffix {suffixes(file_types.Docs.IN_DOCS_FOLDER)}, and a folder named {folders} in any case, or ending in "
             f"{code(classify.DOCS_DIR_SUFFIX)}, anywhere in the path.",
         ]
     )
