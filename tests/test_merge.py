@@ -86,10 +86,12 @@ def test_fetch_reads_the_checks_reviews_and_merge_methods(monkeypatch: pytest.Mo
     assert m["methods"] == ["SQUASH", "REBASE"]
     assert m["approvers"] == ["bob"] and m["change_requesters"] == []
     assert (m["status"], m["base"], m["commits"], m["review"]) == ("open", "main", 3, "APPROVED")
-    assert m["messages"] == {
-        "SQUASH": ["Add widgets (#7)", "Adds them."],
-        "MERGE": ["Merge pull request #7 from ann/widgets", "Add widgets"],
-    }
+
+
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "http://ci.example.com/1", None])
+def test_a_check_keeps_a_web_address_only_as_its_link(url: str | None) -> None:
+    check = merge._check(run("lint", detailsUrl=url))
+    assert check is not None and check["url"] == ""
 
 
 @pytest.mark.parametrize(

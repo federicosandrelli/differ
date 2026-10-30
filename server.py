@@ -359,7 +359,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "automerge":
                 result = merge.auto_merge(
                     ref,
-                    on=bool(body["on"]),
+                    on=flag(body["on"]),
                     method=one_of(body.get("method", "SQUASH"), merge.Method),
                     head=str(body.get("head", "")),
                     headline=str(body.get("headline", "")),
@@ -420,6 +420,13 @@ def one_of(value: object, kind: object) -> Any:
     """The value of a request's field when the Literal type allows it; else a ValueError, which answers 400."""
     if value not in get_args(kind):
         raise ValueError(f"{value!r} is not one of {', '.join(map(repr, get_args(kind)))}")
+    return value
+
+
+def flag(value: object) -> bool:
+    """The yes or no a request's field names; else a ValueError, which answers 400."""
+    if type(value) is not bool:
+        raise ValueError(f"{value!r} is not true or false")
     return value
 
 

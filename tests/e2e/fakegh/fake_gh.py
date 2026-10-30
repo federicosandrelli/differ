@@ -53,8 +53,8 @@ def pr_file(number: object) -> Path:
 
 
 def merge_state(number: object) -> dict:
-    """The repository and pull request fields of a merge state query: a clean, open pull request without checks,
-    with the fields merge<n>.json gives over them."""
+    """The repository and pull request fields of a merge state query: a clean pull request without checks, with the
+    fields merge<n>.json gives over them. GitHub answers UNKNOWN mergeability for a merged pull request."""
     path = state_dir() / f"merge{number}.json"
     given = json.loads(path.read_text()) if path.exists() else {}
     meta = json.loads(pr_file(number).read_text())
@@ -67,8 +67,8 @@ def merge_state(number: object) -> dict:
         "baseRefName": meta["baseRefName"],
         "headRefName": meta["headRefName"],
         "headRepositoryOwner": {"login": "acme"},
-        "mergeable": "MERGEABLE",
-        "mergeStateStatus": "CLEAN",
+        "mergeable": "UNKNOWN" if meta["state"] == "MERGED" else "MERGEABLE",
+        "mergeStateStatus": "UNKNOWN" if meta["state"] == "MERGED" else "CLEAN",
         "reviewDecision": None,
         "autoMergeRequest": None,
         "latestReviews": {"nodes": []},

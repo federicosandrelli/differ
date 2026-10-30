@@ -1721,7 +1721,7 @@ def test_an_approval_of_the_head_commit_names_itself_and_blocks_another(
         state["reviews"][-1] = {**approval, "commit": {"oid": "older"}}
         comments_file.write_text(json.dumps(state))
         open_pr(page, server_url)
-        expect(review).to_have_text("Review")
+        expect(review).to_have_text("Ready to review")
         review.click()
         expect(page.locator("button[data-submit='APPROVE']")).to_be_enabled()
     finally:
@@ -1938,13 +1938,12 @@ def test_merging_sends_the_method_the_commit_message_and_the_pages_head_then_dro
 ) -> None:
     open_pr(page, server_url, mine(add_pr, gh_state))
     page.click("#side button[data-merge-panel]")
-    box = page.locator("textarea[data-merge-text='SQUASH']")
-    expect(box).to_have_value(f"{TITLE} (#{page.evaluate('PR.number')})\n\nRenames the helper and greets the user.")
-    box.fill("Rename the helper\n\nAnd greet.")
+    page.locator("textarea[data-merge-text='SQUASH']").fill("Rename the helper\n\nAnd greet.")
     page.on("dialog", lambda dialog: dialog.accept())
     page.click("button[data-merge-do='merge']")
     expect(page.locator("#side .head button[data-merge-panel]")).to_have_count(0)
     expect(page.locator("#side .head .status")).to_have_text("Merged")
+    assert page.evaluate("M.timer") == 0, "a merged pull request has nothing left to poll for"
     assert sent(gh_state, "mergePullRequest")[-1] == {
         "pr": f"PR_{page.evaluate('PR.number')}",
         "method": "SQUASH",
@@ -1971,7 +1970,19 @@ def test_the_merge_method_chosen_in_the_menu_is_sent_and_kept_for_the_repository
     expect(page.locator("#side .head .status")).to_have_text("Merged")
     last = sent(gh_state, "mergePullRequest")[-1]
     assert (last["method"], last["headline"], last["body"]) == ("REBASE", None, None)
-    page.evaluate("localStorage.removeItem('dr:mergeMethod:acme/widgets')")
+
+
+def test_an_empty_commit_message_leaves_the_message_to_github(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    open_pr(page, server_url, mine(add_pr, gh_state))
+    page.click("#side button[data-merge-panel]")
+    expect(page.locator("textarea[data-merge-text='SQUASH']")).to_have_value("")
+    page.on("dialog", lambda dialog: dialog.accept())
+    page.click("button[data-merge-do='merge']")
+    expect(page.locator("#side .head .status")).to_have_text("Merged")
+    last = sent(gh_state, "mergePullRequest")[-1]
+    assert (last["method"], last["headline"], last["body"]) == ("SQUASH", None, None)
 
 
 def test_a_declined_merge_sends_nothing(page: Page, server_url: str, add_pr: AddPr, gh_state: Path) -> None:
@@ -1984,21 +1995,51 @@ def test_a_declined_merge_sends_nothing(page: Page, server_url: str, add_pr: Add
     assert len(sent(gh_state, "mergePullRequest")) == before
 
 
-def test_while_a_check_runs_auto_merge_turns_on_and_off(
+def test_while_github_blocks_the_merge_auto_merge_turns_on_and_off(
     page: Page, server_url: str, add_pr: AddPr, gh_state: Path
 ) -> None:
     running = with_checks(check_run("unit", "IN_PROGRESS", None), mergeStateStatus="BLOCKED")
     open_pr(page, server_url, mine(add_pr, gh_state, running))
+    on, off = len(sent(gh_state, "enablePullRequestAutoMerge")), len(sent(gh_state, "disablePullRequestAutoMerge"))
     button = page.locator("#side .head button[data-merge-panel]")
     expect(button).to_have_text("Checks running")
     button.click()
     expect(page.locator("button[data-merge-do='merge']")).to_have_count(0)
     page.click("button[data-merge-do='autoon']")
     expect(button).to_have_text("Auto-merge on")
-    assert sent(gh_state, "enablePullRequestAutoMerge")[-1]["method"] == "SQUASH"
+    assert [v["method"] for v in sent(gh_state, "enablePullRequestAutoMerge")[on:]] == ["SQUASH"]
     page.click("button[data-merge-do='autooff']")
     expect(page.locator("button[data-merge-do='autoon']")).to_be_visible()
-    assert len(sent(gh_state, "disablePullRequestAutoMerge")) >= 1
+    assert len(sent(gh_state, "disablePullRequestAutoMerge")) == off + 1
+
+
+def test_a_running_check_github_does_not_wait_for_leaves_the_merge_to_go_out_now(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    running = with_checks(check_run("unit", "IN_PROGRESS", None), mergeStateStatus="UNSTABLE")
+    open_pr(page, server_url, mine(add_pr, gh_state, running))
+    page.click("#side button[data-merge-panel]")
+    expect(page.locator("button[data-merge-do='merge']")).to_be_enabled()
+    expect(page.locator("button[data-merge-do='autoon']")).to_have_count(0)
+
+
+def test_auto_merge_finishing_during_a_poll_drops_the_button_and_shows_merged(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    auto = {"mergeMethod": "SQUASH", "enabledAt": "2026-10-30T10:00:00Z", "enabledBy": {"login": "tester"}}
+    running = with_checks(check_run("unit", "IN_PROGRESS", None), mergeStateStatus="BLOCKED", autoMergeRequest=auto)
+    path = mine(add_pr, gh_state, running)
+    open_pr(page, server_url, path)
+    expect(page.locator("#side .head button[data-merge-panel]")).to_have_text("Auto-merge on")
+    page.click("#side button[data-merge-panel]")
+    number = path.rsplit("/", 1)[1]
+    pr = gh_state / f"pr{number}.json"
+    pr.write_text(json.dumps(json.loads(pr.read_text()) | {"state": "MERGED"}))
+    (gh_state / f"merge{number}.json").write_text(json.dumps(with_checks(check_run("unit", "COMPLETED", "SUCCESS"))))
+    page.evaluate("loadMerge()")
+    expect(page.locator("#side .head .status")).to_have_text("Merged")
+    expect(page.locator("#side .head button[data-merge-panel]")).to_have_count(0)
+    expect(page.locator(".form.merge")).to_have_count(0)
 
 
 def test_a_failed_required_check_blocks_the_merge_and_reruns_its_failed_jobs(
@@ -2025,12 +2066,28 @@ def test_a_failed_required_check_blocks_the_merge_and_reruns_its_failed_jobs(
     assert ["api", "-X", "POST", "repos/acme/widgets/actions/runs/41/rerun-failed-jobs"] in calls
 
 
+def test_a_refused_rerun_shows_why_and_leaves_the_panel_usable(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    failed = check_run("e2e", "COMPLETED", "FAILURE")
+    open_pr(page, server_url, mine(add_pr, gh_state, with_checks(failed, mergeStateStatus="BLOCKED")))
+    page.click("#side button[data-merge-panel]")
+    (gh_state / "fail.txt").write_text("api -X POST\n")
+    try:
+        page.click("button[data-merge-rerun]")
+        expect(page.locator(".form.merge .hint.err").last).to_contain_text("injected failure")
+        expect(page.locator("button[data-merge-rerun]")).to_be_enabled()
+    finally:
+        (gh_state / "fail.txt").unlink()
+
+
 def test_a_draft_offers_ready_for_review(page: Page, server_url: str, add_pr: AddPr, gh_state: Path) -> None:
     open_pr(page, server_url, mine(add_pr, gh_state, isDraft=True))
     button = page.locator("#side .head button[data-merge-panel]")
     expect(button).to_have_text("Draft")
+    before = len(sent(gh_state, "markPullRequestReadyForReview"))
     button.click()
     page.click("button[data-merge-do='ready']")
     expect(page.locator("#side .head .status")).to_have_text("Open")
     expect(button).to_have_text("Ready to merge")
-    assert len(sent(gh_state, "markPullRequestReadyForReview")) >= 1
+    assert len(sent(gh_state, "markPullRequestReadyForReview")) == before + 1

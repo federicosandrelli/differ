@@ -28,7 +28,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed autoMergeAllowed deleteBranchOnMerge
     pullRequest(number: $number) {
-      headRefOid title body state isDraft baseRefName headRefName headRepositoryOwner { login }
+      state isDraft baseRefName
       mergeable mergeStateStatus reviewDecision
       autoMergeRequest { mergeMethod enabledAt enabledBy { login } }
       latestReviews(first: 100) { nodes { author { login } state } }
@@ -70,6 +70,12 @@ STATUS_STATES: dict[str, CheckState] = {
 }
 
 
+def _web(url: str | None) -> str:
+    """The link of a check when it is a web address, else "": an app or a commit status sets it, and the page puts it
+    in a link."""
+    return url if url and url.startswith("https://") else ""
+
+
 def _check(node: dict) -> dict | None:
     """A check run or a commit status as the page shows it, or None for a node of another type."""
     if node.get("__typename") == "CheckRun":
@@ -90,7 +96,7 @@ def _check(node: dict) -> dict | None:
             "state": state,
             "started": node["startedAt"],
             "completed": node["completedAt"],
-            "url": node["detailsUrl"] or "",
+            "url": _web(node["detailsUrl"]),
             "required": node["isRequired"],
             "run": run.get("databaseId"),
             "step": next((s["name"] for s in steps if s["conclusion"] == "FAILURE"), ""),
@@ -103,7 +109,7 @@ def _check(node: dict) -> dict | None:
             "state": STATUS_STATES.get(node["state"], "queued"),
             "started": node["createdAt"],
             "completed": None,
-            "url": node["targetUrl"] or "",
+            "url": _web(node["targetUrl"]),
             "required": node["isRequired"],
             "run": None,
             "step": "",
@@ -113,8 +119,7 @@ def _check(node: dict) -> dict | None:
 
 
 def fetch(ref: PullRef) -> dict:
-    """The merge state of the pull request now. `messages` holds the commit headline and body GitHub suggests for a
-    squash and for a merge commit."""
+    """The merge state of the pull request now."""
     repo = graphql(READ, **asdict(ref))["repository"]
     pr = repo["pullRequest"]
     commits = pr["commits"]
@@ -127,9 +132,7 @@ def fetch(ref: PullRef) -> dict:
         "REBASE": repo["rebaseMergeAllowed"],
     }
     auto = pr["autoMergeRequest"]
-    head_owner = (pr["headRepositoryOwner"] or {}).get("login", ref.owner)
     return {
-        "head": pr["headRefOid"],
         "status": github.status_of(pr["state"], pr["isDraft"]) or "",
         "base": pr["baseRefName"],
         "commits": commits["totalCount"],
@@ -149,10 +152,6 @@ def fetch(ref: PullRef) -> dict:
         if auto
         else None,
         "checks": checks,
-        "messages": {
-            "SQUASH": [f"{pr['title']} (#{ref.number})", pr["body"] or ""],
-            "MERGE": [f"Merge pull request #{ref.number} from {head_owner}/{pr['headRefName']}", pr["title"]],
-        },
     }
 
 

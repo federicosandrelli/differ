@@ -357,6 +357,7 @@ def test_a_reference_that_names_no_pull_request_answers_400() -> None:
             "'FAST_FORWARD' is not one of 'SQUASH', 'MERGE', 'REBASE'",
         ),
         ("automerge", {"method": "SQUASH"}, "'on'"),
+        ("automerge", {"on": "false"}, "'false' is not true or false"),
         ("rerun", {"run": "41"}, "'41' is not a workflow run id"),
         ("rerun", {"run": 0}, "0 is not a workflow run id"),
     ],

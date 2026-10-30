@@ -39,7 +39,7 @@ async function loadComments() {
 function hasDraft() {
   const b = state.bug;
   return !!((state.compose && state.compose.text.trim()) || state.drafts.size || [...state.replyOpen.values()].some(t => t.trim())
-    || state.reviewText.trim() || state.convText.trim() || (b.open && !b.prompt && b.text.trim())
+    || state.reviewText.trim() || state.convText.trim() || Object.values(state.mergeText).some(t => t.trim()) || (b.open && !b.prompt && b.text.trim())
     || sendingComments.some(s => s.comment.sending));
 }
 // Send an action to GitHub. Returns GitHub's answer, or null when GitHub refused the action, with the reason in C.error.

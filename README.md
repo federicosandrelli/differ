@@ -67,7 +67,7 @@ Hover a line and click `+` to comment on it. To comment on a range, drag from
 the selected lines, which the page renders as a diff. A comment can go into a
 pending review ("Start a review" / "Add review comment") or out at once ("Add
 single comment"); threads take replies the same way, and can be resolved.
-"Review" in the sidebar submits the pending review as approve, request changes
+"Ready to review" in the sidebar (or the verdict you gave, such as "Approved") submits the pending review as approve, request changes
 or comment, or discards it. Cmd+Enter sends a form. Escape in a comment or
 reply box only leaves the box, and keeps it open with its text. A comment box
 with text stays as a draft when another line's box opens, and comes back when
@@ -80,9 +80,10 @@ On a pull request you opened, the sidebar's button says where it stands
 so on) in place of Review, and opens the merge panel. The panel lists the
 checks of the head commit, with the failing step and the error lines of a
 failed check, a button that re-runs its failed jobs and a link to its logs.
-It shows the review decision, and the squash or merge commit message, which
-you can edit. Its buttons merge with the method chosen in the ⋮ menu (kept
-per repository), turn auto-merge on while checks run or off again, close,
+It shows the review decision, and a box for the squash or merge commit
+message; left empty, GitHub writes its default message. Its buttons merge with the method chosen in the ⋮ menu (kept
+per repository), turn auto-merge on while GitHub blocks the merge (for example while required
+checks run) or off again, close,
 reopen, or mark a draft ready for review. A merge names the head commit the
 page shows, so GitHub refuses it when the branch has moved. While a check runs,
 the panel asks GitHub again every 20 seconds.
