@@ -94,7 +94,8 @@ function renderSide() {
   const filterButton = (filter, label) => {
     const files = FILES.filter(f => ofKind(f, filter));
     const sum = (key) => fmt(files.reduce((n, f) => n + f.stats[key], 0));
-    const extra = filter === 'all' ? '' : `<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span><span class="split"><span class="a">+${sum('additions')}</span><span class="d">−${sum('deletions')}</span></span>`;
+    const split = files.length ? `<span class="split"><span class="a">+${sum('additions')}</span><span class="d">−${sum('deletions')}</span></span>` : '';
+    const extra = filter === 'all' ? '' : `<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span>${split}`;
     return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}${extra}</button>`;
   };
   const h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
