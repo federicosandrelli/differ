@@ -982,6 +982,39 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
     ]
 
 
+def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    foot = page.locator("#side .foot")
+    expect(foot).to_contain_text("No Claude session")
+    bubble = page.locator("#side .leaf[data-path='src/app.py'] .bubble")
+    count = bubble.text_content()
+    section = page.locator(APP)
+    section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+    page.locator("textarea[data-compose-text]").fill("Use a logger here")
+    page.click("button[data-compose-send='claude']")
+    thread = section.locator("div.thread[data-thread^='claude:']", has_text="Use a logger here")
+    expect(thread.locator(".tag.claude")).to_have_text("waiting for Claude")
+    expect(foot).to_contain_text("1 comment waiting")
+    expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
+    assert bubble.text_content() == count
+    sent = page.evaluate("CL.comments.at(-1)")
+    assert (sent["line"], sent["side"], sent["code"]) == (11, "RIGHT", ['    print("hello")'])
+
+    reply = page.request.post(
+        f"{server_url}/api/acme/widgets/1/claude_reply",
+        data={"id": sent["id"], "body": "Logged it."},
+        headers={"Origin": server_url},
+    )
+    assert reply.ok
+    page.evaluate("loadClaude()")
+    expect(thread).to_contain_text("Logged it.")
+    expect(thread.locator(".tag.claude")).to_have_count(0)
+
+    thread.locator("[data-claude-delete]").click()
+    expect(section.locator("div.thread[data-thread^='claude:']")).to_have_count(0)
+    expect(foot).not_to_contain_text("waiting")
+
+
 @contextmanager
 def kept_comments(gh_state: Path) -> Iterator[None]:
     """Put the fake gh's comments back as they were after the block."""

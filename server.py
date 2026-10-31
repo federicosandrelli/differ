@@ -33,9 +33,13 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      the app knows
   /api/<owner>/<repo>/<number>/merge      GET: the merge state: the checks, the review decision, whether GitHub can
                                      merge, the auto-merge request and the merge methods allowed
+  /api/<owner>/<repo>/<number>/claude     GET: the comments for Claude, and whether a Claude Code session listens
+  /api/<owner>/<repo>/<number>/listen     a WebSocket: a Claude Code session listens for the comments for Claude,
+                                     one session per pull request (refused from another origin)
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
                                      conversation, open (opens a file in an editor, on the pull request's branch),
-                                     merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed jobs)
+                                     merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed jobs),
+                                     claude, claude_reply, claude_delete (a comment for Claude, its reply, its removal)
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -62,6 +66,7 @@ from urllib.parse import parse_qs, urlparse
 
 import board
 import build
+import claude
 import commands
 import comments
 import editors
@@ -72,6 +77,7 @@ import merge
 import recent
 import render
 import settings
+import websocket
 from github import SLUG, PullRef
 
 PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
@@ -250,6 +256,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(comments.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "merge":
                 return self.send_json(merge.fetch(PullRef.from_match(m)))
+            if (m := API.match(url.path)) and m["action"] == "claude":
+                return self.send_json(claude.fetch(PullRef.from_match(m)))
+            if (m := API.match(url.path)) and m["action"] == "listen":
+                return self.listen(PullRef.from_match(m))
             if (m := API.match(url.path)) and m["action"] == "editors":
                 return self.send_json(
                     {
@@ -294,6 +304,63 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             pass
 
+    def origins(self) -> set[str]:
+        """The origins of the pages this server serves."""
+        return {f"http://{host}:{self.port()}" for host in LOOPBACK_HOSTS}
+
+    def listen(self, ref: PullRef) -> None:
+        """Answer the WebSocket handshake of a Claude Code session that listens for the comments for Claude on the
+        pull request, then hold the connection until either side closes it: claude sends each comment as a text
+        frame, and this answers pings. A second session gets a close frame with the reason while one listens.
+
+        A browser sends an Origin header with every handshake, so a page from another origin is refused, as it is
+        for a POST. A session's client sends none.
+        """
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in self.origins():
+            return self.send_json({"error": f"Forbidden: Origin {origin} is not this server"}, 403)
+        key = self.headers.get("Sec-WebSocket-Key")
+        if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
+            return self.send_json({"error": "Bad request: not a WebSocket handshake"}, 400)
+        # WebSocket clients expect an HTTP/1.1 status line, and the handler answers HTTP/1.0 by default.
+        self.protocol_version = "HTTP/1.1"
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", websocket.accept_key(key))
+        # A client that offers subprotocols refuses an answer without one.
+        if offered := self.headers.get("Sec-WebSocket-Protocol"):
+            self.send_header("Sec-WebSocket-Protocol", offered.split(",")[0].strip())
+        self.end_headers()
+        self.close_connection = True
+        out = threading.Lock()
+
+        def send(data: bytes) -> None:
+            with out:
+                self.wfile.write(data)
+                self.wfile.flush()
+
+        def send_text(text: str) -> None:
+            send(websocket.frame(websocket.TEXT, text.encode()))
+
+        try:
+            claude.attach(ref, send_text)
+        except claude.Busy as exc:
+            send(websocket.close_frame(4000, str(exc)))
+            return
+        try:
+            while True:
+                opcode, payload = websocket.read_frame(self.rfile)
+                if opcode == websocket.CLOSE:
+                    send(websocket.frame(websocket.CLOSE, payload[:2]))
+                    return
+                if opcode == websocket.PING:
+                    send(websocket.frame(websocket.PONG, payload))
+        except (EOFError, OSError):
+            pass
+        finally:
+            claude.detach(ref, send_text)
+
     def refused(self) -> str | None:
         """Why this POST is refused, or None: a page from another origin must not act with the user's gh identity.
 
@@ -302,7 +369,7 @@ class Handler(BaseHTTPRequestHandler):
         this server never answers.
         """
         origin = self.headers.get("Origin")
-        if origin not in {f"http://{host}:{self.port()}" for host in LOOPBACK_HOSTS}:
+        if origin not in self.origins():
             return f"Origin {origin or '(missing)'} is not this server"
         ctype = self.headers.get("Content-Type", "")
         if ctype.split(";")[0].strip().lower() != "application/json":
@@ -369,6 +436,22 @@ class Handler(BaseHTTPRequestHandler):
                 result = merge.move(ref, action)
             elif action == "rerun":
                 result = merge.rerun_failed(ref, run_id(body["run"]))
+            elif action == "claude":
+                start_line = body.get("start_line")
+                result = claude.add(
+                    ref,
+                    path=str(body["path"]),
+                    line=line_number(body["line"]),
+                    start_line=None if start_line is None else line_number(start_line),
+                    side=one_of(body.get("side", "RIGHT"), claude.Side),
+                    commit=str(body["commit"]),
+                    code=lines_of(body.get("code", [])),
+                    body=text_of(body["body"]),
+                )
+            elif action == "claude_reply":
+                result = claude.reply(ref, str(body["id"]), text_of(body["body"]))
+            elif action == "claude_delete":
+                result = claude.delete(ref, str(body["id"]))
             elif action == "open":
                 editors.open_file(ref, str(body["editor"]), str(body["path"]), line_number(body["line"]))
                 result = {}
@@ -441,6 +524,20 @@ def line_number(value: object) -> int:
     """The line number a request's field names; else a ValueError, which answers 400."""
     if type(value) is not int or value < 1:
         raise ValueError(f"{value!r} is not a line number")
+    return value
+
+
+def text_of(value: object) -> str:
+    """The text a request's field holds; else a ValueError, which answers 400."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{value!r} is not a text")
+    return value
+
+
+def lines_of(value: object) -> list[str]:
+    """The lines of code a request's field holds; else a ValueError, which answers 400."""
+    if not isinstance(value, list) or not all(isinstance(line, str) for line in value):
+        raise ValueError(f"{value!r} is not a list of lines")
     return value
 
 
