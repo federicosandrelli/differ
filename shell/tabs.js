@@ -220,8 +220,7 @@
     row.remove();
     followed.save();
   });
-  // Whether a comment can go to a Claude Code session, saved as dr:claude: 'off', or nothing for on. Pages hear the
-  // change through the storage event.
+  // Whether a comment can go to a Claude Code session, saved as dr:claude: 'off', or nothing for on.
   const claudeSetting = {
     on: () => { try { return localStorage.getItem('dr:claude') !== 'off'; } catch { return true; } },
     draw() { for (const b of settings.querySelectorAll('[data-claude-setting]')) b.classList.toggle('on', (b.dataset.claudeSetting === 'on') === this.on()); },

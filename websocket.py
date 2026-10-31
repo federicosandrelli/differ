@@ -10,7 +10,7 @@ from io import BufferedIOBase
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 TEXT, CLOSE, PING, PONG = 0x1, 0x8, 0x9, 0xA
-# The largest frame read from a client. A client of this server sends only control frames, which hold at most 125.
+# The largest frame read from a client. A control frame holds at most 125 bytes.
 MAX_READ = 1 << 16
 
 

@@ -33,6 +33,10 @@ def add(body: str = "Use a logger here", line: int = 11) -> dict:
     )
 
 
+def ids() -> list[str]:
+    return [c["id"] for c in claude.fetch(REF)["comments"]]
+
+
 def states() -> list[str]:
     return [c["state"] for c in claude.fetch(REF)["comments"]]
 
@@ -67,7 +71,7 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
         {
             "event": "comment",
             "pr": "acme/widgets#1",
-            "id": "c1",
+            "id": ids()[0],
             "path": "src/app.py",
             "line": 11,
             "start_line": None,
@@ -127,7 +131,7 @@ def test_a_session_that_connects_again_gets_every_comment_without_a_reply() -> N
     add("two")
     first = [].append
     claude.attach(REF, first)
-    claude.reply(REF, "c1", "Done.")
+    claude.reply(REF, ids()[0], "Done.")
     claude.detach(REF, first)
     again: list[str] = []
     claude.attach(REF, again.append)
@@ -138,12 +142,13 @@ def test_a_session_that_connects_again_gets_every_comment_without_a_reply() -> N
 def test_a_reply_answers_its_comment_and_a_delete_removes_it() -> None:
     add("one")
     add("two")
-    c = claude.reply(REF, "c2", "Renamed it.")
+    one, two = ids()
+    c = claude.reply(REF, two, "Renamed it.")
     assert (c["state"], c["reply"]) == ("answered", "Renamed it.") and c["answered"]
-    assert [c["id"] for c in claude.delete(REF, "c1")["comments"]] == ["c2"]
-    assert add("three")["comments"][-1]["id"] == "c3"
+    assert [c["body"] for c in claude.delete(REF, one)["comments"]] == ["two"]
+    assert add("three")["comments"][-1]["id"] not in {one, two}
     with pytest.raises(claude.NoComment):
-        claude.reply(REF, "c1", "Too late.")
+        claude.reply(REF, one, "Too late.")
 
 
 # ---------- through the server
@@ -209,7 +214,7 @@ def test_a_session_listens_over_a_websocket_and_replies_through_a_post(port: int
     post(port, "claude", {"path": "src/app.py", "line": 11, "side": "RIGHT", "commit": "abc", "body": "Log it"})
     opcode, payload = receive(sock)
     assert opcode == websocket.TEXT and json.loads(payload)["body"] == "Log it"
-    assert post(port, "claude_reply", {"id": "c1", "body": "Logged."})["state"] == "answered"
+    assert post(port, "claude_reply", {"id": json.loads(payload)["id"], "body": "Logged."})["state"] == "answered"
     sock.sendall(bytes([0x88, 0x82, 0, 0, 0, 0]) + struct.pack(">H", 1000))
     assert receive(sock)[0] == websocket.CLOSE
     sock.close()

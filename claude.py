@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,7 +65,7 @@ def now() -> str:
 
 
 def answer(ref: PullRef, comments: list[dict]) -> dict:
-    """What the page reads: whether a session listens, and the comments. Call it with the lock held."""
+    """Whether a session listens on the pull request, and its comments. Call it with the lock held."""
     return {"listening": ref in listeners, "comments": comments}
 
 
@@ -106,12 +107,12 @@ def add(
     code: list[str],
     body: str,
 ) -> dict:
-    """Keep a new comment, send it to the session if one listens, and answer what the page reads."""
+    """Keep a new comment, with an id never used before, and send it to the session if one listens. Answers whether
+    a session listens, and the comments."""
     with lock:
         comments = read(ref)
-        number = 1 + max((int(c["id"][1:]) for c in comments if str(c.get("id", "")).startswith("c")), default=0)
         c = {
-            "id": f"c{number}",
+            "id": uuid.uuid4().hex[:12],
             "path": path,
             "line": line,
             "start_line": start_line,
@@ -148,7 +149,7 @@ def reply(ref: PullRef, comment_id: str, body: str) -> dict:
 
 
 def delete(ref: PullRef, comment_id: str) -> dict:
-    """Drop a comment, and answer what the page reads."""
+    """Drop a comment. Answers whether a session listens, and the comments left."""
     with lock:
         comments = read(ref)
         comments.remove(find(comments, comment_id))
