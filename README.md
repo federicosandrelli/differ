@@ -26,8 +26,10 @@ pull requests that matter to you, in sections:
   above.
 
 Each card shows, in pills, what is happening with the pull request,
-such as failed CI, conflicts, new comments or the reviewers it waits on. An empty
-section is left out, and a section closed with its chevron stays closed. The page draws the sections from
+such as failed CI, conflicts, new comments or the reviewers it waits on. Each
+column lists the most urgent pull requests first: the ones that need your action or
+your review come first, and the newest come first among equals. An empty column
+shows None. The page draws the sections from
 GitHub's last answer at once, and asks GitHub again when it loads and each
 time its tab comes to the front, at most every 30 seconds. Paste any PR URL or
 `owner/repo#123` to open another. Opening a pull request from the start page opens it in a tab, or

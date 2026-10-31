@@ -486,8 +486,8 @@ def footer_html(board: Board) -> str:
 
 def column_html(column: Column, board: Board) -> str:
     """A column: its label and the count of the rows of its sections, with a plus when one of them is full, then the
-    rows of its sections as one list keyed by its first section, the most urgent section first, each section newest
-    first. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary."""
+    rows of its sections as one list keyed by its first section, the most urgent section first, each section in the
+    board's order. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary."""
     rows = [r for key in column.sections for r in board["sections"].get(key) or []]
     full = any(key in board["full"] for key in column.sections)
     head = f"<h3>{html.escape(column.label)}{count_html(len(rows), full)}</h3>"
@@ -540,8 +540,8 @@ def sections_html(on: list[str] | None = None) -> str:
     pull requests and one for other people's, each a row of columns, their widths in the shares the columns name, with
     its folded columns under the row; then the pull requests opened today and missing from every section, then the
     footer. The board shows the rows of the followed repositories that `on` names, or every row when `on` names no
-    followed repository. A full section keeps its plus while the board shows only some repositories when it still
-    has rows."""
+    followed repository. A full section adds a plus to its column's count while the board shows only some
+    repositories when it still has rows."""
     board = load()
     chosen = [name for name in board["repos"] if name in (on or [])]
 

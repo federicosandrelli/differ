@@ -424,7 +424,7 @@ def test_html_splits_each_row_in_shares_and_folds_the_merged_column_under_it() -
     assert column_counts(page) == ["0", "1", "1", "0", "0", "0"]
 
 
-def test_html_adds_a_plus_to_the_count_of_a_full_section_and_its_column() -> None:
+def test_html_adds_a_plus_to_the_count_of_a_column_with_a_full_section() -> None:
     save(board.classify(ME, [[pr(1), pr(2, ci="FAILURE")], [], [], [], []], []), full=("action",))
     page = board.sections_html()
     assert column_counts(page)[1] == "2+"
