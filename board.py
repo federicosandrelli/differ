@@ -30,12 +30,12 @@ NONE_HTML = '<span class="hint none">None</span>'
 
 
 class Column(NamedTuple):
-    """A column of the start page: its label, its sections as (key, subtitle) pairs, the subtitle empty when the column
-    has one section, its share of the row's width, whether its rows are quiet, and whether it is folded: drawn under
-    the row, closed until the reader opens it."""
+    """A column of the start page: its label, the keys of its sections, most urgent first, its share of the row's
+    width, whether its rows are quiet, and whether it is folded: drawn under the row, closed until the reader opens
+    it."""
 
     label: str
-    sections: tuple[tuple[str, str], ...]
+    sections: tuple[str, ...]
     share: int = 1
     quiet: bool = False
     folded: bool = False
@@ -45,24 +45,17 @@ GROUPS = (
     (
         "Your pull requests",
         (
-            Column("Drafts", (("draft", ""),), share=3),
-            Column(
-                "In review",
-                (("action", "Needs your action"), ("ci", "Waiting on CI"), ("review", "Waiting on review")),
-                share=7,
-            ),
-            Column("Merged today", (("merged", ""),), quiet=True, folded=True),
+            Column("Drafts", ("draft",), share=3),
+            Column("In review", ("action", "ci", "review"), share=7),
+            Column("Merged today", ("merged",), quiet=True, folded=True),
         ),
     ),
     (
         "Other people's pull requests",
         (
-            Column("Need a reviewer", (("unreviewed", ""),)),
-            Column(
-                "Being reviewed",
-                (("reviewing", "Waiting on your review"), ("reviewed", "By you"), ("others", "By someone else")),
-            ),
-            Column("Merged today", (("merged_others", ""),), quiet=True, folded=True),
+            Column("Need a reviewer", ("unreviewed",)),
+            Column("Being reviewed", ("reviewing", "reviewed", "others")),
+            Column("Merged today", ("merged_others",), quiet=True, folded=True),
         ),
     ),
 )
@@ -294,9 +287,7 @@ def row(pr: dict, reasons: list[Reason]) -> Row:
 def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str, list[Row]]:
     """The rows of each section from the answers to `queries`, in its order, each section newest first. A pull
     request shows in one section only."""
-    sections: dict[str, list[Row]] = {
-        key: [] for _, columns in GROUPS for column in columns for key, _ in column.sections
-    }
+    sections: dict[str, list[Row]] = {key: [] for _, columns in GROUPS for column in columns for key in column.sections}
     open_mine, merged, asked, involved, reviewed, *rest = found
     followed_open, merged_others = rest or ([], [])
     for pr in open_mine:
@@ -473,13 +464,12 @@ def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
     )
 
 
-def section_html(key: str, subtitle: str, rows: list[Row], full: bool, viewer: str, quiet: bool) -> str:
-    """A section: its subtitle and count when it has a subtitle, then its cards, all but the first SHOWN hidden,
-    and a "Show N more" button when some are hidden, or None when it has no rows."""
-    head = f"<h4>{html.escape(subtitle)}{count_html(len(rows), full)}</h4>" if subtitle else ""
+def list_html(key: str, rows: list[Row], viewer: str, quiet: bool) -> str:
+    """A list of cards keyed by `key`, all but the first SHOWN hidden, and a "Show N more" button when some are
+    hidden, or None without rows."""
     cards = "".join(card_html(r, viewer, quiet, i >= SHOWN) for i, r in enumerate(rows))
     more = f'<button class="ghost more">Show {len(rows) - SHOWN} more</button>' if len(rows) > SHOWN else ""
-    return f'<section class="sub" data-key="{key}">{head}{cards or NONE_HTML}{more}</section>'
+    return f'<section class="sub" data-key="{key}">{cards or NONE_HTML}{more}</section>'
 
 
 def footer_html(board: Board) -> str:
@@ -495,19 +485,17 @@ def footer_html(board: Board) -> str:
 
 
 def column_html(column: Column, board: Board) -> str:
-    """A column: its label and the count of the rows of its sections, with a plus when one of them is full, then its
-    sections. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary."""
-    lists = [
-        (key, subtitle, board["sections"].get(key) or [], key in board["full"]) for key, subtitle in column.sections
-    ]
-    total = sum(len(rows) for _, _, rows, _ in lists)
-    full = any(full for _, _, _, full in lists)
-    head = f"<h3>{html.escape(column.label)}{count_html(total, full)}</h3>"
-    body = "".join(section_html(*section, board["viewer"], column.quiet) for section in lists)
+    """A column: its label and the count of the rows of its sections, with a plus when one of them is full, then the
+    rows of its sections as one list keyed by its first section, the most urgent section first, each section in the
+    board's order. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary."""
+    rows = [r for key in column.sections for r in board["sections"].get(key) or []]
+    full = any(key in board["full"] for key in column.sections)
+    head = f"<h3>{html.escape(column.label)}{count_html(len(rows), full)}</h3>"
+    body = list_html(column.sections[0], rows, board["viewer"], column.quiet)
     classes = f'class="column{" quiet" if column.quiet else ""}"'
     if column.folded:
         return (
-            f'<details class="folded" data-key="{column.sections[0][0]}"><summary>{CHEVRON_SVG}{head}</summary>'
+            f'<details class="folded" data-key="{column.sections[0]}"><summary>{CHEVRON_SVG}{head}</summary>'
             f"<div {classes}>{body}</div></details>"
         )
     return f"<div {classes}>{head}{body}</div>"
@@ -529,7 +517,7 @@ def repos_html(board: Board, on: list[str]) -> str:
             "requests come from the repositories you follow.</span>"
             '<button class="ghost" data-settings="repositories">Follow a repository</button></div>'
         )
-    counted = [key for _, columns in GROUPS for c in columns if not c.folded for key, _ in c.sections]
+    counted = [key for _, columns in GROUPS for c in columns if not c.folded for key in c.sections]
     short = [name.split("/", 1)[1] for name in board["repos"]]
     toggles = []
     for name, repo in zip(board["repos"], short, strict=True):
@@ -552,8 +540,8 @@ def sections_html(on: list[str] | None = None) -> str:
     pull requests and one for other people's, each a row of columns, their widths in the shares the columns name, with
     its folded columns under the row; then the pull requests opened today and missing from every section, then the
     footer. The board shows the rows of the followed repositories that `on` names, or every row when `on` names no
-    followed repository. A full section keeps its plus while the board shows only some repositories when it still
-    has rows."""
+    followed repository. A full section adds a plus to its column's count while the board shows only some
+    repositories when it still has rows."""
     board = load()
     chosen = [name for name in board["repos"] if name in (on or [])]
 
