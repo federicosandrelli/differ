@@ -328,9 +328,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Upgrade", "websocket")
         self.send_header("Connection", "Upgrade")
         self.send_header("Sec-WebSocket-Accept", websocket.accept_key(key))
-        # A client that offers subprotocols refuses an answer without one.
-        if offered := self.headers.get("Sec-WebSocket-Protocol"):
-            self.send_header("Sec-WebSocket-Protocol", offered.split(",")[0].strip())
         self.end_headers()
         self.close_connection = True
         out = threading.Lock()

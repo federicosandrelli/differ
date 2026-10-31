@@ -1,8 +1,9 @@
 // The comments the reader sends to the Claude Code session that works on the pull request instead of to GitHub, the
 // threads they show as, and the sidebar footer that says whether a session listens for them.
 
-// CL holds the server's answer to /claude. `started` and `applied` count the loads as LOADS does for the comments, and
-// `copied` is when the reader last copied the connect prompt.
+// CL holds the server's answer to /claude, and `error` why the reader's last action on it failed, until the next one.
+// `started` and `applied` count the loads as LOADS does for the comments, and `copied` is when the reader last copied
+// the connect prompt.
 const CL = { loaded: false, listening: false, comments: [], error: '', timer: 0, started: 0, applied: 0, copied: 0 };
 const CLAUDE_POLL_MS = 5000;
 const CLAUDE_KEY = 'dr:claude';
@@ -16,12 +17,11 @@ async function loadClaude() {
   clearTimeout(CL.timer); CL.timer = 0;
   if (!claudeOn()) return;
   const load = ++CL.started;
-  let d = null, error = '';
-  try { d = await api('claude'); } catch (e) { error = e.message; }
+  let d = null;
+  try { d = await api('claude'); } catch { /* the next load tries again */ }
   if (load < CL.applied) return;
   CL.applied = load;
   if (d) applyClaude(d);
-  else if (CL.error !== error) { CL.error = error; renderSide(); }
   pollClaude();
 }
 // Load the comments for Claude again in CLAUDE_POLL_MS, or later while the page is hidden.
@@ -30,8 +30,8 @@ function pollClaude() {
 }
 // Show the server's answer: the threads when the comments changed, else the footer when the session came or went.
 function applyClaude(d) {
-  const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening || !!CL.error;
-  Object.assign(CL, d, { loaded: true, error: '' });
+  const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
+  Object.assign(CL, d, { loaded: true });
   if (threads) { threadsChanged(); render(); } else if (footer) renderSide();
 }
 // The setting changed in the settings of the shell, which share this page's storage.
@@ -53,7 +53,8 @@ async function sendToClaude(c) {
   try {
     applyClaude(await api('claude', body));
   } catch (e) {
-    CL.error = e.message;
+    CL.error = `Send to Claude: ${e.message}`;
+    c.claude = true;
     restoreCompose(c);
   } finally { state.busy = false; }
   render();
@@ -92,6 +93,7 @@ function claudeFootHtml() {
 const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-connect]';
 async function claudeClick(t) {
   const d = t.dataset;
+  CL.error = '';
   if (d.claudeConnect !== undefined) {
     try { await navigator.clipboard.writeText(connectPrompt()); } catch (e) { CL.error = `Could not copy the prompt: ${e.message}`; renderSide(); return; }
     CL.copied = Date.now(); renderSide();

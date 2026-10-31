@@ -13,13 +13,15 @@ code when the comment asks for a change.
 ## Connect
 
 1. Find the WebSocket URL. The connect prompt names it:
-   `ws://127.0.0.1:<port>/api/<owner>/<repo>/<number>/listen`. Without a URL, read the pull request of the current
-   branch with `gh pr view --json url` (`https://github.com/<owner>/<repo>/pull/<number>`), and use port 8765.
+   `ws://127.0.0.1:<port>/api/<owner>/<repo>/<number>/listen`. Use its port everywhere below. Without a URL, read the
+   pull request of the current branch with `gh pr view --json url` (`https://github.com/<owner>/<repo>/pull/<number>`),
+   and try port 8766, where the differ desktop app serves, then 8765, where `server.py` serves by default. The desktop
+   app takes another port when 8766 is taken; then ask the user for the connect prompt.
 2. Arm the monitor:
 
    ```
    Monitor({
-     ws: { url: "ws://127.0.0.1:8765/api/<owner>/<repo>/<number>/listen" },
+     ws: { url: "ws://127.0.0.1:<port>/api/<owner>/<repo>/<number>/listen" },
      description: "differ comments on <owner>/<repo>#<number>",
      timeout_ms: 3600000
    })
@@ -34,7 +36,7 @@ Comments that the reader sent while no session listened arrive as soon as the mo
 A comment arrives as one text frame:
 
 ```json
-{"event": "comment", "pr": "acme/widgets#12", "id": "c3", "path": "src/app.py", "line": 11, "start_line": null,
+{"event": "comment", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "path": "src/app.py", "line": 11, "start_line": null,
  "side": "RIGHT", "commit": "<sha>", "code": ["    print(\"hello\")"], "body": "Use a logger here", "replay": false}
 ```
 
@@ -55,10 +57,10 @@ Send the reply with `curl`. differ refuses a POST without its own Origin header 
 JSON, with quotes, backslashes and new lines escaped:
 
 ```bash
-curl -sS -X POST "http://127.0.0.1:8765/api/<owner>/<repo>/<number>/claude_reply" \
-  -H "Origin: http://127.0.0.1:8765" -H "Content-Type: application/json" \
+curl -sS -X POST "http://127.0.0.1:<port>/api/<owner>/<repo>/<number>/claude_reply" \
+  -H "Origin: http://127.0.0.1:<port>" -H "Content-Type: application/json" \
   --data-binary @- <<'EOF'
-{"id": "c3", "body": "Replaced the print with `log.info`."}
+{"id": "5f0c2a9e41b7", "body": "Replaced the print with `log.info`."}
 EOF
 ```
 

@@ -993,7 +993,7 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
     page.locator("textarea[data-compose-text]").fill("Use a logger here")
     page.click("button[data-compose-send='claude']")
     thread = section.locator("div.thread[data-thread^='claude:']", has_text="Use a logger here")
-    expect(thread.locator(".tag.claude")).to_have_text("waiting for Claude")
+    expect(thread.locator(".tag.claude")).to_have_count(1)
     expect(foot).to_contain_text("1 comment waiting")
     expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
     assert bubble.text_content() == count

@@ -212,7 +212,7 @@ function outdatedHtml(f) {
 function commentNotices() {
   if (!API) return '';
   const refused = [...state.drafts].filter(([, d]) => d.refused).map(([key, d]) =>
-    `<div class="notice">GitHub refused your comment on line ${d.line} of ${esc(d.path.split('/').pop())}. It is a draft on its line · <a href="#" data-draft-open="${esc(key)}">open it</a></div>`).join('');
+    `<div class="notice">${d.claude ? 'differ could not send your comment' : 'GitHub refused your comment'} on line ${d.line} of ${esc(d.path.split('/').pop())}${d.claude ? ' to Claude' : ''}. It is a draft on its line · <a href="#" data-draft-open="${esc(key)}">open it</a></div>`).join('');
   return commentsStatus() + refused;
 }
 function commentsStatus() {
@@ -270,7 +270,7 @@ const draftKey = (path, side, line) => `${side}:${line}:${path}`;
 function takeDraft(path, side, line) {
   const key = draftKey(path, side, line), d = state.drafts.get(key);
   state.drafts.delete(key);
-  if (d) delete d.refused;
+  if (d) { delete d.refused; delete d.claude; }
   return d;
 }
 function openCompose(path, side, line, extend) {
