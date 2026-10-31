@@ -132,10 +132,9 @@ The same pages in a native window, with the tab strip across the title bar.
 The Tauri shell in `src-tauri/` starts `server.py` as a child process on port
 8766 (or a free port when that one is taken), opens the window on it, and stops
 the server when the app quits (the server also exits on its own if the app
-dies). The server's stderr goes to `~/Library/Logs/differ/server.log`, and
-the bug report names that file. The page keeps its settings in
-the webview's `localStorage`, so the fixed port is what makes them survive a
-relaunch. Links to GitHub open in the system browser. Cmd+Option+Left and
+dies). The server's stderr goes to `~/Library/Logs/differ/server.log`. The page
+keeps its settings in the webview's `localStorage`, so the fixed port is
+what makes them survive a relaunch. Links to GitHub open in the system browser. Cmd+Option+Left and
 Cmd+Option+Right step between the tabs. Cmd+Plus and Cmd+Minus zoom the pages
 in steps from 50% to 200%, Cmd+0 resets the zoom, and the zoom survives a
 relaunch; the tab strip keeps its size.
@@ -304,7 +303,7 @@ editors open, stay too.
   row; `35-marks.js` the search matches and word changes marked inside a
   line; `40-code.js` draws that view as the diff table; `50-comments.js` the
   review threads and forms; `55-merge.js` the merge button and panel; `60-overview.js` the overview; `70-sidebar.js` the tree;
-  `75-bugreport.js` the bug report prompt; `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
+  `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its
   header; its diff table is cut into chunks of 100 rows that hold their rows
   only while they are near the viewport and keep their height when emptied, so
@@ -378,14 +377,3 @@ the shortcuts, the rules that sort files into documentation, tests and
 implementation, the lines the page folds, the files it hides, the editors it
 knows, the cache on disk, and the version. Escape, the close button or a click
 outside the window closes it.
-
-## Reporting a bug
-
-"Report a bug" under the file tree takes a description of the issue and
-turns it into a prompt for Claude Code, shown in the sidebar and copied to the
-clipboard. The prompt holds the description, the page's address and pull
-request, the file and row in view, the page's state, the comments' state, the
-last clicks and keys, the errors since the page loaded (with page line
-numbers mapped back to the source files), the differ commit the page was
-built from, and how to run the app. Paste it into a Claude Code session
-opened in this repository.

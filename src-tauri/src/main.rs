@@ -59,24 +59,8 @@ fn log_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-// The server appends its stderr here, so a bug report from the app can point at the server side of a failure.
 fn server_log() -> Option<PathBuf> {
     Some(log_dir()?.join("server.log"))
-}
-
-// Names the server log in every page, so the bug report can quote the path.
-fn log_script(log: Option<&PathBuf>) -> String {
-    match log {
-        Some(path) => {
-            let quoted = path
-                .display()
-                .to_string()
-                .replace('\\', "\\\\")
-                .replace('"', "\\\"");
-            format!("window.differServerLog = \"{quoted}\";")
-        }
-        None => String::new(),
-    }
 }
 
 const PYTHON_REQUIRED: (u32, u32) = (3, 13);
@@ -276,7 +260,6 @@ fn main() {
                     // Centred on the 40px tab strip the shell draws across the title bar.
                     .traffic_light_position(LogicalPosition::new(13.0, 20.0))
                     .initialization_script(PAGE_SETUP)
-                    .initialization_script_for_all_frames(log_script(log.as_ref()))
                     .on_navigation(move |target| {
                         let is_local =
                             target.host_str() == local.host_str() && target.port() == local.port();

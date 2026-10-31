@@ -48,7 +48,7 @@ def test_the_settings_show_the_editors_the_patterns_the_generated_rules_the_cach
     monkeypatch.setattr(build, "CACHE", tmp_path)
     (tmp_path / "pages").mkdir()
     (tmp_path / "pages" / "p.html").write_bytes(b"x" * 2500)
-    monkeypatch.setattr(render, "app_info", lambda: {"commit": "abc1234", "dirty": True, "built": ""})
+    monkeypatch.setattr(render, "app_info", lambda: {"commit": "abc1234", "dirty": True})
     html = settings.settings_html()
     for editor in editors.known():
         assert editor.name in html
@@ -74,12 +74,12 @@ def test_the_settings_show_the_editors_the_patterns_the_generated_rules_the_cach
 
 
 def test_the_settings_omit_the_commit_when_git_cannot_tell(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(render, "app_info", lambda: {"commit": "", "dirty": False, "built": ""})
+    monkeypatch.setattr(render, "app_info", lambda: {"commit": "", "dirty": False})
     assert "commit" not in settings.settings_html().split('<p class="about')[1]
 
 
 def test_the_settings_carry_the_followed_repositories(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(render, "app_info", lambda: {"commit": "", "dirty": False, "built": ""})
+    monkeypatch.setattr(render, "app_info", lambda: {"commit": "", "dirty": False})
     assert 'data-repos="[]"' in settings.settings_html()
     followed.save(["acme/widgets", "acme/tools"])
     assert 'data-repos="[&quot;acme/widgets&quot;, &quot;acme/tools&quot;]"' in settings.settings_html()

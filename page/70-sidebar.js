@@ -105,11 +105,11 @@ function renderSide() {
     <div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
-    <div class="list" tabindex="0">${renderList()}</div>${bugFootHtml()}<div class="grip"></div>`;
+    <div class="list" tabindex="0">${renderList()}</div><div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
   const ae = document.activeElement;
-  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : ae.dataset.bugText !== undefined ? '[data-bug-text]' : null);
+  const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : null);
   const selection = focused && focused !== '.list' ? [ae.selectionStart, ae.selectionEnd, ae.selectionDirection] : null;
   const side = document.getElementById('side'), typing = focused ? null : focusedBox(side);
   keepBoxHeights(side);

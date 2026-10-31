@@ -16,7 +16,6 @@ import json
 import re
 import sys
 import urllib.parse
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -415,13 +414,12 @@ def app_info() -> dict:
     return {
         "commit": git("rev-parse", "--short", "HEAD") if own else "",
         "dirty": own and bool(git("--no-optional-locks", "status", "--porcelain")),
-        "built": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
 
 def render_page(classified: dict, pr: dict) -> str:
     """The review page of a pull request: its classified diff, and the pull request as build.py describes it."""
-    data = {**classified, "pr": pr, "app": app_info()}
+    data = {**classified, "pr": pr}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{pr['number']} {pr['title']}"
     js = "\n".join(f"// ---- {path.relative_to(ROOT)}\n{path.read_text()}" for path in page_scripts())

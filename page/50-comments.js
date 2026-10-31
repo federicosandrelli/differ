@@ -37,9 +37,8 @@ async function loadComments() {
 }
 // Whether the page holds text the user typed that GitHub has yet to take. Closing the page's tab would lose it.
 function hasDraft() {
-  const b = state.bug;
   return !!((state.compose && state.compose.text.trim()) || state.drafts.size || [...state.replyOpen.values()].some(t => t.trim())
-    || state.reviewText.trim() || state.convText.trim() || Object.values(state.mergeText).some(t => t.trim()) || (b.open && !b.prompt && b.text.trim())
+    || state.reviewText.trim() || state.convText.trim() || Object.values(state.mergeText).some(t => t.trim())
     || sendingComments.some(s => s.comment.sending));
 }
 // Send an action to GitHub. Returns GitHub's answer, or null when GitHub refused the action, with the reason in C.error.
@@ -92,9 +91,6 @@ function localThread(c, comment) {
     start_line: start, side: c.side, start_side: start && c.side, original_line: c.line, original_start_line: start, comments: [comment] };
 }
 function threadsChanged() { C.version++; indexThreads(); }
-// The comments being sent, without their text, and the loads.
-const sendingSummary = () => sendingComments.map(s => ({ thread: s.thread ? s.thread.id : null, replyTo: s.replyTo ?? null, taken: !s.comment.sending, takenAtLoad: s.takenAtLoad ?? null }));
-const loadsSummary = () => `load ${LOADS.applied} of ${LOADS.started}`;
 
 // GitHub's threads with the comments being sent: replies at the end of their threads, then the new threads.
 function shownThreads() {
@@ -347,7 +343,7 @@ function fillBoxes(el) {
 function textareaKey(e) {
   const form = e.target.closest('.form');
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
-  else if (e.key === 'Escape') { const b = form && form.querySelector('[data-bug-cancel]'); if (b) b.click(); else e.target.blur(); }
+  else if (e.key === 'Escape') e.target.blur();
 }
 const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open]';
 // Handle a click on a comment control; true when the element was one.

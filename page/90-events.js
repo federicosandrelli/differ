@@ -34,8 +34,6 @@ function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.
 function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); renderKeepingHeader(f); }
 
 document.addEventListener('click', (e) => {
-  const bug = e.target.closest(BUG_ATTRS);
-  if (bug) { e.preventDefault(); bugClick(bug); return; }
   // A click anywhere but on the open editor menu or its button closes the menu, and does what it would do anyway.
   if (EDITOR.menu !== null && !e.target.closest('.editor-pick')) { EDITOR.menu = null; render(); }
   if (state.mergeMenu && !e.target.closest('.merge-pick')) { state.mergeMenu = false; renderSide(); }
@@ -81,7 +79,6 @@ document.addEventListener('input', (e) => {
   if (d.reviewText !== undefined) { state.reviewText = box.value; const b = document.querySelector('[data-submit="REQUEST_CHANGES"]'); if (b) updateRequestChanges(b); return; }
   if (d.convText !== undefined) { state.convText = box.value; return; }
   if (d.mergeText !== undefined) { state.mergeText[d.mergeText] = box.value; return; }
-  if (d.bugText !== undefined) { state.bug.text = box.value; return; }
   if (!box.classList.contains('search')) return;
   state.q = box.value.trim(); state.hit = null;
   render();

@@ -31,7 +31,6 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     data = json.loads(payload)
     assert data["files"][0]["content"] == "<script></script>"
     assert data["pr"] == PR
-    assert set(data["app"]) == {"commit", "dirty", "built"}
     markers = [line for line in html.splitlines() if line.startswith("// ---- ")]
     assert markers[:2] == ["// ---- page/vendor/highlight.min.js", "// ---- shell/frame.js"]
     assert markers[2:] == sorted(f"// ---- page/{p.name}" for p in render.PAGE_DIR.glob("*.js"))
