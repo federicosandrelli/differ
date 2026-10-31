@@ -193,7 +193,7 @@ def test_auto_merge_turns_on_with_the_method_and_off(monkeypatch: pytest.MonkeyP
 
 @pytest.mark.parametrize(
     ("action", "mutation"),
-    [("close", "closePullRequest"), ("reopen", "reopenPullRequest"), ("ready", "markPullRequestReadyForReview")],
+    [("reopen", "reopenPullRequest"), ("ready", "markPullRequestReadyForReview")],
 )
 def test_move_sends_the_mutation_of_its_action(monkeypatch: pytest.MonkeyPatch, action: str, mutation: str) -> None:
     sent = mutations(monkeypatch)

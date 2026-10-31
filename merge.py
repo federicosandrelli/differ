@@ -5,7 +5,7 @@ Usage: merge.py <owner>/<repo>#<number>   prints the merge state as JSON
 
 The merge state is what the author of a pull request needs to merge it: its checks on the head commit, the review
 decision, whether GitHub can merge it, its auto-merge request, and the merge methods the repository allows. The
-actions are merge, turning auto-merge on and off, close, reopen, mark ready for review, and re-run the failed jobs of
+actions are merge, turning auto-merge on and off, reopen, mark ready for review, and re-run the failed jobs of
 a workflow run.
 """
 
@@ -215,14 +215,13 @@ mutation($pr: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID!, $headl
 
 # The mutation that moves a pull request to each status the page can ask for.
 MOVES = {
-    "close": "closePullRequest",
     "reopen": "reopenPullRequest",
     "ready": "markPullRequestReadyForReview",
 }
 
 
 def move(ref: PullRef, action: str) -> dict:
-    """Close the pull request, reopen it, or mark it ready for review: an action of MOVES."""
+    """Reopen the pull request, or mark it ready for review: an action of MOVES."""
     name = MOVES[action]
     graphql("mutation($pr: ID!) { %s(input: {pullRequestId: $pr}) { pullRequest { id } } }" % name, pr=_pr_id(ref))
     return {action: True}

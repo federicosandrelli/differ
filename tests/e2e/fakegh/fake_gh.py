@@ -17,7 +17,7 @@ or fails when it has none.
 query from merge<n>.json, over a merge state without checks; any other read query from comments.json, with the
 status of pr<n>.json. A mutation waits while hold.txt exists, then fails when fail.txt lists it by then, else is
 appended to mutations.log. A review posted with threads and a reply add their comments to comments.json, so the page
-sees what it sent, and the answer holds the new comment's id. A merge, a close, a reopen or a mark ready moves the
+sees what it sent, and the answer holds the new comment's id. A merge, a reopen or a mark ready moves the
 status in pr<n>.json, and turning auto-merge on or off changes merge<n>.json.
 `gh api -X POST <endpoint>` does nothing.
 """
@@ -87,7 +87,6 @@ def merge_state(number: object) -> dict:
 # The status fields each mutation that moves a pull request sets in its pr<n>.json.
 MOVES = {
     "mergePullRequest(": {"state": "MERGED"},
-    "closePullRequest(": {"state": "CLOSED"},
     "reopenPullRequest(": {"state": "OPEN"},
     "markPullRequestReadyForReview(": {"isDraft": False},
 }

@@ -83,8 +83,7 @@ failed check, a button that re-runs its failed jobs and a link to its logs.
 It shows the review decision, and a box for the squash or merge commit
 message; left empty, GitHub writes its default message. Its buttons merge with the method chosen in the ⋮ menu (kept
 per repository), turn auto-merge on while GitHub blocks the merge (for example while required
-checks run) or off again, close,
-reopen, or mark a draft ready for review. A merge names the head commit the
+checks run) or off again, reopen, or mark a draft ready for review. A merge names the head commit the
 page shows, so GitHub refuses it when the branch has moved. While a check runs,
 the panel asks GitHub again every 20 seconds.
 
@@ -327,7 +326,7 @@ editors open, stay too.
   comments through GitHub's GraphQL API.
 - `merge.py` reads the merge state of a pull request (its checks, review
   decision, mergeability, auto-merge request and merge methods) and merges,
-  turns auto-merge on or off, closes, reopens, marks ready, and re-runs failed
+  turns auto-merge on or off, reopens, marks ready, and re-runs failed
   jobs.
 - `github.py` is the one place that talks to GitHub: every `gh` command the
   app runs goes through its `gh`, and it holds `PullRef`, the name of a pull

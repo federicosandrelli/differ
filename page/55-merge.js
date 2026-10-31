@@ -1,5 +1,5 @@
 // The merge state of the viewer's own pull request, the merge button that names where it stands, and the merge
-// panel: its checks, its review, and the actions that merge, turn auto-merge on or off, close, reopen or mark ready.
+// panel: its checks, its review, and the actions that merge, turn auto-merge on or off, reopen or mark ready.
 
 // M holds GitHub's answer to /merge once it has loaded; `error` holds why the last load or action failed. `started`
 // and `applied` count the loads as LOADS does for the comments, and `rerunAt` is when the reader last re-ran a check.
@@ -166,20 +166,19 @@ function mergeBlock() {
 }
 function mergeActions() {
   const status = prStatus(), method = mergeMethod(), base = esc(M.base), off = state.busy ? 'disabled' : '';
-  const close = `<span class="spacer"></span><button class="ghost" data-merge-do="close" ${off}>Close</button>`;
   if (status === 'closed') return { buttons: `<button data-merge-do="reopen" ${off}>Reopen</button>`, hint: '' };
-  if (status === 'draft') return { buttons: `<button class="primary" data-merge-do="ready" ${off}>Ready for review</button>${close}`, hint: 'GitHub asks the reviewers once the pull request is ready.' };
-  if (M.auto_merge) return { buttons: `<button data-merge-do="autooff" ${off}>Disable auto-merge</button>${close}`, hint: '' };
+  if (status === 'draft') return { buttons: `<button class="primary" data-merge-do="ready" ${off}>Ready for review</button>`, hint: '' };
+  if (M.auto_merge) return { buttons: `<button data-merge-do="autooff" ${off}>Disable auto-merge</button>`, hint: '' };
   const conflicts = M.mergeable === 'CONFLICTING', running = runningChecks().length;
   // Auto-merge waits for what blocks the merge now: a running check or a rule of the base branch. GitHub refuses it
   // for a pull request it can merge now.
   if (M.auto_merge_allowed && M.merge_state === 'BLOCKED' && !conflicts && !failedChecks().some(c => c.required)) {
     const until = running ? `the ${running === 1 ? 'running check passes' : `${running} running checks pass`}` : `the rules of ${base} pass`;
-    return { buttons: `${methodPick('Enable auto-merge', 'autoon', false)}${close}`, hint: `Auto-merge ${METHODS[method].auto} ${base} once ${until}.` };
+    return { buttons: `${methodPick('Enable auto-merge', 'autoon', false)}`, hint: `Auto-merge ${METHODS[method].auto} ${base} once ${until}.` };
   }
   const block = mergeBlock();
   const hint = conflicts ? '' : block ? `<span class="err">${esc(block)}</span>` : `${METHODS[method].does(M.commits, base)}${M.delete_branch ? ' and deletes the branch' : ''}.`;
-  return { buttons: `${methodPick(METHODS[method].label, 'merge', !mergesNow() || !!block)}${close}`, hint };
+  return { buttons: `${methodPick(METHODS[method].label, 'merge', !mergesNow() || !!block)}`, hint };
 }
 function mergePanelHtml() {
   const status = prStatus();
@@ -211,6 +210,6 @@ async function mergeClick(t) {
       break;
     case 'autoon': await mergeSend('automerge', { on: true, method, head: PR.head, ...mergeMessage(method) }); break;
     case 'autooff': await mergeSend('automerge', { on: false }); break;
-    case 'close': case 'reopen': case 'ready': await mergeSend(d.mergeDo, {}); break;
+    case 'reopen': case 'ready': await mergeSend(d.mergeDo, {}); break;
   }
 }
