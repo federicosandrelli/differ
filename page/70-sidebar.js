@@ -105,7 +105,7 @@ function renderSide() {
     <div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
-    <div class="list" tabindex="0">${renderList()}</div><div class="grip"></div>`;
+    <div class="list" tabindex="0">${renderList()}</div>${claudeFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
   const ae = document.activeElement;

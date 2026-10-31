@@ -263,7 +263,17 @@ def pr_icon(status: str) -> str:
 
 
 ReasonKind = Literal[
-    "x-circle", "clock", "check-circle", "warning", "comment", "eye", "pencil", "person", "person-plus", "check"
+    "x-circle",
+    "clock",
+    "check-circle",
+    "warning",
+    "comment",
+    "eye",
+    "pencil",
+    "person",
+    "person-plus",
+    "check",
+    "claude",
 ]
 # The icon of each kind of reason why a pull request sits in its section, as the inner paths of a 24×24 stroked SVG.
 REASON_ICONS: dict[ReasonKind, str] = {
@@ -277,6 +287,7 @@ REASON_ICONS: dict[ReasonKind, str] = {
     "person": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     "person-plus": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 4v4M21 6h-4"/>',
     "check": '<path d="m5 12 5 5 9-10"/>',
+    "claude": '<path d="M12 3v5M12 16v5M3 12h5M16 12h5M5.6 5.6l3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6"/>',
 }
 
 

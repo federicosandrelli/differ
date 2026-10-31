@@ -75,6 +75,30 @@ reply box only leaves the box, and keeps it open with its text. A comment box
 with text stays as a draft when another line's box opens, and comes back when
 the last line number of its range is clicked again.
 
+## Comments for Claude
+
+A comment on a line can go to the Claude Code session that works on the pull
+request instead of GitHub: "Send to Claude" in the comment box sends it. It
+shows in a thread on its line, tagged "waiting for Claude" until a session
+has it and "sent to Claude" until Claude replies; Claude's reply shows under
+it, and "delete" removes the thread. A thread written on an older head commit
+is listed with the outdated threads of its file. The footer of the sidebar
+says whether a session listens, and while none does, its "Copy connect
+prompt" button copies the words to paste into the session. The comments wait
+in the cache (`claude/` in it) for a session, and go to it when it connects.
+
+The session needs the differ plugin from this repository, installed once:
+
+```sh
+claude plugin install differ --marketplace federicosandrelli/differ
+```
+
+Its skill, `claude-plugin/skills/differ-comments/SKILL.md`, has the session
+open a WebSocket to `/api/<owner>/<repo>/<number>/listen` with its Monitor
+tool, one session per pull request, and answer each comment with a POST to
+`claude_reply`. The Claude section of the settings turns the feature off for
+every page; it is on by default.
+
 ## Merging
 
 On a pull request you opened, the sidebar's button says where it stands
@@ -302,7 +326,7 @@ editors open, stay too.
   file: its rows, blocks and folds, and `reveal`, which opens whatever hides a
   row; `35-marks.js` the search matches and word changes marked inside a
   line; `40-code.js` draws that view as the diff table; `50-comments.js` the
-  review threads and forms; `55-merge.js` the merge button and panel; `60-overview.js` the overview; `70-sidebar.js` the tree;
+  review threads and forms; `52-claude.js` the comments for Claude and the sidebar footer; `55-merge.js` the merge button and panel; `60-overview.js` the overview; `70-sidebar.js` the tree;
   `80-main.js` the main pane; `90-events.js` the event handlers and start-up.
 - The main pane keeps one section per shown file. A section always has its
   header; its diff table is cut into chunks of 100 rows that hold their rows
@@ -375,5 +399,5 @@ a text that names no repository shows an error under the fields, saves
 nothing, and puts the fields back to the saved list. The sections below show
 the shortcuts, the rules that sort files into documentation, tests and
 implementation, the lines the page folds, the files it hides, the editors it
-knows, the cache on disk, and the version. Escape, the close button or a click
+knows, whether comments can go to Claude, the cache on disk, and the version. Escape, the close button or a click
 outside the window closes it.
