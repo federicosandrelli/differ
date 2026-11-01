@@ -90,12 +90,25 @@ function claudeFootHtml() {
 }
 
 // ---------- actions
+// Copy the text through the Clipboard API, else through a selected textarea, which some embedded browsers allow when
+// they refuse the API. False when both fail.
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* try the textarea */ }
+  const box = document.createElement('textarea'), prev = document.activeElement;
+  box.value = text; box.readOnly = true; box.style.position = 'fixed'; box.style.opacity = '0';
+  document.body.appendChild(box); box.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { /* ok stays false */ }
+  box.remove();
+  if (prev && prev.focus) prev.focus({ preventScroll: true });
+  return ok;
+}
 const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-connect]';
 async function claudeClick(t) {
   const d = t.dataset;
   CL.error = '';
   if (d.claudeConnect !== undefined) {
-    try { await navigator.clipboard.writeText(connectPrompt()); } catch (e) { CL.error = `Could not copy the prompt: ${e.message}`; renderSide(); return; }
+    if (!await copyText(connectPrompt())) { CL.error = `The clipboard refused the prompt. Copy it from here: ${connectPrompt()}`; renderSide(); return; }
     CL.copied = Date.now(); renderSide();
     setTimeout(renderSide, 2000);
     return;
