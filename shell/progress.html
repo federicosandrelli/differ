@@ -3,8 +3,9 @@
 <script>
 (function () {
   const el = document.getElementById('log');
+  const retry = el.dataset.retry + location.hash;
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  const fail = (message) => { el.innerHTML += '\n<span class="err">' + esc(message) + '</span>\n\n<a href="' + el.dataset.retry + '">Try again</a>'; };
+  const fail = (message) => { el.innerHTML += '\n<span class="err">' + esc(message) + '</span>\n\n<a href="' + retry + '">Try again</a>'; };
   let seen = false;
   async function poll() {
     let s;
@@ -18,7 +19,7 @@
     }
     // The server starts the job before it serves this page, so restarting on a first answer of "none" could loop.
     if (s.state === 'none') {
-      if (seen) location.replace(el.dataset.retry); else fail('The server has no build running for this pull request.');
+      if (seen) location.replace(retry); else fail('The server has no build running for this pull request.');
       return;
     }
     seen = true;

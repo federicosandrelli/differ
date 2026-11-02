@@ -211,8 +211,14 @@ function commentNotices() {
 function commentsStatus() {
   if (C.error) return `<div class="notice err">Comments: ${esc(C.error)} · <a href="#" data-comments-reload>retry</a></div>`;
   if (!C.loaded) return '<div class="notice">Loading comments…</div>';
-  const stale = C.head && !PR.head.startsWith(C.head) && !C.head.startsWith(PR.head);
-  return stale ? `<div class="notice err">The pull request has new commits · <a href="?refresh=1">rebuild the page</a></div>` : '';
+  return hasNewCommits() ? '<div class="notice err">The pull request has new commits · <a href="#" data-rebuild>rebuild the page</a> (⌘R)</div>' : '';
+}
+const hasNewCommits = () => !!C.head && !PR.head.startsWith(C.head) && !C.head.startsWith(PR.head);
+// The hash names the file in view, and the browser keeps it through the server's redirect, so the rebuilt page
+// opens at that file.
+function rebuild() {
+  if (hasDraft() && !confirm('Rebuilding the page discards your unsent text. Rebuild anyway?')) return;
+  location.assign('?refresh=1' + location.hash);
 }
 function reviewPanelHtml() {
   const n = pendingCount();
@@ -345,7 +351,7 @@ function textareaKey(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') e.target.blur();
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
@@ -415,5 +421,6 @@ async function commentClick(t, e) {
     return true;
   }
   if (d.commentsReload !== undefined) { e.preventDefault(); C.error = ''; render(); loadComments(); return true; }
+  if (d.rebuild !== undefined) { e.preventDefault(); rebuild(); return true; }
   return false;
 }
