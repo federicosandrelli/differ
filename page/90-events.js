@@ -30,7 +30,20 @@ function setFilter(filter) {
 for (const type of ['pointerdown', 'keydown', 'wheel', 'touchmove']) {
   document.addEventListener(type, (e) => { if (!(e.target.closest && e.target.closest('[data-filter]'))) filterReturn = null; }, true);
 }
-function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); renderKeepingHeader(f); }
+// GitHub gets each change in the background, one after the other, so that a quick undo arrives last. A failure leaves
+// GitHub as it was, and the mark in local storage still wins.
+let viewedSends = Promise.resolve();
+function toggleReviewed(f) {
+  const v = !isReviewed(f);
+  setReviewed(f, v); state.openOverride.delete(f.path); renderKeepingHeader(f);
+  if (API) viewedSends = viewedSends.then(() => api('viewed', { path: f.path, viewed: v, head: PR.head })).catch(() => {});
+}
+// GitHub's viewed state decides only for files without a mark in local storage. A failure leaves those files unreviewed.
+async function loadViewed() {
+  if (!API) return;
+  try { (await api('viewed')).viewed.forEach(path => viewedOnGitHub.add(path)); } catch { return; }
+  render();
+}
 function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); renderKeepingHeader(f); }
 
 document.addEventListener('click', (e) => {
@@ -233,6 +246,7 @@ window.addEventListener('hashchange', () => {
   if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
   else if (t) go(t.path, t.key);
   loadComments().then(loadMerge);
+  loadViewed();
   loadEditors();
   // A reload rebuilds the forms, so it waits while a comment box has focus.
   const refresh = () => {

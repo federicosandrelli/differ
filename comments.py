@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Read and write the review comments of one GitHub pull request through `gh api graphql`.
+"""Read and write the review comments of one GitHub pull request, and the files the viewer marked viewed, through
+`gh api graphql`.
 
 Usage: comments.py <owner>/<repo>#<number>   prints the comments as JSON
 
@@ -66,6 +67,7 @@ LISTS = {
     "reviews": PAGE % ("reviews", "id author { login } state body bodyHTML createdAt submittedAt url"),
     "comments": PAGE % ("comments", "id author { login } body bodyHTML createdAt url"),
 }
+FILES = PAGE % ("files", "path viewerViewedState")
 
 READ = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
@@ -384,6 +386,34 @@ def add_conversation_comment(ref: PullRef, *, body: str) -> dict:
         body=body,
     )
     return {"posted": True}
+
+
+def viewed(ref: PullRef) -> list[str]:
+    """The paths of the files the viewer marked viewed. GitHub drops the mark on a file that a later commit changes."""
+    files, after = [], None
+    while True:
+        page = graphql(MORE % FILES, **asdict(ref), after=after)["repository"]["pullRequest"]["files"]
+        files.extend(page["nodes"])
+        if not page["pageInfo"]["hasNextPage"]:
+            return [f["path"] for f in files if f["viewerViewedState"] == "VIEWED"]
+        after = page["pageInfo"]["endCursor"]
+
+
+def mark_viewed(ref: PullRef, *, path: str, viewed: bool, head: str) -> dict:
+    """Mark a file of the pull request viewed, or not viewed, for the viewer, as GitHub's Viewed checkbox does.
+    GitHub keeps the mark for the file at the pull request's head, so this refuses once the head is no longer
+    `head`."""
+    target = _target(ref)
+    if target.head != head:
+        raise ReviewRefused("The pull request has new commits.")
+    name = "markFileAsViewed" if viewed else "unmarkFileAsViewed"
+    graphql(
+        "mutation($pr: ID!, $path: String!) { %s(input: {pullRequestId: $pr, path: $path}) { clientMutationId } }"
+        % name,
+        pr=target.pr_id,
+        path=path,
+    )
+    return {"viewed": viewed}
 
 
 def main() -> None:

@@ -293,7 +293,7 @@ editors open, stay too.
   and turns the classified diff and the PR metadata into one HTML
   page: the PR description and the rename table, a file tree
   with change colours and search, a reviewed mark per file kept in
-  `localStorage`, and every file with its removed lines interleaved.
+  `localStorage` and sent to GitHub's Viewed checkbox, and every file with its removed lines interleaved.
 - The page's script is split by concern: `00-data.js` holds the data, the
   state and shared helpers; `10-files.js` which files show and the search hits;
   `20-highlight.js` syntax highlighting (any language highlight.js knows,

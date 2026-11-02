@@ -272,3 +272,47 @@ def test_a_reply_answers_its_comment_id(monkeypatch: pytest.MonkeyPatch) -> None
         comments, "graphql", lambda query, **variables: {"addPullRequestReviewThreadReply": {"comment": {"id": "C2"}}}
     )
     assert comments.reply(REF, thread_id="T1", body="Done", mode="single") == {"pending": None, "comment": "C2"}
+
+
+def test_viewed_reads_every_page_and_keeps_the_viewed_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = {
+        None: ({"hasNextPage": True, "endCursor": "F"}, [("a.py", "VIEWED"), ("b.py", "DISMISSED")]),
+        "F": ({"hasNextPage": False, "endCursor": None}, [("c.py", "UNVIEWED"), ("d.py", "VIEWED")]),
+    }
+
+    def fake_graphql(query: str, **variables: Any) -> dict:
+        info, files = pages[variables["after"]]
+        nodes = [{"path": path, "viewerViewedState": state} for path, state in files]
+        return {"repository": {"pullRequest": {"files": {"pageInfo": info, "nodes": nodes}}}}
+
+    monkeypatch.setattr(comments, "graphql", fake_graphql)
+    assert comments.viewed(REF) == ["a.py", "d.py"]
+
+
+@pytest.mark.parametrize(("viewed", "mutation"), [(True, "markFileAsViewed"), (False, "unmarkFileAsViewed")])
+def test_mark_viewed_marks_the_file_on_the_pull_request(
+    monkeypatch: pytest.MonkeyPatch, viewed: bool, mutation: str
+) -> None:
+    posted: list[tuple[str, dict]] = []
+
+    def fake_graphql(query: str, **variables: Any) -> dict:
+        if query.lstrip().startswith("mutation"):
+            posted.append((query, variables))
+            return {}
+        return pending_review_reply([], head="c1")
+
+    monkeypatch.setattr(comments, "graphql", fake_graphql)
+    comments.mark_viewed(REF, path="a.py", viewed=viewed, head="c1")
+    [(query, variables)] = posted
+    assert f"{mutation}(input: {{pullRequestId: $pr, path: $path}})" in query
+    assert variables == {"pr": "PR1", "path": "a.py"}
+
+
+def test_mark_viewed_is_refused_once_the_head_moved(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_graphql(query: str, **variables: Any) -> dict:
+        assert not query.lstrip().startswith("mutation"), "nothing may be posted"
+        return pending_review_reply([], head="c2")
+
+    monkeypatch.setattr(comments, "graphql", fake_graphql)
+    with pytest.raises(comments.ReviewRefused, match="new commits"):
+        comments.mark_viewed(REF, path="a.py", viewed=True, head="c1")

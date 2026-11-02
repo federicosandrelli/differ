@@ -29,13 +29,16 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      GitHub sends a file of a private repository only to a signed-in browser
                                      (refused cross-site, as the page is)
   /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
+  /api/<owner>/<repo>/<number>/viewed     GET: the paths of the files the viewer marked viewed on GitHub
   /api/<owner>/<repo>/<number>/editors    GET: the editors installed (GitHub always is), and the names of all the editors
                                      the app knows
   /api/<owner>/<repo>/<number>/merge      GET: the merge state: the checks, the review decision, whether GitHub can
                                      merge, the auto-merge request and the merge methods allowed
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
-                                     conversation, open (opens a file in an editor, on the pull request's branch),
-                                     merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed jobs)
+                                     conversation, viewed (marks a file viewed or not viewed while the head is
+                                     the page's), open (opens a file in an editor, on the pull request's branch),
+                                     merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed
+                                     jobs)
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -248,6 +251,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, progress_page(ref))
             if (m := API.match(url.path)) and m["action"] == "comments":
                 return self.send_json(comments.fetch(PullRef.from_match(m)))
+            if (m := API.match(url.path)) and m["action"] == "viewed":
+                return self.send_json({"viewed": comments.viewed(PullRef.from_match(m))})
             if (m := API.match(url.path)) and m["action"] == "merge":
                 return self.send_json(merge.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "editors":
@@ -348,6 +353,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = comments.discard(ref)
             elif action == "conversation":
                 result = comments.add_conversation_comment(ref, body=body["body"])
+            elif action == "viewed":
+                result = comments.mark_viewed(
+                    ref, path=str(body["path"]), viewed=flag(body["viewed"]), head=str(body["head"])
+                )
             elif action == "merge":
                 result = merge.merge(
                     ref,
