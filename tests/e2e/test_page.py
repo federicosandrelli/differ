@@ -13,6 +13,7 @@ from e2e.conftest import TITLE
 from helpers import Files
 
 AddPr = Callable[[Files, Files], str]
+PushPr = Callable[[str, Files], str]
 
 PR = "/acme/widgets/pull/1"
 APP = "section[data-file='src/app.py']"
@@ -1000,42 +1001,58 @@ def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(pa
     expect(page.locator("#side .head .meta")).to_contain_text("1 reviewed")
 
 
-def test_cmd_r_rebuilds_the_page_after_new_commits_and_the_rebuilt_page_opens_at_the_file_in_view(
-    page: Page, server_url: str, add_pr: AddPr
+def test_cmd_r_rebuilds_the_page_in_place_and_the_rebuilt_page_opens_at_the_file_in_view(
+    page: Page, server_url: str, add_pr: AddPr, push_pr: PushPr
 ) -> None:
     pr = add_pr(CONFIG_OLD, CONFIG_NEW)
-    page.route(
-        f"**/api/acme/widgets/{pr.rsplit('/', 1)[1]}/comments",
-        lambda route: route.fulfill(json={**route.fetch().json(), "head": "f" * 40}),
-    )
     open_pr(page, server_url, pr)
     page.keyboard.press("Alt+ArrowDown")
     expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "src/config.py")
+    head = push_pr(pr, {**CONFIG_NEW, "src/added.py": "x = 1\n"})
+    statuses = hold_requests(page, "**/status/acme/widgets/*")
     page.evaluate("window.beforeRebuild = true")
-    with page.expect_request(lambda request: "refresh=1" in request.url):
-        page.keyboard.press("Meta+r")
+    page.keyboard.press("Meta+r")
+    wait_for(page, lambda: len(statuses) == 1)
+    section = page.locator("#side [data-sect='rebuild']")
+    expect(section).to_contain_text("Rebuilding the page")
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "src/config.py")
+    answer(statuses[0])
+    page.unroute("**/status/acme/widgets/*")
     page.wait_for_function("!window.beforeRebuild && typeof C !== 'undefined' && C.loaded", timeout=30000)
+    assert page.evaluate("PR.head") == head
     expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "src/config.py")
 
 
-def test_cmd_r_asks_before_a_rebuild_discards_unsent_text(page: Page, server_url: str, config_pr: str) -> None:
-    number = config_pr.rsplit("/", 1)[1]
-    page.route(
-        f"**/api/acme/widgets/{number}/comments",
-        lambda route: route.fulfill(json={**route.fetch().json(), "head": "f" * 40}),
-    )
-    open_pr(page, server_url, config_pr)
+def test_cmd_r_without_new_commits_says_so_and_keeps_the_page(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.evaluate("window.beforeRebuild = true")
+    page.keyboard.press("Meta+r")
+    section = page.locator("#side [data-sect='rebuild']")
+    expect(section).to_contain_text("No new commits")
+    expect(section).to_be_empty(timeout=10000)
+    assert page.evaluate("window.beforeRebuild")
+
+
+def test_a_rebuild_with_unsent_text_waits_for_cmd_r_which_asks_before_it_discards_the_text(
+    page: Page, server_url: str, add_pr: AddPr, push_pr: PushPr
+) -> None:
+    pr = add_pr(CONFIG_OLD, CONFIG_NEW)
+    open_pr(page, server_url, pr)
     page.locator("section[data-file='src/config.py'] tr.add td.n.key").first.click()
     box = page.locator("textarea[data-compose-text]")
     box.fill("Rename this")
     box.press("Escape")
+    push_pr(pr, {**CONFIG_NEW, "src/added.py": "x = 1\n"})
     asked: list[str] = []
 
     def dismiss(dialog: Dialog) -> None:
         asked.append(dialog.message)
         dialog.dismiss()
 
-    page.once("dialog", dismiss)
+    page.on("dialog", dismiss)
+    page.keyboard.press("Meta+r")
+    expect(page.locator("#side [data-sect='rebuild']")).to_contain_text("The rebuilt page is ready", timeout=30000)
+    assert asked == []
     page.keyboard.press("Meta+r")
     wait_for(page, lambda: bool(asked))
     assert asked == ["Rebuilding the page discards your unsent text. Rebuild anyway?"]
@@ -1303,8 +1320,8 @@ def hold_requests(page: Page, pattern: str) -> list[tuple[Route, APIResponse]]:
     return held
 
 
-def wait_for(page: Page, check: Callable[[], bool]) -> None:
-    deadline = time.monotonic() + 10
+def wait_for(page: Page, check: Callable[[], bool], timeout: float = 10) -> None:
+    deadline = time.monotonic() + timeout
     while not check():
         assert time.monotonic() < deadline
         page.wait_for_timeout(50)

@@ -140,6 +140,26 @@ def refresh(ref: PullRef) -> None:
         start(ref)
 
 
+Rebuild = Literal["building", "ready", "current"]
+
+
+def rebuild(ref: PullRef, shown: str) -> Rebuild:
+    """Bring the pull request's page up to date for a reader who keeps the page built from head commit `shown` open
+    meanwhile: "building" when a build of the page for the head commit runs, which /status follows; "ready" when
+    the page for the head commit exists but was built from a commit other than `shown`; "current" when the reader's
+    page is the one for the head commit. The old pages stay, so the server keeps serving them until the build ends.
+    Raises CommandError when gh can't tell the head commit."""
+    if latest_page(ref) is None or needs_build(ref):
+        start(ref)
+        return "building"
+    job = job_of(ref)
+    if job and job.state == "building":
+        return "building"
+    with lock:
+        head = heads.get(ref, "")
+    return "current" if head.startswith(shown) or shown.startswith(head) else "ready"
+
+
 def needs_build(ref: PullRef) -> bool:
     """Whether the head commit on GitHub has no current page. Raises CommandError when gh can't tell the head."""
     return not page_current(page_path(ref, read_head(ref)))

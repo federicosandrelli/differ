@@ -38,8 +38,10 @@ its tab shows the number of unresolved threads and the pull request's status
 as GitHub reports it now, and the open tabs survive a relaunch. A page is built on first visit and cached by head commit. A later
 visit serves the newest built page at once and checks the head commit in the
 background: after a new push the next page is built while you read, and the
-page offers it in a notice once its comments load; Cmd+R rebuilds it then, and
-the rebuilt page opens at the file you were reading. Add `?refresh=1` to a page
+page offers it in a notice once its comments load. Cmd+R rebuilds the page
+at any time without leaving it: a spinner shows in the notice while the
+server builds, the rebuilt page then loads at the file you were reading, and
+the notice says so when there is nothing new. Add `?refresh=1` to a page
 URL to check the head commit at once and build the page for it if the one
 served is older.
 
@@ -375,7 +377,7 @@ previous and next shown file, Cmd+F search (it starts from the selected text)
 and Enter for the next hit, Shift+Cmd+F to search the file paths instead (the
 tree then lists only the files found, and Enter goes to the next one) and Cmd+F
 to go back, `r` to mark the current file reviewed, `o` back to the top, Cmd+R
-to rebuild the page after new commits, Cmd+, the settings. Escape leaves the focused element and ends the search; in a
+to rebuild the page, Cmd+, the settings. Escape leaves the focused element and ends the search; in a
 comment box it only leaves the box.
 
 The search looks at the added, removed and unchanged lines of the shown files,

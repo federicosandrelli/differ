@@ -218,14 +218,69 @@ function commentNotices() {
 function commentsStatus() {
   if (C.error) return `<div class="notice err">Comments: ${esc(C.error)} · <a href="#" data-comments-reload>retry</a></div>`;
   if (!C.loaded) return '<div class="notice">Loading comments…</div>';
-  return hasNewCommits() ? '<div class="notice err">The pull request has new commits · <a href="#" data-rebuild>rebuild the page</a> (⌘R)</div>' : '';
+  return '';
 }
 const hasNewCommits = () => !!C.head && !PR.head.startsWith(C.head) && !C.head.startsWith(PR.head);
-// The hash names the file in view, and the browser keeps it through the server's redirect, so the rebuilt page
-// opens at that file.
-function rebuild() {
-  if (hasDraft() && !confirm('Rebuilding the page discards your unsent text. Rebuild anyway?')) return;
-  location.assign('?refresh=1' + location.hash);
+
+// A rebuild of the page, which Cmd+R or the link in the rebuild notice starts while the reader keeps reading:
+// `phase` is building while the server builds the page for the head commit, ready once that page waits for a reload
+// the reader put off, current for a moment when the page is already the one for the head commit, and error when the
+// build failed, with the reason in `error`.
+const REBUILD = { phase: '', error: '', log: '', shown: 0 };
+const CURRENT_MS = 3000;
+const STATUS_URL = `/status/${PR.repo}/${PR.number}`;
+async function rebuild() {
+  if (!API || REBUILD.phase === 'building') return;
+  if (REBUILD.phase === 'ready') {
+    if (!hasDraft() || confirm('Rebuilding the page discards your unsent text. Rebuild anyway?')) location.reload();
+    return;
+  }
+  setRebuild('building');
+  let d;
+  try { d = await api('rebuild', { head: PR.head }); } catch (e) { setRebuild('error', e.message); return; }
+  if (d.state === 'ready') reloadRebuilt();
+  else if (d.state === 'current') showCurrent();
+  else followBuild();
+}
+function setRebuild(phase, error = '') {
+  Object.assign(REBUILD, { phase, error, log: phase === 'building' ? REBUILD.log : '' });
+  renderSide();
+}
+// Say for CURRENT_MS that the page is up to date, then close the notice, unless another rebuild started meanwhile.
+function showCurrent() {
+  const shown = ++REBUILD.shown;
+  setRebuild('current');
+  setTimeout(() => { if (REBUILD.shown === shown && REBUILD.phase === 'current') setRebuild(''); }, CURRENT_MS);
+}
+async function followBuild() {
+  let s;
+  try {
+    const r = await fetch(STATUS_URL);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    s = await r.json();
+  } catch (e) { setRebuild('error', `could not read the build status (${e.message})`); return; }
+  if (s.state === 'done') { reloadRebuilt(); return; }
+  if (s.state === 'error') { setRebuild('error', s.error); return; }
+  if (s.state === 'none') { setRebuild('error', 'the server has no build running for this pull request'); return; }
+  const log = s.log[s.log.length - 1] || '';
+  if (log !== REBUILD.log) { REBUILD.log = log; renderSide(); }
+  setTimeout(followBuild, 700);
+}
+// Load the rebuilt page once it is ready. The address keeps its hash, which names the file in view, so the rebuilt
+// page opens at that file. Unsent text would go with the old page, so then the page waits for the reader's next
+// Cmd+R, which asks first.
+function reloadRebuilt() {
+  if (hasDraft()) setRebuild('ready'); else location.reload();
+}
+// The notice of the rebuild section, between hairlines under the sidebar's head; empty closes the section.
+function rebuildNotice() {
+  if (!API) return '';
+  const { phase, error, log } = REBUILD;
+  if (phase === 'building') return `<div class="notice busy"><span class="spinner" aria-hidden="true"></span>Rebuilding the page…${log ? `<span class="log" title="${esc(log)}">${esc(log)}</span>` : ''}</div>`;
+  if (phase === 'ready') return '<div class="notice">The rebuilt page is ready · <a href="#" data-rebuild>load it</a> (⌘R)</div>';
+  if (phase === 'current') return '<div class="notice">No new commits · the page is up to date</div>';
+  if (phase === 'error') return `<div class="notice err">Rebuild failed: ${esc(error)} · <a href="#" data-rebuild>try again</a></div>`;
+  return hasNewCommits() ? '<div class="notice err">The pull request has new commits · <a href="#" data-rebuild>rebuild the page</a> (⌘R)</div>' : '';
 }
 function reviewPanelHtml() {
   const n = pendingCount();
