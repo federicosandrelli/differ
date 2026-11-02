@@ -1580,6 +1580,17 @@ def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, se
     assert [p["body"] for p in posted] == ["Looks good"]
 
 
+def test_a_posted_conversation_comment_empties_its_box(page: Page, server_url: str, gh_state: Path) -> None:
+    open_pr(page, server_url)
+    box = page.locator("textarea[data-conv-text]")
+    box.fill("Thanks for this")
+    page.click("button[data-conv-send]")
+    expect(box).to_have_value("")
+
+    mutations = [json.loads(line) for line in (gh_state / "mutations.log").read_text().splitlines()]
+    assert [m["variables"]["body"] for m in mutations if "addComment(" in m["query"]] == ["Thanks for this"]
+
+
 def test_a_title_shows_as_a_quick_tooltip_and_comes_back_after_the_pointer_leaves(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.click("#side button[data-review-panel]")

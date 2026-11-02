@@ -400,7 +400,12 @@ async function commentClick(t, e) {
   }
   if (d.convSend !== undefined) {
     if (!state.convText.trim()) { state.focus = '[data-conv-text]'; render(); return true; }
-    if (await post('conversation', { body: state.convText })) { state.convText = ''; render(); }
+    if (await post('conversation', { body: state.convText })) {
+      state.convText = '';
+      const box = document.querySelector('[data-conv-text]');
+      if (box) box.value = '';
+      render();
+    }
     return true;
   }
   if (d.draftOpen !== undefined) {
