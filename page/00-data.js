@@ -31,8 +31,11 @@ const state = {
 const LS = (k) => `dr:${PR.head.slice(0, 12)}:${k}`;
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
-const isReviewed = (f) => lsGet(LS(f.path)) === '1';
-const setReviewed = (f, v) => lsSet(LS(f.path), v ? '1' : null);
+// The paths of the files GitHub has as viewed by the viewer, from the last comment load.
+const viewedOnGitHub = new Set();
+// The reader's mark in local storage wins. Without one, after a new push or a cleared cache, GitHub's viewed state decides.
+const isReviewed = (f) => { const mark = lsGet(LS(f.path)); return mark ? mark === '1' : viewedOnGitHub.has(f.path); };
+const setReviewed = (f, v) => lsSet(LS(f.path), v ? '1' : '0');
 const sectionOpen = (f) => state.openOverride.has(f.path) ? state.openOverride.get(f.path) : !isReviewed(f);
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

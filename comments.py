@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Read and write the review comments of one GitHub pull request through `gh api graphql`.
+"""Read and write the review comments of one GitHub pull request, and the files the viewer marked viewed, through
+`gh api graphql`.
 
 Usage: comments.py <owner>/<repo>#<number>   prints the comments as JSON
 
@@ -65,6 +66,7 @@ LISTS = {
     "reviewThreads": PAGE % ("reviewThreads", THREAD_FIELDS),
     "reviews": PAGE % ("reviews", "id author { login } state body bodyHTML createdAt submittedAt url"),
     "comments": PAGE % ("comments", "id author { login } body bodyHTML createdAt url"),
+    "files": PAGE % ("files", "path viewerViewedState"),
 }
 
 READ = """
@@ -147,13 +149,14 @@ def _all(ref: PullRef, pr: dict, name: str) -> list[dict]:
 
 def fetch(ref: PullRef) -> dict:
     """Every review thread, review and conversation comment of the pull request, plus the viewer's pending review
-    and verdict, and the pull request's status now: a merge or a close does not move the head, so the page, built
-    per head, learns them here."""
+    and verdict, the paths of the files the viewer marked viewed, and the pull request's status now: a merge or a
+    close does not move the head, so the page, built per head, learns them here."""
     data = graphql(READ, **asdict(ref), after=None)
     pr = data["repository"]["pullRequest"]
     threads = _all(ref, pr, "reviewThreads")
     reviews = _all(ref, pr, "reviews")
     comments = _all(ref, pr, "comments")
+    files = _all(ref, pr, "files")
     viewer = data["viewer"]["login"]
     pending_id = _pending_id(pr, viewer)
     reviews = [
@@ -191,6 +194,7 @@ def fetch(ref: PullRef) -> dict:
         "threads": [th for t in threads if (th := _thread(t, pending_id))],
         "reviews": reviews,
         "comments": comments,
+        "viewed": [f["path"] for f in files if f["viewerViewedState"] == "VIEWED"],
     }
 
 
@@ -384,6 +388,18 @@ def add_conversation_comment(ref: PullRef, *, body: str) -> dict:
         body=body,
     )
     return {"posted": True}
+
+
+def mark_viewed(ref: PullRef, *, path: str, viewed: bool) -> dict:
+    """Mark a file of the pull request viewed, or not viewed, for the viewer, as GitHub's Viewed checkbox does."""
+    name = "markFileAsViewed" if viewed else "unmarkFileAsViewed"
+    graphql(
+        "mutation($pr: ID!, $path: String!) { %s(input: {pullRequestId: $pr, path: $path}) { clientMutationId } }"
+        % name,
+        pr=_target(ref).pr_id,
+        path=path,
+    )
+    return {"viewed": viewed}
 
 
 def main() -> None:

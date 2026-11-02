@@ -17,7 +17,9 @@ or fails when it has none.
 query from merge<n>.json, over a merge state without checks; any other read query from comments.json, with the
 status of pr<n>.json. A mutation waits while hold.txt exists, then fails when fail.txt lists it by then, else is
 appended to mutations.log. A review posted with threads and a reply add their comments to comments.json, so the page
-sees what it sent, and the answer holds the new comment's id. A merge, a reopen or a mark ready moves the
+sees what it sent, and the answer holds the new comment's id. The files the viewer marked viewed are the `viewed` list
+of comments.json, which marking a file viewed or not viewed leaves as it is, so no test leaves files viewed for the
+next. A merge, a reopen or a mark ready moves the
 status in pr<n>.json, and turning auto-merge on or off changes merge<n>.json.
 `gh api -X POST <endpoint>` does nothing.
 """
@@ -267,6 +269,10 @@ def graphql(args: list[str]) -> None:
         },
         "reviewThreads": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": state["threads"]},
         "comments": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": state["comments"]},
+        "files": {
+            "pageInfo": {"hasNextPage": False, "endCursor": None},
+            "nodes": [{"path": p, "viewerViewedState": "VIEWED"} for p in state.get("viewed", [])],
+        },
     }
     print(json.dumps({"data": {"viewer": {"login": "tester"}, "repository": {"pullRequest": pr}}}))
 

@@ -111,6 +111,14 @@ def test_fetch_reads_every_page_and_shapes_reviews(monkeypatch: pytest.MonkeyPat
                         },
                         "verdicts": {"nodes": [review("R1", "APPROVED", author="bob")]},
                         "comments": {"pageInfo": {"hasNextPage": True, "endCursor": "K"}, "nodes": [comment("k1")]},
+                        "files": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": [
+                                {"path": "a.py", "viewerViewedState": "VIEWED"},
+                                {"path": "b.py", "viewerViewedState": "DISMISSED"},
+                                {"path": "c.py", "viewerViewedState": "UNVIEWED"},
+                            ],
+                        },
                     }
                 },
             }
@@ -150,6 +158,7 @@ def test_fetch_reads_every_page_and_shapes_reviews(monkeypatch: pytest.MonkeyPat
     ]
     assert result["verdict"] is None
     assert [c["id"] for c in result["comments"]] == ["k1", "k2"]
+    assert result["viewed"] == ["a.py"]
 
 
 def test_request_changes_without_a_summary_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:

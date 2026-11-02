@@ -30,7 +30,12 @@ function setFilter(filter) {
 for (const type of ['pointerdown', 'keydown', 'wheel', 'touchmove']) {
   document.addEventListener(type, (e) => { if (!(e.target.closest && e.target.closest('[data-filter]'))) filterReturn = null; }, true);
 }
-function toggleReviewed(f) { setReviewed(f, !isReviewed(f)); state.openOverride.delete(f.path); renderKeepingHeader(f); }
+// GitHub gets the change in the background. A failure leaves GitHub as it was, and the mark in local storage still wins.
+function toggleReviewed(f) {
+  const v = !isReviewed(f);
+  setReviewed(f, v); state.openOverride.delete(f.path); renderKeepingHeader(f);
+  if (API) api('viewed', { path: f.path, viewed: v }).catch(() => {});
+}
 function toggleSection(f) { state.openOverride.set(f.path, !sectionOpen(f)); renderKeepingHeader(f); }
 
 document.addEventListener('click', (e) => {
