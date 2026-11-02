@@ -28,7 +28,6 @@ async function loadComments() {
   LOADS.applied = load;
   if (d) {
     Object.assign(C, d, { loaded: true, error: '', loadedAt: Date.now() });
-    viewedOnGitHub.clear(); d.viewed.forEach(path => viewedOnGitHub.add(path));
     const ids = new Set(C.threads.flatMap(t => t.comments.map(c => c.id)));
     sendingComments = sendingComments.filter(s => !arrived(s, ids, load));
   } else C.error = error;

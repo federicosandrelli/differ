@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from playwright.sync_api import APIResponse, Locator, Page, Position, Route, expect
+from playwright.sync_api import APIResponse, Locator, Page, Position, Response, Route, expect
 
 from e2e.conftest import TITLE
 from helpers import Files
@@ -608,22 +608,19 @@ def test_r_twice_after_a_wheel_scroll_near_the_end_marks_one_file(page: Page, se
     expect(page.locator("#side .leaf.reviewed")).to_have_attribute("data-path", "src/jobs.py")
 
 
-def viewed_mutations(gh_state: Path, path: str, skip: int, count: int) -> list[str]:
-    """The names of the viewed mutations the fake gh took for a path, oldest first, after the first `skip`, once there
-    are `count` of them, or after 10 seconds."""
-    deadline = time.monotonic() + 10
-    while len(found := viewed_mutations_now(gh_state, path)[skip:]) < count and time.monotonic() < deadline:
-        time.sleep(0.05)
-    return found
-
-
-def viewed_mutations_now(gh_state: Path, path: str) -> list[str]:
+def viewed_mutations(gh_state: Path, path: str) -> list[str]:
+    """The names of the viewed mutations the fake gh took for a path, oldest first."""
     found = []
     for line in (gh_state / "mutations.log").read_text().splitlines():
         m = json.loads(line)
         if m["variables"].get("path") == path and (name := re.search(r"\b(\w+FileAsViewed)\(", m["query"])):
             found.append(name[1])
     return found
+
+
+def viewed_request(method: str) -> Callable[[Response], bool]:
+    """Whether a response answers the page's read (GET) or send (POST) of GitHub's viewed state."""
+    return lambda r: r.url.endswith("/viewed") and r.request.method == method
 
 
 def set_viewed_on_github(gh_state: Path, paths: list[str]) -> None:
@@ -633,12 +630,27 @@ def set_viewed_on_github(gh_state: Path, paths: list[str]) -> None:
 
 def test_marking_a_file_reviewed_and_back_marks_it_on_github(page: Page, server_url: str, gh_state: Path) -> None:
     open_pr(page, server_url)
-    before = len(viewed_mutations_now(gh_state, "src/app.py"))
-    page.click("button[data-review='src/app.py']")
+    before = len(viewed_mutations(gh_state, "src/app.py"))
+    with page.expect_response(viewed_request("POST")):
+        page.click("button[data-review='src/app.py']")
     expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_class(re.compile(r"\breviewed\b"))
-    assert viewed_mutations(gh_state, "src/app.py", before, 1) == ["markFileAsViewed"]
-    page.click("button[data-review='src/app.py']")
-    assert viewed_mutations(gh_state, "src/app.py", before, 2) == ["markFileAsViewed", "unmarkFileAsViewed"]
+    with page.expect_response(viewed_request("POST")):
+        page.click("button[data-review='src/app.py']")
+    assert viewed_mutations(gh_state, "src/app.py")[before:] == ["markFileAsViewed", "unmarkFileAsViewed"]
+
+
+def test_a_failed_send_to_github_leaves_the_page_as_marked(page: Page, server_url: str, gh_state: Path) -> None:
+    open_pr(page, server_url)
+    fail = gh_state / "fail.txt"
+    fail.write_text("api graphql\n")
+    try:
+        with page.expect_response(viewed_request("POST")) as sent:
+            page.click("button[data-review='src/app.py']")
+        assert sent.value.status == 502
+    finally:
+        fail.unlink()
+    expect(page.locator("#side .leaf[data-path='src/app.py']")).to_have_class(re.compile(r"\breviewed\b"))
+    expect(page.locator("#side .notice.err")).to_have_count(0)
 
 
 def test_a_file_viewed_on_github_shows_reviewed_without_a_local_mark(
@@ -657,9 +669,11 @@ def test_the_local_mark_wins_over_github(page: Page, server_url: str, gh_state: 
         open_pr(page, server_url)
         leaf = page.locator("#side .leaf[data-path='src/app.py']")
         expect(leaf).to_have_class(re.compile(r"\breviewed\b"))
-        page.click("button[data-review='src/app.py']")
+        with page.expect_response(viewed_request("POST")):
+            page.click("button[data-review='src/app.py']")
         expect(leaf).not_to_have_class(re.compile(r"\breviewed\b"))
-        open_pr(page, server_url)
+        with page.expect_response(viewed_request("GET")):
+            open_pr(page, server_url)
         expect(leaf).not_to_have_class(re.compile(r"\breviewed\b"))
 
 
