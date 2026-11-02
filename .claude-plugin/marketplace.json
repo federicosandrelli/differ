@@ -1,0 +1,14 @@
+{
+  "name": "differ",
+  "description": "The Claude Code plugin of differ, a pull request viewer.",
+  "owner": {
+    "name": "Federico Sandrelli"
+  },
+  "plugins": [
+    {
+      "name": "differ",
+      "source": "./claude-plugin",
+      "description": "Receive the line comments a reader sends from differ to this Claude Code session, and answer them."
+    }
+  ]
+}

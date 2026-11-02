@@ -92,13 +92,14 @@ function localThread(c, comment) {
 }
 function threadsChanged() { C.version++; indexThreads(); }
 
-// GitHub's threads with the comments being sent: replies at the end of their threads, then the new threads.
+// GitHub's threads with the comments being sent: replies at the end of their threads, then the new threads, then the
+// threads of the comments for Claude.
 function shownThreads() {
   const threads = C.threads.map(t => {
     const replies = sendingComments.filter(s => s.replyTo === t.id).map(s => s.comment);
     return replies.length ? { ...t, comments: [...t.comments, ...replies] } : t;
   });
-  return [...threads, ...sendingComments.filter(s => s.thread).map(s => s.thread)];
+  return [...threads, ...sendingComments.filter(s => s.thread).map(s => s.thread), ...claudeThreads()];
 }
 function indexThreads() {
   THREADS.byFile = new Map(); THREADS.orphans = [];
@@ -114,8 +115,9 @@ function indexThreads() {
 function threadCount(f) {
   const e = THREADS.byFile.get(f.path);
   if (!e) return 0;
-  let n = e.outdated.filter(t => !t.resolved).length;
-  for (const ts of e.rows.values()) n += ts.filter(t => !t.resolved).length;
+  const counts = (t) => !t.resolved && !t.claude;
+  let n = e.outdated.filter(counts).length;
+  for (const ts of e.rows.values()) n += ts.filter(counts).length;
   return n;
 }
 const hasReviewSummary = () => !!state.reviewText.trim();
@@ -155,13 +157,18 @@ function commentHtml(c, ctx) {
     ${c.pending ? '<span class="tag pending">pending</span>' : ''}${c.sending ? '<span class="tag sending">sending</span>' : ''}<span class="spacer"></span>${links}</div>
     <div class="cbody">${bodyHtml(c, ctx)}</div></div>`;
 }
+// The line over a thread that names its lines: the lines it was on once outdated, or its range of lines.
+function threadHead(t) {
+  return t.outdated ? `<div class="thead">Outdated · was on line${t.original_start_line && t.original_start_line !== t.original_line ? 's' : ''} ${lineRange(t.original_start_line, t.original_line)}${t.side === 'LEFT' ? ' of the old file' : ''}</div>`
+    : t.start_line && t.start_line !== t.line ? `<div class="thead">Lines ${lineRange(t.start_line, t.line)}</div>` : '';
+}
 function threadHtml(f, t) {
+  if (t.claude) return claudeThreadHtml(f, t);
   const n = t.comments.length, first = t.comments[0];
   if (t.resolved && !state.openThreads.has(t.id)) {
     return `<div class="thread card folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
   }
-  const head = t.outdated ? `<div class="thead">Outdated · was on line${t.original_start_line && t.original_start_line !== t.original_line ? 's' : ''} ${lineRange(t.original_start_line, t.original_line)}${t.side === 'LEFT' ? ' of the old file' : ''}</div>`
-    : t.start_line && t.start_line !== t.line ? `<div class="thead">Lines ${lineRange(t.start_line, t.line)}</div>` : '';
+  const head = threadHead(t);
   const reply = t.local ? '' : state.replyOpen.has(t.id) ? replyHtml(t) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
     ${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
@@ -177,7 +184,7 @@ function composeHtml(f, c) {
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
     <textarea data-compose-text="${esc(draftKey(c.path, c.side, c.line))}" placeholder="Leave a comment">${esc(c.text)}</textarea>
     <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
-    ${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
+    ${claudeOn() ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
 }
 // A suggestion shows as the lines it replaces, from the file, over the lines it proposes.
 function suggestionHtml(code, ctx) {
@@ -205,7 +212,7 @@ function outdatedHtml(f) {
 function commentNotices() {
   if (!API) return '';
   const refused = [...state.drafts].filter(([, d]) => d.refused).map(([key, d]) =>
-    `<div class="notice">GitHub refused your comment on line ${d.line} of ${esc(d.path.split('/').pop())}. It is a draft on its line · <a href="#" data-draft-open="${esc(key)}">open it</a></div>`).join('');
+    `<div class="notice">${d.claude ? 'differ could not send your comment' : 'GitHub refused your comment'} on line ${d.line} of ${esc(d.path.split('/').pop())}${d.claude ? ' to Claude' : ''}. It is a draft on its line · <a href="#" data-draft-open="${esc(key)}">open it</a></div>`).join('');
   return commentsStatus() + refused;
 }
 function commentsStatus() {
@@ -263,7 +270,7 @@ const draftKey = (path, side, line) => `${side}:${line}:${path}`;
 function takeDraft(path, side, line) {
   const key = draftKey(path, side, line), d = state.drafts.get(key);
   state.drafts.delete(key);
-  if (d) delete d.refused;
+  if (d) { delete d.refused; delete d.claude; }
   return d;
 }
 function openCompose(path, side, line, extend) {
@@ -360,6 +367,7 @@ async function commentClick(t, e) {
   if (d.composeSend !== undefined) {
     const c = state.compose;
     if (!c.text.trim()) { state.focus = '[data-compose-text]'; render(); return true; }
+    if (d.composeSend === 'claude') { await sendToClaude(c); return true; }
     const body = { path: c.path, body: c.text, line: c.line, side: c.side, mode: d.composeSend };
     if (c.startLine !== c.line) { body.start_line = c.startLine; body.start_side = c.side; }
     const comment = sendingComment(c.text, d.composeSend, false);

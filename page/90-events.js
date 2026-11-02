@@ -52,6 +52,8 @@ document.addEventListener('click', (e) => {
   if (state.mergeMenu && !e.target.closest('.merge-pick')) { state.mergeMenu = false; renderSide(); }
   const merge = e.target.closest(MERGE_ATTRS);
   if (merge) { e.preventDefault(); mergeClick(merge); return; }
+  const claude = e.target.closest(CLAUDE_ATTRS);
+  if (claude) { e.preventDefault(); claudeClick(claude); return; }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
   // The number cell that shows a code row's line is its comment button.
   const cell = API && e.target.closest('table.diff td.n.key');
@@ -247,6 +249,7 @@ window.addEventListener('hashchange', () => {
   else if (t) go(t.path, t.key);
   loadComments().then(loadMerge);
   loadViewed();
+  loadClaude();
   loadEditors();
   // A reload rebuilds the forms, so it waits while a comment box has focus.
   const refresh = () => {

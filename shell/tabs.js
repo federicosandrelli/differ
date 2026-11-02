@@ -148,6 +148,7 @@
       const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
       if (followed.newest === before) followed.saved = saved;
       followed.draw(followed.newest === before ? saved : followed.repos);
+      claudeSetting.draw();
       if (section) settings.querySelector(`[data-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: 'start' });
     }).catch(() => {
       if (loading) { loading.textContent = 'Could not load the settings.'; loading.classList.add('err'); }
@@ -218,6 +219,17 @@
     followed.repos.splice([...row.parentElement.children].indexOf(row), 1);
     row.remove();
     followed.save();
+  });
+  // Whether a comment can go to a Claude Code session, saved as dr:claude: 'off', or nothing for on.
+  const claudeSetting = {
+    on: () => { try { return localStorage.getItem('dr:claude') !== 'off'; } catch { return true; } },
+    draw() { for (const b of settings.querySelectorAll('[data-claude-setting]')) b.classList.toggle('on', (b.dataset.claudeSetting === 'on') === this.on()); },
+  };
+  settings.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-claude-setting]');
+    if (!b) return;
+    try { if (b.dataset.claudeSetting === 'on') localStorage.removeItem('dr:claude'); else localStorage.setItem('dr:claude', 'off'); } catch {}
+    claudeSetting.draw();
   });
   document.getElementById('gear').addEventListener('click', () => openSettings());
   // A click on the dialog itself, outside its box, is a click on the backdrop.
