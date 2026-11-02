@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from playwright.sync_api import APIResponse, Locator, Page, Position, Response, Route, expect
+from playwright.sync_api import APIResponse, Dialog, Locator, Page, Position, Response, Route, expect
 
 from e2e.conftest import TITLE
 from helpers import Files
@@ -998,6 +998,48 @@ def test_mark_reviewed_marks_the_file_reviewed_and_the_mark_survives_a_reload(pa
     expect(page.locator(leaf)).to_have_class(re.compile(r"\breviewed\b"))
     expect(page.locator(APP)).to_have_class(re.compile(r"\bclosed\b"))
     expect(page.locator("#side .head .meta")).to_contain_text("1 reviewed")
+
+
+def test_cmd_r_rebuilds_the_page_after_new_commits_and_the_rebuilt_page_opens_at_the_file_in_view(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    pr = add_pr(CONFIG_OLD, CONFIG_NEW)
+    page.route(
+        f"**/api/acme/widgets/{pr.rsplit('/', 1)[1]}/comments",
+        lambda route: route.fulfill(json={**route.fetch().json(), "head": "f" * 40}),
+    )
+    open_pr(page, server_url, pr)
+    page.keyboard.press("Alt+ArrowDown")
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "src/config.py")
+    page.evaluate("window.beforeRebuild = true")
+    with page.expect_request(lambda request: "refresh=1" in request.url):
+        page.keyboard.press("Meta+r")
+    page.wait_for_function("!window.beforeRebuild && typeof C !== 'undefined' && C.loaded", timeout=30000)
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "src/config.py")
+
+
+def test_cmd_r_asks_before_a_rebuild_discards_unsent_text(page: Page, server_url: str, config_pr: str) -> None:
+    number = config_pr.rsplit("/", 1)[1]
+    page.route(
+        f"**/api/acme/widgets/{number}/comments",
+        lambda route: route.fulfill(json={**route.fetch().json(), "head": "f" * 40}),
+    )
+    open_pr(page, server_url, config_pr)
+    page.locator("section[data-file='src/config.py'] tr.add td.n.key").first.click()
+    box = page.locator("textarea[data-compose-text]")
+    box.fill("Rename this")
+    box.press("Escape")
+    asked: list[str] = []
+
+    def dismiss(dialog: Dialog) -> None:
+        asked.append(dialog.message)
+        dialog.dismiss()
+
+    page.once("dialog", dismiss)
+    page.keyboard.press("Meta+r")
+    wait_for(page, lambda: bool(asked))
+    assert asked == ["Rebuilding the page discards your unsent text. Rebuild anyway?"]
+    expect(box).to_have_value("Rename this")
 
 
 def test_threads_show_on_their_lines_and_in_the_overview(page: Page, server_url: str) -> None:

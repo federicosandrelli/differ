@@ -160,6 +160,7 @@ function stepFile(dir) {
 document.addEventListener('keydown', (e) => {
   if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? openFileSearch() : openSearch(); return; }
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
+  if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r' && hasNewCommits()) { e.preventDefault(); rebuild(); return; }
   if (e.key === 'Escape' && EDITOR.menu !== null) { EDITOR.menu = null; render(); return; }
   if (e.key === 'Escape' && state.mergeMenu) { state.mergeMenu = false; renderSide(); return; }
   if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
