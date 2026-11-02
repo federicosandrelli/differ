@@ -1095,8 +1095,8 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
 
 def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    foot = page.locator("#side .foot")
-    expect(foot).to_contain_text("No Claude session")
+    session = page.locator("#side .foot [data-claude-menu]")
+    expect(session).to_have_attribute("title", "No Claude session")
     bubble = page.locator("#side .leaf[data-path='src/app.py'] .bubble")
     count = bubble.text_content()
     section = page.locator(APP)
@@ -1105,7 +1105,11 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
     page.click("button[data-compose-send='claude']")
     thread = section.locator("div.thread[data-thread^='claude:']", has_text="Use a logger here")
     expect(thread.locator(".tag.claude")).to_have_count(1)
-    expect(foot).to_contain_text("1 comment waiting")
+    expect(session).to_have_attribute("title", "No Claude session · 1 comment waiting")
+    session.click()
+    expect(page.locator("#side .foot .menu")).to_contain_text("1 comment will go to it when it connects.")
+    page.keyboard.press("Escape")
+    expect(page.locator("#side .foot .menu")).to_have_count(0)
     expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
     assert bubble.text_content() == count
     sent = page.evaluate("CL.comments.at(-1)")
@@ -1123,7 +1127,7 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
 
     thread.locator("[data-claude-delete]").click()
     expect(section.locator("div.thread[data-thread^='claude:']")).to_have_count(0)
-    expect(foot).not_to_contain_text("waiting")
+    expect(session).to_have_attribute("title", "No Claude session")
 
 
 @contextmanager

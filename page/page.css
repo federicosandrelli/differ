@@ -35,8 +35,13 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 #side .foot { flex: none; border-top: 1px solid var(--border); padding: 6px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; font-size: 12px; }
 /* Inside the shell, its settings gear sits over the bottom left corner of the footer, so the footer starts to its right. */
 html.framed #side .foot { padding-left: 44px; }
-#side .foot .state { flex: 1; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
-#side .foot:not(.on) .state { opacity: var(--dim); }
+#side .foot .claude-pick { position: relative; display: inline-flex; }
+#side .foot .session { padding: 1px 6px; }
+#side .foot .session .reason-icon { width: 14px; height: 14px; }
+#side .foot .dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--text-muted); opacity: var(--dim); }
+#side .foot .dot.on { background: var(--add-fg); opacity: 1; }
+#side .foot .menu { position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 6; width: 240px; }
+#side .foot .menu .note { padding: 4px 8px 6px; line-height: 1.4; white-space: normal; }
 #side .foot .hint { flex-basis: 100%; overflow-wrap: anywhere; user-select: text; }
 
 .tree { padding: 6px 0 24px; font-size: 12.5px; }

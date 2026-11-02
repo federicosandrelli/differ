@@ -1,10 +1,10 @@
 // The comments the reader sends to the Claude Code session that works on the pull request instead of to GitHub, the
-// threads they show as, and the sidebar footer that says whether a session listens for them.
+// threads they show as, and the sidebar footer's button that says whether a session listens for them.
 
 // CL holds the server's answer to /claude, and `error` why the reader's last action on it failed, until the next one.
-// `started` and `applied` count the loads as LOADS does for the comments, and `copied` is when the reader last copied
-// the connect prompt.
-const CL = { loaded: false, listening: false, comments: [], error: '', timer: 0, started: 0, applied: 0, copied: 0 };
+// `started` and `applied` count the loads as LOADS does for the comments, `copied` is when the reader last copied
+// the connect prompt, and `menu` whether the footer's menu is open.
+const CL = { loaded: false, listening: false, comments: [], error: '', timer: 0, started: 0, applied: 0, copied: 0, menu: false };
 const CLAUDE_POLL_MS = 5000;
 const CLAUDE_KEY = 'dr:claude';
 // The words of the tag a comment shows while it waits for Claude's reply.
@@ -83,9 +83,13 @@ function claudeThreadHtml(f, t) {
 function claudeFootHtml() {
   if (!claudeOn()) return '';
   const waiting = CL.comments.filter(c => c.state === 'waiting').length;
-  const words = CL.listening ? 'Claude is listening' : `No Claude session${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
-  const copy = CL.listening ? '' : `<button class="ghost" data-claude-connect title="Paste it into the Claude Code session that works on this pull request">${Date.now() - CL.copied < 2000 ? 'Copied' : 'Copy connect prompt'}</button>`;
-  return `<div class="foot claude ${CL.listening ? 'on' : ''}"><span class="state">${iconHtml('claude', CL.listening ? 'accent' : '')}${words}</span>${copy}
+  const title = CL.listening ? 'Claude is listening' : `No Claude session${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
+  const note = CL.listening
+    ? 'A Claude Code session listens on this pull request. Comments you send to Claude go straight to it.'
+    : `No Claude Code session listens on this pull request. Paste the connect prompt into the session that works on it.${waiting ? ` ${plural(waiting, 'comment')} will go to it when it connects.` : ''}`;
+  const copy = CL.listening ? '' : `<button data-claude-connect>${Date.now() - CL.copied < 2000 ? 'Copied' : 'Copy connect prompt'}</button>`;
+  const menu = CL.menu ? `<div class="menu"><div class="hint note">${note}</div>${copy}</div>` : '';
+  return `<div class="foot claude"><span class="claude-pick"><button class="ghost session" data-claude-menu title="${title}">${iconHtml('robot')}<span class="dot${CL.listening ? ' on' : ''}"></span></button>${menu}</span>
     ${CL.error ? `<div class="hint err">${esc(CL.error)}</div>` : ''}</div>`;
 }
 
@@ -103,10 +107,11 @@ async function copyText(text) {
   if (prev && prev.focus) prev.focus({ preventScroll: true });
   return ok;
 }
-const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-connect]';
+const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-connect],[data-claude-menu]';
 async function claudeClick(t) {
   const d = t.dataset;
   CL.error = '';
+  if (d.claudeMenu !== undefined) { CL.menu = !CL.menu; renderSide(); return; }
   if (d.claudeConnect !== undefined) {
     if (!await copyText(connectPrompt())) { CL.error = `The clipboard refused the prompt. Copy it from here: ${connectPrompt()}`; renderSide(); return; }
     CL.copied = Date.now(); renderSide();

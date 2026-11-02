@@ -274,6 +274,7 @@ ReasonKind = Literal[
     "person-plus",
     "check",
     "claude",
+    "robot",
 ]
 # The icon of each kind of reason why a pull request sits in its section, as the inner paths of a 24×24 stroked SVG.
 REASON_ICONS: dict[ReasonKind, str] = {
@@ -288,6 +289,7 @@ REASON_ICONS: dict[ReasonKind, str] = {
     "person-plus": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 4v4M21 6h-4"/>',
     "check": '<path d="m5 12 5 5 9-10"/>',
     "claude": '<path d="M12 3v5M12 16v5M3 12h5M16 12h5M5.6 5.6l3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6"/>',
+    "robot": '<rect x="5" y="8" width="14" height="12" rx="2"/><path d="M12 4v4M2 13v3M22 13v3M9 13v1M15 13v1"/>',
 }
 
 

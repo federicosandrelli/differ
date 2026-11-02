@@ -50,6 +50,7 @@ document.addEventListener('click', (e) => {
   // A click anywhere but on the open editor menu or its button closes the menu, and does what it would do anyway.
   if (EDITOR.menu !== null && !e.target.closest('.editor-pick')) { EDITOR.menu = null; render(); }
   if (state.mergeMenu && !e.target.closest('.merge-pick')) { state.mergeMenu = false; renderSide(); }
+  if (CL.menu && !e.target.closest('.claude-pick')) { CL.menu = false; renderSide(); }
   const merge = e.target.closest(MERGE_ATTRS);
   if (merge) { e.preventDefault(); mergeClick(merge); return; }
   const claude = e.target.closest(CLAUDE_ATTRS);
@@ -163,6 +164,7 @@ document.addEventListener('keydown', (e) => {
   if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r' && hasNewCommits()) { e.preventDefault(); rebuild(); return; }
   if (e.key === 'Escape' && EDITOR.menu !== null) { EDITOR.menu = null; render(); return; }
   if (e.key === 'Escape' && state.mergeMenu) { state.mergeMenu = false; renderSide(); return; }
+  if (e.key === 'Escape' && CL.menu) { CL.menu = false; renderSide(); return; }
   if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }
