@@ -151,6 +151,23 @@ def add_pr(gh_state: Path) -> Callable[[Files, Files], str]:
     return add
 
 
+@pytest.fixture(scope="session")
+def push_pr(gh_state: Path) -> Callable[[str, Files], str]:
+    """A function that pushes a commit holding the files `new` to the pull request at the page path `pr`, and returns
+    the new head commit."""
+    repo = Path((gh_state / "repo.txt").read_text())
+
+    def push(pr: str, new: Files) -> str:
+        number = int(pr.rsplit("/", 1)[1])
+        head = commit_tree(repo, new, f"#{number} push")
+        git(repo, "update-ref", f"refs/pull/{number}/head", head)
+        meta = gh_state / f"pr{number}.json"
+        meta.write_text(json.dumps(pr_meta(number, json.loads(meta.read_text())["baseRefOid"], head)))
+        return head
+
+    return push
+
+
 def free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))

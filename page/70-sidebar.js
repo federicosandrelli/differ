@@ -86,6 +86,32 @@ function headButtons() {
   const own = isOwn(), buttons = (own ? mergeButton() : '') + (!own || C.pending ? reviewButton() : '');
   return buttons ? `<span class="acts">${buttons}</span>` : '';
 }
+// A section of the sidebar: a band under the head with a hairline below it, such as the rebuild notice, the kind
+// filters or the search box. A section with nothing to show stays in the sidebar, empty and without its hairline, so
+// it opens and closes over a moment when what it shows comes or goes (animateSections).
+const sectionHtml = (key, inner) => `<div class="sect" data-sect="${key}">${inner}</div>`;
+// Each section's height and content, by its key.
+function sectionsOf(side) {
+  const sections = new Map();
+  for (const el of side.querySelectorAll('[data-sect]')) sections.set(el.dataset.sect, { h: el.offsetHeight, html: el.innerHTML });
+  return sections;
+}
+// Animate the height of each section that changed since before, which holds the sections of that moment. A section
+// that closed shows what it showed while it shrinks, then empties.
+function animateSections(side, before) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const changes = [];
+  for (const el of side.querySelectorAll('[data-sect]')) {
+    const old = before.get(el.dataset.sect), h = el.offsetHeight;
+    if (old && Math.abs(old.h - h) > 1) changes.push({ el, old, h });
+  }
+  for (const { el, old, h } of changes) {
+    if (h || !old.html) { animateHeight(el, old.h, h); continue; }
+    el.innerHTML = old.html;
+    el.classList.add('leaving');
+    animateHeight(el, old.h, 0, () => { el.classList.remove('leaving'); el.innerHTML = ''; });
+  }
+}
 function renderSide() {
   // The box keeps the spaces the reader typed around the query, which the search ignores.
   const box = document.querySelector('#side .search');
@@ -100,11 +126,12 @@ function renderSide() {
   };
   const h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? headButtons() : ''}</div></div>
+    ${sectionHtml('rebuild', rebuildNotice())}
     ${commentNotices()}${mergeNotice()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}${state.mergePanel && isOwn() ? mergePanelHtml() : ''}
-    <div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>
-    <div class="searchbar">
+    ${sectionHtml('filters', `<div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>`)}
+    ${sectionHtml('search', `<div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
-      ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>
+      ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>`)}
     <div class="list" tabindex="0">${renderList()}</div>${claudeFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .list');
   const scroll = prev ? prev.scrollTop : 0;
@@ -113,7 +140,9 @@ function renderSide() {
   const selection = focused && focused !== '.list' ? [ae.selectionStart, ae.selectionEnd, ae.selectionDirection] : null;
   const side = document.getElementById('side'), typing = focused ? null : focusedBox(side);
   keepBoxHeights(side);
+  const sections = sectionsOf(side);
   side.innerHTML = h;
+  animateSections(side, sections);
   fillBoxes(side);
   if (SHELL) SHELL.draft(hasDraft());
   document.querySelector('#side .list').scrollTop = scroll;

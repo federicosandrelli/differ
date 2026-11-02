@@ -458,6 +458,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = claude.reply(ref, str(body["id"]), text_of(body["body"]))
             elif action == "claude_delete":
                 result = claude.delete(ref, str(body["id"]))
+            elif action == "rebuild":
+                result = {"state": build.rebuild(ref, shown=str(body["head"]))}
             elif action == "open":
                 editors.open_file(ref, str(body["editor"]), str(body["path"]), line_number(body["line"]))
                 result = {}

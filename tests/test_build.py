@@ -236,6 +236,25 @@ def test_refresh_without_a_current_page_builds_without_reading_the_head(
     assert pages["started"] == [other]
 
 
+def test_rebuild_builds_for_a_moved_head_and_keeps_serving_the_old_page_meanwhile(
+    pages: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        build.threading, "Thread", lambda target, daemon: type("Idle", (), {"start": lambda self: None})()
+    )
+    pages["head"] = "b" * 40
+    assert build.rebuild(REF, shown="a" * 40) == "building"
+    assert build.serve(REF) == build.page_path(REF, "a" * 40)
+    assert build.rebuild(REF, shown="a" * 40) == "building"
+
+
+def test_rebuild_tells_whether_the_page_for_the_head_is_the_one_shown(pages: dict[str, Any]) -> None:
+    assert build.rebuild(REF, shown="a" * 12) == "current" and pages["started"] == []
+    build.page_path(REF, "b" * 40).write_text("newer page")
+    pages["head"] = "b" * 40
+    assert build.rebuild(REF, shown="a" * 40) == "ready" and pages["started"] == []
+
+
 def test_serve_returns_the_page_of_a_head_moved_back_to_an_older_commit(
     pages: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
