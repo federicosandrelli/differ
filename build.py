@@ -232,8 +232,13 @@ def prune_all() -> None:
             page.unlink(missing_ok=True)
 
 
+def mirror_of(ref: PullRef) -> Path:
+    """The bare clone of the pull request's repository, which the build reads."""
+    return CACHE / "repos" / ref.owner / f"{ref.repo}.git"
+
+
 def ensure_repo(ref: PullRef, log: Log) -> Path:
-    mirror = CACHE / "repos" / ref.owner / f"{ref.repo}.git"
+    mirror = mirror_of(ref)
     if not mirror.exists():
         log(f"Cloning {ref.slug} without file contents (first time for this repo)")
         mirror.parent.mkdir(parents=True, exist_ok=True)

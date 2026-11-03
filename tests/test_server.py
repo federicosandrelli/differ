@@ -484,3 +484,25 @@ def test_followed_is_refused_from_another_origin(tmp_path: Path, monkeypatch: py
     h.do_POST()
     assert response(h)[0] == 403
     assert server.followed.load() == []
+
+
+@pytest.mark.parametrize(
+    ("status", "expired"), [("open", []), ("merged", [PullRef("o", "r", 1)]), ("closed", [PullRef("o", "r", 1)])]
+)
+def test_a_comments_load_expires_the_comments_for_claude_of_an_ended_pull_request(
+    status: str, expired: list[PullRef], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gone: list[PullRef] = []
+    monkeypatch.setattr(server.comments, "fetch", lambda ref: {"status": status})
+    monkeypatch.setattr(server.claude, "expire", gone.append)
+    h = request("GET", "/api/o/r/1/comments")
+    h.do_GET()
+    assert response(h)[0] == 200 and gone == expired
+
+
+def test_the_comments_for_claude_are_placed_on_the_head_the_page_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[tuple[PullRef, str]] = []
+    monkeypatch.setattr(server.claude, "fetch", lambda ref, head: asked.append((ref, head)) or {})
+    h = request("GET", "/api/o/r/1/claude?head=" + "a" * 40)
+    h.do_GET()
+    assert response(h)[0] == 200 and asked == [(PullRef("o", "r", 1), "a" * 40)]

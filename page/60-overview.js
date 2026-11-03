@@ -68,7 +68,7 @@ function overviewHtml() {
   return `<h1>${esc(PR.title)}</h1>
     <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a>${author} · ${plural(PR.commits, 'commit')} · <span class="mono">${commit(PR.base)}…${commit(PR.head)}</span></div>
     <div class="prbody">${bodyHtml({ body: PR.body || '', html: C.body_html })}</div>
-    ${renamesHtml()}${conversationHtml()}`;
+    ${renamesHtml()}${conversationHtml()}${claudeOrphansHtml()}`;
 }
 // Everything the overview's HTML depends on, so it is rebuilt only when one of them changes.
 function overviewKey() {
