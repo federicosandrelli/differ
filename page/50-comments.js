@@ -187,7 +187,7 @@ function composeHtml(f, c) {
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
     <textarea data-compose-text="${esc(draftKey(c.path, c.side, c.line))}" placeholder="Leave a comment">${esc(c.text)}</textarea>
     <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
-    ${claudeOn() ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
+    ${claudeOn() && !CLAUDE_ENDED.includes(prStatus()) ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
 }
 // A suggestion shows as the lines it replaces, from the file, over the lines it proposes.
 function suggestionHtml(code, ctx) {

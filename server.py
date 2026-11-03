@@ -28,13 +28,15 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /image?src=<link>                  the image a link to a file of a GitHub repository names, read with gh, since
                                      GitHub sends a file of a private repository only to a signed-in browser
                                      (refused cross-site, as the page is)
-  /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
+  /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments (a merged or
+                                     closed pull request loses its comments for Claude here)
   /api/<owner>/<repo>/<number>/viewed     GET: the paths of the files the viewer marked viewed on GitHub
   /api/<owner>/<repo>/<number>/editors    GET: the editors installed (GitHub always is), and the names of all the editors
                                      the app knows
   /api/<owner>/<repo>/<number>/merge      GET: the merge state: the checks, the review decision, whether GitHub can
                                      merge, the auto-merge request and the merge methods allowed
-  /api/<owner>/<repo>/<number>/claude     GET: the comments for Claude, and whether a Claude Code session listens
+  /api/<owner>/<repo>/<number>/claude     GET: the comments for Claude, each placed on the head commit ?head= names,
+                                     and whether a Claude Code session listens
   /api/<owner>/<repo>/<number>/listen     a WebSocket: a Claude Code session listens for the comments for Claude,
                                      one session per pull request (refused from another origin)
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
@@ -216,6 +218,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, start_page())
             if url.path == "/board":
                 if "cached" not in query:
+                    threading.Thread(target=claude.sweep, daemon=True).start()
                     statuses = threading.Thread(target=recent.refresh)
                     statuses.start()
                     board.refresh()
@@ -256,13 +259,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, body)
                 return self.send(200, progress_page(ref))
             if (m := API.match(url.path)) and m["action"] == "comments":
-                return self.send_json(comments.fetch(PullRef.from_match(m)))
+                ref = PullRef.from_match(m)
+                data = comments.fetch(ref)
+                if data["status"] in claude.ENDED:
+                    claude.expire(ref)
+                return self.send_json(data)
             if (m := API.match(url.path)) and m["action"] == "viewed":
                 return self.send_json({"viewed": comments.viewed(PullRef.from_match(m))})
             if (m := API.match(url.path)) and m["action"] == "merge":
                 return self.send_json(merge.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "claude":
-                return self.send_json(claude.fetch(PullRef.from_match(m)))
+                return self.send_json(claude.fetch(PullRef.from_match(m), (query.get("head") or [""])[0]))
             if (m := API.match(url.path)) and m["action"] == "listen":
                 return self.listen(PullRef.from_match(m))
             if (m := API.match(url.path)) and m["action"] == "editors":
@@ -455,14 +462,14 @@ class Handler(BaseHTTPRequestHandler):
                     body=text_of(body["body"]),
                 )
             elif action == "claude_follow_up":
-                result = claude.follow_up(ref, str(body["id"]), text_of(body["body"]))
+                result = claude.follow_up(ref, str(body["id"]), text_of(body["body"]), str(body.get("head", "")))
             elif action == "claude_reply":
                 seen = body.get("seen")
                 result = claude.reply(
                     ref, str(body["id"]), text_of(body["body"]), None if seen is None else count_of(seen)
                 )
             elif action == "claude_delete":
-                result = claude.delete(ref, str(body["id"]))
+                result = claude.delete(ref, str(body["id"]), str(body.get("head", "")))
             elif action == "rebuild":
                 result = {"state": build.rebuild(ref, shown=str(body["head"]))}
             elif action == "open":
@@ -616,6 +623,7 @@ def main() -> None:
     if args.exit_with_parent:
         threading.Thread(target=exit_with_parent, daemon=True).start()
     build.prune_all()
+    threading.Thread(target=claude.sweep, daemon=True).start()
     if problem := gh_problem():
         sys.stderr.write(f"{problem} Run `gh auth login`; the start page checks again once a minute.\n")
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)

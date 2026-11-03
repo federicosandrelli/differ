@@ -7,6 +7,7 @@ import struct
 import threading
 import urllib.request
 from collections.abc import Iterator
+from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -14,9 +15,11 @@ import pytest
 
 import build
 import claude
+import github
 import server
 import websocket
 from github import PullRef
+from helpers import commit_tree, make_repo
 
 REF = PullRef("acme", "widgets", 1)
 
@@ -34,11 +37,11 @@ def add(body: str = "Use a logger here", line: int = 11) -> dict:
 
 
 def ids() -> list[str]:
-    return [c["id"] for c in claude.fetch(REF)["comments"]]
+    return [c["id"] for c in claude.fetch(REF, "abc")["comments"]]
 
 
 def states() -> list[str]:
-    return [c["state"] for c in claude.fetch(REF)["comments"]]
+    return [c["state"] for c in claude.fetch(REF, "abc")["comments"]]
 
 
 def said(c: dict) -> list[tuple[str, str]]:
@@ -76,7 +79,7 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
     assert states() == ["waiting"]
     frames: list[str] = []
     claude.attach(REF, frames.append)
-    (sent,) = claude.fetch(REF)["comments"]
+    (sent,) = claude.fetch(REF, "abc")["comments"]
     assert [json.loads(f) for f in frames] == [
         {
             "event": "comment",
@@ -93,7 +96,7 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
             "replay": True,
         }
     ]
-    assert states() == ["sent"] and claude.fetch(REF)["listening"]
+    assert states() == ["sent"] and claude.fetch(REF, "abc")["listening"]
 
 
 def test_a_comment_goes_at_once_to_the_session_that_listens() -> None:
@@ -111,9 +114,9 @@ def test_a_second_session_is_refused_while_one_listens_and_let_in_after_it_leave
     with pytest.raises(claude.Busy):
         claude.attach(REF, second)
     claude.detach(REF, first)
-    assert not claude.fetch(REF)["listening"]
+    assert not claude.fetch(REF, "abc")["listening"]
     claude.attach(REF, second)
-    assert claude.fetch(REF)["listening"]
+    assert claude.fetch(REF, "abc")["listening"]
 
 
 def test_a_detach_by_a_session_that_no_longer_listens_keeps_the_new_listener() -> None:
@@ -125,7 +128,7 @@ def test_a_detach_by_a_session_that_no_longer_listens_keeps_the_new_listener() -
     new: list[str] = []
     claude.attach(REF, new.append)
     claude.detach(REF, old)
-    assert claude.fetch(REF)["listening"] and len(new) == 1
+    assert claude.fetch(REF, "abc")["listening"] and len(new) == 1
 
 
 def test_a_session_that_has_gone_stops_listening_and_its_comment_waits() -> None:
@@ -156,7 +159,7 @@ def test_a_reply_answers_its_comment_and_a_delete_removes_it() -> None:
     one, two = ids()
     c = claude.reply(REF, two, "Renamed it.")
     assert c["state"] == "answered" and said(c) == [("reader", "two"), ("claude", "Renamed it.")]
-    assert [said(c) for c in claude.delete(REF, one)["comments"]] == [said(c)]
+    assert [said(c) for c in claude.delete(REF, one, "abc")["comments"]] == [said(c)]
     assert add("three")["comments"][-1]["id"] not in {one, two}
     with pytest.raises(claude.NoComment):
         claude.reply(REF, one, "Too late.")
@@ -168,7 +171,7 @@ def test_the_readers_reply_goes_to_the_session_with_the_whole_thread_and_waits_f
     frames: list[str] = []
     claude.attach(REF, frames.append)
     claude.reply(REF, thread, "Logged it at info.")
-    (c,) = claude.follow_up(REF, thread, "Make it debug")["comments"]
+    (c,) = claude.follow_up(REF, thread, "Make it debug", "abc")["comments"]
     assert c["state"] == "sent"
     last = json.loads(frames[-1])
     assert (last["event"], last["id"], last["seen"], last["replay"]) == ("follow_up", thread, 3, False)
@@ -178,7 +181,10 @@ def test_the_readers_reply_goes_to_the_session_with_the_whole_thread_and_waits_f
         ("reader", "Make it debug"),
     ]
     claude.reply(REF, thread, "Made it debug.")
-    assert said(claude.fetch(REF)["comments"][0])[-2:] == [("reader", "Make it debug"), ("claude", "Made it debug.")]
+    assert said(claude.fetch(REF, "abc")["comments"][0])[-2:] == [
+        ("reader", "Make it debug"),
+        ("claude", "Made it debug."),
+    ]
 
 
 def test_claudes_reply_to_an_older_frame_keeps_the_readers_newer_message_waiting() -> None:
@@ -186,7 +192,7 @@ def test_claudes_reply_to_an_older_frame_keeps_the_readers_newer_message_waiting
     (thread,) = ids()
     first = [].append
     claude.attach(REF, first)
-    claude.follow_up(REF, thread, "At debug")
+    claude.follow_up(REF, thread, "At debug", "abc")
     assert claude.reply(REF, thread, "Logged it.", seen=1)["state"] == "sent"
     claude.detach(REF, first)
     again: list[str] = []
@@ -199,7 +205,7 @@ def test_a_reply_written_while_no_session_listens_goes_to_the_next_one_as_a_foll
     add()
     (thread,) = ids()
     claude.reply(REF, thread, "Done.")
-    claude.follow_up(REF, thread, "One more thing")
+    claude.follow_up(REF, thread, "One more thing", "abc")
     assert states() == ["waiting"]
     frames: list[str] = []
     claude.attach(REF, frames.append)
@@ -234,7 +240,7 @@ def test_a_comment_kept_before_threads_had_messages_reads_as_a_thread() -> None:
             },
         ],
     )
-    one, two = claude.fetch(REF)["comments"]
+    one, two = claude.fetch(REF, "abc")["comments"]
     assert one["messages"] == [
         {"author": "reader", "body": "one", "at": "t1"},
         {"author": "claude", "body": "Done.", "at": "t2"},
@@ -292,7 +298,7 @@ def post(port: int, action: str, body: dict) -> dict:
 
 def until_listening(expected: bool) -> None:
     for _ in range(200):
-        if claude.fetch(REF)["listening"] == expected:
+        if claude.fetch(REF, "abc")["listening"] == expected:
             return
         threading.Event().wait(0.01)
     pytest.fail(f"listening never became {expected}")
@@ -333,4 +339,126 @@ def test_a_websocket_from_a_page_of_another_origin_is_refused(port: int) -> None
     sock, head = handshake(port, origin="https://evil.example")
     assert head.startswith(b"HTTP/1.0 403")
     sock.close()
-    assert not claude.fetch(REF)["listening"]
+    assert not claude.fetch(REF, "abc")["listening"]
+
+
+LINES = [f"line {n}" for n in range(1, 11)]
+
+
+def text(lines: list[str]) -> str:
+    return "".join(f"{line}\n" for line in lines)
+
+
+@dataclass
+class Pushes:
+    """A repo with src/app.py holding LINES at `written`, the commit the comments are written on."""
+
+    repo: Path
+    written: str
+
+    def push(self, files: dict[str, str]) -> str:
+        """Commit `files` in place of the tree, and answer the new head commit."""
+        return commit_tree(self.repo, files, "push")
+
+
+@pytest.fixture
+def pushes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pushes:
+    repo, _, written = make_repo(tmp_path / "repo", {}, {"src/app.py": text(LINES)})
+    monkeypatch.setattr(build, "mirror_of", lambda ref: repo)
+    return Pushes(repo, written)
+
+
+def placed(written: str, head: str, line: int, start_line: int | None = None, side: claude.Side = "RIGHT") -> dict:
+    claude.add(REF, path="src/app.py", line=line, start_line=start_line, side=side, commit=written, code=[], body="b")
+    return claude.fetch(REF, head)["comments"][-1]["placed"]
+
+
+@pytest.mark.parametrize(
+    ("lines", "at"),
+    [
+        (LINES, {"line": 5, "start_line": 4}),
+        (["new", "new", *LINES], {"line": 7, "start_line": 6}),
+        ([*LINES[:1], *LINES[2:]], {"line": 4, "start_line": 3}),
+        ([*LINES[:6], "changed", *LINES[7:]], {"line": 5, "start_line": 4}),
+        ([*LINES[:2], "changed", *LINES[3:]], {"line": 5, "start_line": 4}),
+        ([*LINES[:5], "changed", *LINES[6:]], {"line": 5, "start_line": 4}),
+        ([*LINES[:5], "added", *LINES[5:]], {"line": 5, "start_line": 4}),
+        ([*LINES[:4], "changed", *LINES[5:]], {"line": None, "start_line": None}),
+        ([*LINES[:4], "between", *LINES[4:]], {"line": None, "start_line": None}),
+        ([*LINES[:3], *LINES[4:]], {"line": None, "start_line": None}),
+    ],
+    ids=[
+        "unchanged",
+        "lines added above",
+        "line removed above",
+        "line changed below",
+        "line just above changed",
+        "line just below changed",
+        "line added just below",
+        "line changed",
+        "line added between",
+        "line removed",
+    ],
+)
+def test_a_comment_follows_its_lines_to_a_new_head_until_they_change(
+    pushes: Pushes, lines: list[str], at: dict
+) -> None:
+    head = pushes.push({"src/app.py": text(lines), "other.py": "x\n"})
+    assert placed(pushes.written, head, line=5, start_line=4) == at
+
+
+def test_a_comment_on_a_renamed_file_is_outdated(pushes: Pushes) -> None:
+    head = pushes.push({"src/main.py": text(LINES)})
+    assert placed(pushes.written, head, line=5) == {"line": None, "start_line": None}
+
+
+def test_a_change_answers_the_comments_placed_on_the_head_it_names(pushes: Pushes) -> None:
+    head = pushes.push({"src/app.py": text(["new", *LINES])})
+
+    def comment(line: int, commit: str) -> list[dict]:
+        return claude.add(
+            REF, path="src/app.py", line=line, start_line=None, side="RIGHT", commit=commit, code=[], body="b"
+        )["comments"]
+
+    def lines(comments: list[dict]) -> list[int | None]:
+        return [c["placed"]["line"] for c in comments]
+
+    (first,) = comment(5, pushes.written)
+    assert first["placed"]["line"] == 5
+    assert lines(second := comment(1, head)) == [6, 1]
+    assert lines(claude.follow_up(REF, first["id"], "And here", head)["comments"]) == [6, 1]
+    assert lines(claude.delete(REF, second[1]["id"], head)["comments"]) == [6]
+
+
+def test_a_comment_on_a_deleted_file_is_outdated(pushes: Pushes) -> None:
+    head = pushes.push({"other.py": "x\n"})
+    assert placed(pushes.written, head, line=5) == {"line": None, "start_line": None}
+
+
+def test_a_comment_on_the_old_file_is_outdated_on_another_head(pushes: Pushes) -> None:
+    head = pushes.push({"src/app.py": text(LINES), "other.py": "x\n"})
+    assert placed(pushes.written, head, line=5, side="LEFT")["line"] is None
+    assert placed(pushes.written, pushes.written, line=5, side="LEFT")["line"] == 5
+
+
+def test_a_comment_is_outdated_when_git_cannot_compare_the_commits(pushes: Pushes) -> None:
+    assert placed(pushes.written, "f" * 40, line=5)["line"] is None
+
+
+def test_a_sweep_deletes_the_comments_of_merged_and_closed_pull_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    statuses: list[github.Status] = ["open", "merged", "closed", "draft"]
+    refs: dict[github.Status, PullRef] = {status: PullRef("acme", "widgets", n) for n, status in enumerate(statuses)}
+    gone = PullRef("acme", "widgets", 9)
+    for ref in [*refs.values(), gone]:
+        claude.add(ref, path="a.py", line=1, start_line=None, side="RIGHT", commit="abc", code=[], body="b")
+    asked = []
+
+    def standings(asked_for: list[PullRef]) -> dict[PullRef, github.Standing]:
+        asked.extend(asked_for)
+        return {ref: github.Standing(status, "me") for status, ref in refs.items()}
+
+    monkeypatch.setattr(github, "pr_standings", standings)
+    claude.sweep()
+    assert sorted(asked, key=lambda r: r.number) == [*refs.values(), gone]
+    kept = [ref for ref in [*refs.values(), gone] if claude.fetch(ref, "abc")["comments"]]
+    assert kept == [refs["open"], refs["draft"], gone]

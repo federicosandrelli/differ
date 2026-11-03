@@ -10,6 +10,8 @@ const CLAUDE_POLL_MS = 5000;
 const CLAUDE_KEY = 'dr:claude';
 // The words of the tag the reader's last message shows while it waits for Claude's reply.
 const CLAUDE_TAGS = { waiting: 'waiting for Claude', sent: 'sent to Claude' };
+// The statuses that end a pull request; the server then deletes its comments for Claude.
+const CLAUDE_ENDED = ['merged', 'closed'];
 
 const claudeOn = () => !!API && lsGet(CLAUDE_KEY) !== 'off';
 // The key of the thread of the comment with that id, in the threads and in `state.replyOpen`.
@@ -21,7 +23,7 @@ async function loadClaude() {
   if (!claudeOn()) return;
   const load = ++CL.started;
   let d = null;
-  try { d = await api('claude'); } catch { /* the next load tries again */ }
+  try { d = await api(`claude?head=${PR.head}`); } catch { /* the next load tries again */ }
   if (d) showClaude(load, d);
   pollClaude();
 }
@@ -46,10 +48,11 @@ function showClaude(load, d) {
   CL.applied = load;
   applyClaude(d);
 }
-// Send an action on the comments for Claude and show the server's answer. Throws when the server refuses the action.
+// Send an action on the comments for Claude, with the page's head commit, and show the server's answer. Throws when
+// the server refuses the action.
 async function postClaude(action, body) {
   const load = ++CL.started;
-  showClaude(load, await api(action, body));
+  showClaude(load, await api(action, { ...body, head: PR.head }));
 }
 // The setting changed in the settings of the shell, which share this page's storage.
 window.addEventListener('storage', (e) => {
@@ -88,15 +91,12 @@ async function sendClaude(action, body, undo) {
 }
 
 // ---------- HTML
-// The comments for Claude as threads, shaped like GitHub's: one on a line of the head commit the page shows, else
-// outdated.
+// The comments for Claude as threads, shaped like GitHub's: one on the lines the server placed it on in the head
+// commit the page shows, else outdated.
 function claudeThreads() {
   if (!claudeOn()) return [];
-  return CL.comments.map(c => {
-    const here = c.commit === PR.head;
-    return { id: claudeKey(c.id), claude: c, path: c.path, resolved: false, outdated: !here, line: here ? c.line : null,
-      start_line: c.start_line, side: c.side, original_line: c.line, original_start_line: c.start_line, comments: [] };
-  });
+  return CL.comments.map(c => ({ id: claudeKey(c.id), claude: c, path: c.path, resolved: false, outdated: c.placed.line == null,
+    line: c.placed.line, start_line: c.placed.start_line, side: c.side, original_line: c.line, original_start_line: c.start_line, comments: [] }));
 }
 function claudeThreadHtml(f, t) {
   const c = t.claude, ctx = { file: f, thread: t }, last = c.messages.map(m => m.author).lastIndexOf('reader');
@@ -110,6 +110,12 @@ function claudeThreadHtml(f, t) {
   const reply = state.replyOpen.has(t.id) ? replyHtml(t, btn(`data-claude-follow="${esc(c.id)}"`, 'Send to Claude', true))
     : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}</div>`;
   return `<div class="thread card" data-thread="${esc(t.id)}">${threadHead(t)}${messages}${reply}</div>`;
+}
+// The comments for Claude on files this diff leaves out, for the overview, under the path each one is on.
+function claudeOrphansHtml() {
+  const threads = THREADS.orphans.filter(t => t.claude);
+  if (!threads.length) return '';
+  return `<h2>Comments for Claude on files outside this diff</h2>${threads.map(t => `<p class="hint mono">${esc(t.path)}${t.line == null || threadHead(t) ? '' : `:${t.line}`}</p>${claudeThreadHtml(null, t)}`).join('')}`;
 }
 function claudeFootHtml() {
   if (!claudeOn()) return '';

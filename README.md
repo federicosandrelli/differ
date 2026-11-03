@@ -86,13 +86,18 @@ shows in a thread on its line, tagged "waiting for Claude" until a session
 has it and "sent to Claude" until Claude replies; Claude's reply shows under
 it. The thread's Reply button carries on the conversation: each reply goes to
 Claude with the whole thread, and Claude answers under it. "delete" removes
-the thread. A thread written on an older head commit is listed with the
-outdated threads of its file. A bot button in the footer of the sidebar has
+the thread. After a push, a thread stays on its lines while they are
+unchanged, and moves with them when lines above it are added or removed. Once
+one of its lines changes, or its file is renamed or deleted, it is listed with
+the outdated threads of its file. A thread on a file that the diff no longer
+holds shows at the end of the overview. A bot button in the footer of the sidebar has
 a dot that is green while a session listens and grey while none does. It
 opens a menu that says the same, and while no session listens, its "Copy
 connect prompt" button copies the words to paste into the session. The
 comments wait in the cache (`claude/` in it) for a session, and go to it when
-it connects.
+it connects. They stay there until the pull request is merged or closed: the
+server deletes them as soon as it sees that, when the page loads its comments,
+when the start page refreshes, or when the server starts.
 
 The session needs the differ plugin from this repository, installed once:
 
