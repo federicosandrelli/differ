@@ -16,9 +16,12 @@ input { flex: 1; }
 main:has(#board) { max-width: 1320px; }
 .group > h2 { display: flex; align-items: center; gap: 8px; font-size: 20px; margin: 32px 0 14px; }
 .group.opened > h2 { margin-bottom: 8px; }
-/* A row's columns take the shares the board names in --split, such as 3fr 7fr; a narrow window stacks them. */
-.columns { display: grid; grid-template-columns: var(--split); gap: 20px; align-items: start; }
-@media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
+/* A group without a title is set apart from the one above by space alone. */
+.group:not(:has(> h2)) { margin-top: 56px; }
+/* A row of --n columns: side by side in equal widths while each has --column-min, otherwise all stacked. Below the
+   threshold the flex basis turns huge and each column takes a line; above it, the basis is 0 and they share it. */
+.columns { --column-min: 400px; --gap: 20px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--gap); }
+.columns > .column { flex: 1 1 calc((var(--n) * var(--column-min) + (var(--n) - 1) * var(--gap) - 100%) * 999); }
 .column, .sub { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .column h3, .folded h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 /* A folded column opens under the row, from a summary that holds the column's chevron and its head. */
@@ -31,16 +34,21 @@ main:has(#board) { max-width: 1320px; }
 .sub > .more { align-self: flex-start; }
 .none { opacity: var(--dim); }
 .pr { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
-.pr .t { font-size: 13px; font-weight: 500; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.pr .m { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+/* A card's two lines: the title with the age on the right, then the repository with the reasons on the right. The
+   reasons drop to a line of their own, still on the right, when the repository leaves them no room. */
+.pr .line { display: flex; align-items: center; gap: 6px 12px; min-width: 0; }
+.pr .line:first-child { align-items: baseline; }
+.pr .line:last-child { flex-wrap: wrap; }
+.pr .t { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.pr .m { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .pr .m .by, .pr .m .ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pr .m .ref { flex: 0 100 auto; font-family: var(--mono); }
-.pr .m .age { flex: none; }
-.pr .reasons { display: flex; flex-wrap: wrap; gap: 5px 6px; }
+.pr .age { flex: none; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.pr .reasons { flex: 0 1 auto; min-width: 0; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px 6px; }
 a.card:hover .reason { background: var(--bg-canvas); }
 .quiet .pr { gap: 2px; padding: 7px 12px; }
 .quiet .pr .t { font-weight: 400; color: var(--text-secondary); -webkit-line-clamp: 1; }
-.quiet .pr .m { font-size: 11px; }
+.quiet .pr .m, .quiet .pr .age { font-size: 11px; }
 .list { overflow: hidden; }
 .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--text); }
 .item:first-child { border-top: 0; } .item:hover { background: var(--bg-panel); text-decoration: none; }

@@ -316,15 +316,15 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
     save(board.classify(ME, [[pr(1, ci="FAILURE"), pr(2)], [], [pr(3, author="ann", repo="acme/tools")], [], []], []))
     page = board.sections_html()
     assert re.findall(r'<section class="sub" data-key="(\w+)">', page) == [
-        "draft",
         "action",
-        "merged",
-        "unreviewed",
         "reviewing",
-        "merged_others",
+        "draft",
+        "ci",
+        "reviewed",
+        "merged",
     ]
-    assert column_counts(page) == ["0", "2", "0", "0", "1", "0"]
-    mine, _, theirs = re.findall(r'<a class="card.*?</a>', page)
+    assert column_counts(page) == ["1", "1", "0", "1", "0", "0"]
+    mine, theirs, _ = re.findall(r'<a class="card.*?</a>', page)
     assert 'href="/acme/widgets/pull/1"' in mine and '<span class="reason tone-bad" title="CI failed">' in mine
     assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
     assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
@@ -344,11 +344,14 @@ def test_html_lists_a_column_most_urgent_section_first_and_each_section_newest_f
             6, author="ann", reviews=(by(ME, "2026-10-20T00:00:00Z", state="APPROVED"),), updated="2026-10-21T00:00:00Z"
         ),
         pr(7, author="ann", requested=("bob",), updated="2026-10-24T00:00:00Z"),
+        pr(8, author="ann", updated="2026-10-26T00:00:00Z"),
     ]
     save(board.classify(ME, [mine, [], asked, involved, [], [], []], ["acme/widgets"]))
     page = board.sections_html()
-    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "action")) == ["4", "3", "2", "1"]
-    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewing")) == ["5", "6", "7"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "action")) == ["4", "3"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewing")) == ["5"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "ci")) == ["2", "1", "8"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewed")) == ["6", "7"]
 
 
 @pytest.mark.parametrize("sections", [None, [], "rows"])
@@ -382,10 +385,10 @@ def test_html_names_a_deleted_author_ghost() -> None:
 def test_html_keeps_an_empty_column_with_none() -> None:
     save(board.classify(ME, [[pr(1)], [], [], [], []], []))
     page = board.sections_html()
-    for key in ("draft", "reviewing"):
+    for key in ("action", "reviewing", "draft"):
         assert board.NONE_HTML in sub(page, key)
-    assert board.NONE_HTML not in sub(page, "action")
-    assert column_counts(page)[:2] == ["0", "1"]
+    assert board.NONE_HTML not in sub(page, "ci")
+    assert column_counts(page)[:4] == ["0", "0", "0", "1"]
 
 
 def test_html_shows_the_first_rows_of_a_section_and_a_button_for_the_rest() -> None:
@@ -412,22 +415,27 @@ def test_full_names_every_section_a_search_with_as_many_answers_as_it_reads_feed
     assert board.full([some, some, some, some, many]) == ["reviewed", "reviewing"]
 
 
-def test_html_splits_each_row_in_shares_and_folds_the_merged_column_under_it() -> None:
-    save(board.classify(ME, [[pr(1)], [pr(2, state="MERGED", merged="2026-10-20T00:00:00Z")], [], [], []], []))
+def test_html_counts_the_columns_of_each_row_and_folds_both_merges_under_the_second() -> None:
+    merged = [pr(2, state="MERGED", merged="2026-10-20T00:00:00Z")]
+    merged_others = [pr(3, author="ann", state="MERGED", merged="2026-10-21T00:00:00Z")]
+    save(board.classify(ME, [[pr(1)], merged, [], [], [], [], merged_others], ["acme/widgets"]))
     page = board.sections_html()
-    assert re.findall(r'<div class="columns" style="--split: ([^"]*)">', page) == ["3fr 7fr", "1fr 1fr"]
-    mine, theirs = re.findall(r'<details class="folded" data-key="(\w+)"><summary><svg class="chev"', page)
-    assert (mine, theirs) == ("merged", "merged_others")
+    assert re.findall(r'<section class="group">(<h2>[^<]*</h2>)?<div class="columns" style="--n: (\d+)">', page) == [
+        ("<h2>Need you</h2>", "2"),
+        ("", "3"),
+    ]
+    assert re.findall(r'<details class="folded" data-key="(\w+)"><summary><svg class="chev"', page) == ["merged"]
     folded = page[page.index('<details class="folded" data-key="merged">') : page.index("</details>")]
-    assert "<h3>Merged today" in folded and 'href="/acme/widgets/pull/2"' in folded
+    assert "<h3>Merged today" in folded
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', folded) == ["2", "3"]
     assert folded.index("</summary>") < folded.index('<div class="column quiet">')
-    assert column_counts(page) == ["0", "1", "1", "0", "0", "0"]
+    assert column_counts(page) == ["0", "0", "0", "1", "0", "2"]
 
 
 def test_html_adds_a_plus_to_the_count_of_a_column_with_a_full_section() -> None:
-    save(board.classify(ME, [[pr(1), pr(2, ci="FAILURE")], [], [], [], []], []), full=("action",))
+    save(board.classify(ME, [[pr(1), pr(2, ci="PENDING")], [], [], [], []], []), full=("review",))
     page = board.sections_html()
-    assert column_counts(page)[1] == "2+"
+    assert column_counts(page)[3] == "2+"
 
 
 FOLLOWED = ("acme/api", "acme/web")
@@ -454,10 +462,10 @@ def test_html_shows_the_rows_of_the_repositories_turned_on_and_counts_them() -> 
     save_two_repos()
     page = board.sections_html(["acme/api"])
     assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["8", "9", "11"]
-    assert column_counts(page)[:2] == ["1", "1"]
+    assert column_counts(page)[:4] == ["0", "0", "1", "1"]
     assert "more</button>" not in sub(page, "draft") and board.NONE_HTML in sub(page, "reviewing")
     page = board.sections_html(["acme/web", "acme/api"])
-    assert column_counts(page)[:2] == ["8", "1"] and "Show 3 more" in sub(page, "draft")
+    assert column_counts(page)[2:4] == ["8", "1"] and "Show 3 more" in sub(page, "draft")
     assert 'href="/acme/tools/pull/10"' not in page
 
 
@@ -465,16 +473,16 @@ def test_html_shows_every_row_when_no_followed_repository_is_on_and_drops_an_unf
     save_two_repos()
     for on in (None, [], ["acme/gone"]):
         page = board.sections_html(on)
-        assert 'href="/acme/tools/pull/10"' in page and column_counts(page)[:2] == ["8", "1"]
+        assert 'href="/acme/tools/pull/10"' in page and column_counts(page)[:4] == ["0", "1", "8", "1"]
         assert toggles(page) == {"acme/api": (False, "2"), "acme/web": (False, "7")}
     assert toggles(board.sections_html(["acme/gone", "acme/api"]))["acme/api"] == (True, "2")
 
 
-def test_a_toggle_counts_its_cards_outside_the_merged_columns_with_a_plus_for_a_full_section() -> None:
+def test_a_toggle_counts_its_cards_outside_the_merged_column_with_a_plus_for_a_full_section() -> None:
     save_two_repos(full=("review", "merged"))
     page = board.sections_html(["acme/web"])
     assert toggles(page) == {"acme/api": (False, "2+"), "acme/web": (True, "7")}
-    assert column_counts(page)[1:3] == ["0", "0"]
+    assert column_counts(page) == ["0", "0", "7", "0", "0", "0"]
     assert toggles(board.sections_html(["acme/api", "acme/web"])) == {
         "acme/api": (True, "2+"),
         "acme/web": (True, "7"),

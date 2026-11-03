@@ -14,21 +14,21 @@ The page at `/` is a tabbed shell: a home tab with the start page, and one tab
 per pull request. The start page (`/home` on its own) has a search bar and the
 pull requests that matter to you, in sections:
 
-- Your pull requests: the ones that need your action (comments since your last
-  push or reply, failed CI, conflicts, or approved and green), the ones waiting
-  on CI, the ones waiting on review, your drafts, and, folded under them, the
-  ones merged today.
-- Other people's pull requests: the ones that ask for your review, the ones
-  you reviewed or commented on, and, in the repositories you follow (set in the
-  settings), the ones that need a reviewer, the ones someone else reviews and,
+- Need you: your pull requests that need your action (comments since your last
+  push or reply, failed CI, conflicts, or approved and green), then the ones
+  that ask for your review.
+- Then, without a title: your drafts; the ones waiting for a reviewer (yours
+  waiting on CI or on review, then, in the repositories you follow (set in the
+  settings), other people's without a reviewer); the ones being reviewed (the
+  ones you reviewed or commented on, then the ones someone else reviews); and,
   folded under them, the ones merged today.
 - Recently opened: the pull requests you opened in differ today, less the ones
   above.
 
 Each card shows, in pills, what is happening with the pull request,
 such as failed CI, conflicts, new comments or the reviewers it waits on. Each
-column lists the most urgent pull requests first: the ones that need your action or
-your review come first, and the newest come first among equals. An empty column
+column lists the most urgent pull requests first, and the newest come first
+among equals. An empty column
 shows None. The page draws the sections from
 GitHub's last answer at once, and asks GitHub again when it loads and each
 time its tab comes to the front, at most every 30 seconds. Paste any PR URL or
