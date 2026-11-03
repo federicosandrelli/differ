@@ -85,7 +85,7 @@ request instead of GitHub: "Send to Claude" in the comment box sends it. It
 shows in a thread on its line, tagged "waiting for Claude" until a session
 has it and "sent to Claude" until Claude replies; Claude's reply shows under
 it, and "delete" removes the thread. A thread written on an older head commit
-is listed with the outdated threads of its file. A robot button in the footer
+is listed with the outdated threads of its file. A bot button in the footer
 of the sidebar has a dot that is green while a session listens and grey while
 none does. It opens a menu that says the same, and while no session listens,
 its "Copy connect prompt" button copies the words to paste into the session. The comments wait

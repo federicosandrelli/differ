@@ -74,7 +74,7 @@ function claudeThreads() {
 function claudeThreadHtml(f, t) {
   const c = t.claude, ctx = { file: f, thread: t };
   const tag = CLAUDE_TAGS[c.state] ? `<span class="tag claude">${CLAUDE_TAGS[c.state]}</span>` : '';
-  const reply = c.reply ? `<div class="comment"><div class="chead">${iconHtml('claude')}<b>Claude</b><span class="hint">${ago(c.answered)}</span></div>
+  const reply = c.reply ? `<div class="comment"><div class="chead">${iconHtml('bot')}<b>Claude</b><span class="hint">${ago(c.answered)}</span></div>
     <div class="cbody">${renderMarkdown(c.reply, ctx)}</div></div>` : '';
   return `<div class="thread card" data-thread="${esc(t.id)}">${threadHead(t)}<div class="comment"><div class="chead"><b>${esc(C.viewer || 'you')}</b><span class="hint">${ago(c.created)}</span>
     ${tag}<span class="spacer"></span><a href="#" data-claude-delete="${esc(c.id)}">delete</a></div>
@@ -89,7 +89,7 @@ function claudeFootHtml() {
     : `No Claude Code session listens on this pull request. Paste the connect prompt into the session that works on it.${waiting ? ` ${plural(waiting, 'comment')} will go to it when it connects.` : ''}`;
   const copy = CL.listening ? '' : `<button data-claude-connect>${Date.now() - CL.copied < 2000 ? 'Copied' : 'Copy connect prompt'}</button>`;
   const menu = CL.menu ? `<div class="menu"><div class="hint note">${note}</div>${copy}</div>` : '';
-  return `<div class="foot claude"><span class="claude-pick"><button class="ghost session" data-claude-menu title="${title}">${iconHtml('robot')}<span class="dot${CL.listening ? ' on' : ''}"></span></button>${menu}</span>
+  return `<div class="foot claude"><span class="claude-pick"><button class="ghost session" data-claude-menu title="${title}">${iconHtml('bot')}<span class="dot${CL.listening ? ' on' : ''}"></span></button>${menu}</span>
     ${CL.error ? `<div class="hint err">${esc(CL.error)}</div>` : ''}</div>`;
 }
 
