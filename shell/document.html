@@ -18,9 +18,10 @@ main:has(#board) { max-width: 1320px; }
 .group.opened > h2 { margin-bottom: 8px; }
 /* A group without a title is set apart from the one above by space alone. */
 .group:not(:has(> h2)) { margin-top: 56px; }
-/* A row's columns take the widths the board names in --split, such as 1fr 1fr; a narrow window stacks them. */
-.columns { display: grid; grid-template-columns: var(--split); gap: 20px; align-items: start; }
-@media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
+/* A row of --n columns: side by side in equal widths while each has --column-min, otherwise all stacked. Below the
+   threshold the flex basis turns huge and each column takes a line; above it, the basis is 0 and they share it. */
+.columns { --column-min: 400px; --gap: 20px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--gap); }
+.columns > .column { flex: 1 1 calc((var(--n) * var(--column-min) + (var(--n) - 1) * var(--gap) - 100%) * 999); }
 .column, .sub { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .column h3, .folded h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 /* A folded column opens under the row, from a summary that holds the column's chevron and its head. */

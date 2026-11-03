@@ -415,16 +415,14 @@ def test_full_names_every_section_a_search_with_as_many_answers_as_it_reads_feed
     assert board.full([some, some, some, some, many]) == ["reviewed", "reviewing"]
 
 
-def test_html_stacks_the_group_that_needs_the_viewer_and_folds_both_merges_under_the_next_row() -> None:
+def test_html_counts_the_columns_of_each_row_and_folds_both_merges_under_the_second() -> None:
     merged = [pr(2, state="MERGED", merged="2026-10-20T00:00:00Z")]
     merged_others = [pr(3, author="ann", state="MERGED", merged="2026-10-21T00:00:00Z")]
     save(board.classify(ME, [[pr(1)], merged, [], [], [], [], merged_others], ["acme/widgets"]))
     page = board.sections_html()
-    assert re.findall(
-        r'<section class="group">(<h2>[^<]*</h2>)?<div class="columns" style="--split: ([^"]*)">', page
-    ) == [
-        ("<h2>Need you</h2>", "1fr"),
-        ("", "1fr 1fr 1fr"),
+    assert re.findall(r'<section class="group">(<h2>[^<]*</h2>)?<div class="columns" style="--n: (\d+)">', page) == [
+        ("<h2>Need you</h2>", "2"),
+        ("", "3"),
     ]
     assert re.findall(r'<details class="folded" data-key="(\w+)"><summary><svg class="chev"', page) == ["merged"]
     folded = page[page.index('<details class="folded" data-key="merged">') : page.index("</details>")]

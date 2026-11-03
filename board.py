@@ -41,12 +41,10 @@ class Column(NamedTuple):
 
 
 class Group(NamedTuple):
-    """A group of the start page: its title, empty for a group set apart by space alone, its columns, and whether they
-    stack in one column instead of sharing a row."""
+    """A group of the start page: its title, empty for a group set apart by space alone, and its columns."""
 
     label: str
     columns: tuple[Column, ...]
-    stacked: bool = False
 
 
 GROUPS = (
@@ -56,7 +54,6 @@ GROUPS = (
             Column("Your pull requests", ("action",)),
             Column("Waiting for your review", ("reviewing",)),
         ),
-        stacked=True,
     ),
     Group(
         "",
@@ -549,10 +546,10 @@ def repos_html(board: Board, on: list[str]) -> str:
 
 def sections_html(on: list[str] | None = None) -> str:
     """The start page's board, once GitHub has answered: the strip of followed repositories, then each group, its
-    columns stacked or side by side in equal widths, with its folded columns under them; then the pull requests opened
-    today and missing from every section, then the footer. The board shows the rows of the followed repositories that
-    `on` names, or every row when `on` names no followed repository. A full section adds a plus to its column's count
-    while the board shows only some repositories when it still has rows."""
+    columns in a row, with its folded columns under the row; then the pull requests opened today and missing from
+    every section, then the footer. The board shows the rows of the followed repositories that `on` names, or every row
+    when `on` names no followed repository. A full section adds a plus to its column's count while the board shows only
+    some repositories when it still has rows."""
     board = load()
     chosen = [name for name in board["repos"] if name in (on or [])]
 
@@ -571,13 +568,12 @@ def sections_html(on: list[str] | None = None) -> str:
         strip = repos_html(board, chosen)
         for group in GROUPS:
             row = [c for c in group.columns if not c.folded]
-            split = "1fr" if group.stacked else " ".join("1fr" for _ in row)
             title = f"<h2>{html.escape(group.label)}</h2>" if group.label else ""
             parts = "".join(column_html(c, filtered) for c in row)
             folded = "".join(column_html(c, filtered) for c in group.columns if c.folded)
             groups.append(
                 f'<section class="group">{title}'
-                f'<div class="columns" style="--split: {split}">{parts}</div>{folded}</section>'
+                f'<div class="columns" style="--n: {len(row)}">{parts}</div>{folded}</section>'
             )
     if opened := kept(opened_rows(shown)):
         groups.append(
