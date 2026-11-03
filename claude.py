@@ -10,9 +10,11 @@ text frame, and when one connects, every thread without Claude's reply to the re
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 import os
 import re
+import sys
 import threading
 import uuid
 from collections.abc import Callable
@@ -36,6 +38,10 @@ Send = Callable[[str], None]
 # The statuses that end a pull request, and with it its comments.
 ENDED = ("merged", "closed")
 SHA = re.compile(r"[0-9a-f]{40}")
+# The skill that tells a session how to listen and reply, and the folder of the user's Claude Code skills, where
+# install_skill writes it as differ-comments/SKILL.md.
+SKILL = Path(__file__).parent / "skill" / "SKILL.md"
+SKILLS = Path(os.environ.get("DIFFER_SKILLS") or Path.home() / ".claude" / "skills")
 
 lock = threading.Lock()
 listeners: dict[PullRef, Send] = {}
@@ -272,6 +278,27 @@ def expire(ref: PullRef) -> None:
     """Delete all of the pull request's comments."""
     with lock:
         path_of(ref).unlink(missing_ok=True)
+
+
+def skill_marker(text: str) -> str:
+    """The line that ends an installed copy of the skill, and names the shipped text it was copied from."""
+    return f"<!-- differ skill {hashlib.sha256(text.encode()).hexdigest()[:12]} -->"
+
+
+def install_skill() -> None:
+    """Write the skill into the user's Claude Code skills, unless the copy there was installed from the text that
+    ships now. A copy from an older or a newer differ is replaced; one the user edited stays until the shipped text
+    changes. A failure to write goes to stderr."""
+    text = SKILL.read_text()
+    marker = skill_marker(text)
+    path = SKILLS / "differ-comments" / "SKILL.md"
+    try:
+        if path.exists() and path.read_bytes().rstrip().endswith(marker.encode()):
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{text.rstrip()}\n\n{marker}\n")
+    except OSError as e:
+        sys.stderr.write(f"Could not install the differ-comments skill in {path.parent}: {e}\n")
 
 
 def sweep() -> None:

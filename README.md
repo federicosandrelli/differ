@@ -99,13 +99,19 @@ it connects. They stay there until the pull request is merged or closed: the
 server deletes them as soon as it sees that, when the page loads its comments,
 when the start page refreshes, or when the server starts.
 
-The session needs the differ plugin from this repository, installed once:
+The server installs the skill that tells the session what to do, `skill/SKILL.md`,
+as `~/.claude/skills/differ-comments/SKILL.md` each time it starts, so no
+plugin is needed; a copy the reader edited stays until a new version of differ
+changes the skill. If you installed the differ plugin from the old marketplace,
+remove it and its marketplace, so that the session does not load the skill
+twice and Claude Code stops looking for the marketplace:
 
 ```sh
-claude plugin install differ --marketplace federicosandrelli/differ
+claude plugin uninstall differ@differ
+claude plugin marketplace remove differ
 ```
 
-Its skill, `claude-plugin/skills/differ-comments/SKILL.md`, has the session
+The skill has the session
 open a WebSocket to `/api/<owner>/<repo>/<number>/listen` with its Monitor
 tool, one session per pull request, and answer each comment and each reply
 with a POST to `claude_reply`. The Claude section of the settings turns the
@@ -301,7 +307,8 @@ request that changes `src-tauri/`, `web/`, `package.json`,
    The code hash is a hash of the files that shape a page, so a change to any
    of them, such as an app update, rebuilds the page.
 
-`DIFFER_CACHE` moves the cache. The cache prunes itself: after a build,
+`DIFFER_CACHE` moves the cache, and `DIFFER_SKILLS` the folder of Claude Code
+skills that the server installs its skill in. The cache prunes itself: after a build,
 `build.py` keeps only the pull request's two newest pages, so the page for the
 previous head commit stays while the new one builds. When `server.py` starts,
 it deletes the pages older than 30 days. The bare clones in `repos/` stay: they are what makes
