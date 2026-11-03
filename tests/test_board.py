@@ -435,9 +435,9 @@ def test_html_stacks_the_group_that_needs_the_viewer_and_folds_both_merges_under
 
 
 def test_html_adds_a_plus_to_the_count_of_a_column_with_a_full_section() -> None:
-    save(board.classify(ME, [[pr(1), pr(2, ci="FAILURE")], [], [], [], []], []), full=("action",))
+    save(board.classify(ME, [[pr(1), pr(2, ci="PENDING")], [], [], [], []], []), full=("review",))
     page = board.sections_html()
-    assert column_counts(page)[0] == "1+"
+    assert column_counts(page)[3] == "2+"
 
 
 FOLLOWED = ("acme/api", "acme/web")
@@ -480,7 +480,7 @@ def test_html_shows_every_row_when_no_followed_repository_is_on_and_drops_an_unf
     assert toggles(board.sections_html(["acme/gone", "acme/api"]))["acme/api"] == (True, "2")
 
 
-def test_a_toggle_counts_its_cards_outside_the_merged_columns_with_a_plus_for_a_full_section() -> None:
+def test_a_toggle_counts_its_cards_outside_the_merged_column_with_a_plus_for_a_full_section() -> None:
     save_two_repos(full=("review", "merged"))
     page = board.sections_html(["acme/web"])
     assert toggles(page) == {"acme/api": (False, "2+"), "acme/web": (True, "7")}

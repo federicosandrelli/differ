@@ -1,6 +1,6 @@
 """The start page's sections: the pull requests that need the viewer, then the rest of the viewer's own and other
-people's, then the ones opened today that no section shows. GitHub's last answer, sorted into sections, is kept in
-board.json in the cache."""
+people's, then the ones opened today and missing from every section. GitHub's last answer, sorted into sections, is
+kept in board.json in the cache."""
 
 from __future__ import annotations
 
@@ -549,9 +549,9 @@ def repos_html(board: Board, on: list[str]) -> str:
 def sections_html(on: list[str] | None = None) -> str:
     """The start page's board, once GitHub has answered: the strip of followed repositories, then each group, its
     columns stacked or side by side in equal widths, with its folded columns under them; then the pull requests opened
-    today and missing from every section, then the footer. The board shows the rows of the followed repositories that `on` names, or every row when `on` names no
-    followed repository. A full section adds a plus to its column's count while the board shows only some
-    repositories when it still has rows."""
+    today and missing from every section, then the footer. The board shows the rows of the followed repositories that
+    `on` names, or every row when `on` names no followed repository. A full section adds a plus to its column's count
+    while the board shows only some repositories when it still has rows."""
     board = load()
     chosen = [name for name in board["repos"] if name in (on or [])]
 
