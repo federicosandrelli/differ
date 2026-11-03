@@ -53,8 +53,8 @@ that works on the pull request, instead of GitHub. Paste the prompt from "Copy
 connect prompt", in the bot menu in the sidebar footer, into the session. The
 bot's dot is green while a session listens.
 
-Nothing needs installing: each time the server starts, it writes the skill the
-session follows to `~/.claude/skills/differ-comments/SKILL.md`.
+Each time the server starts, it writes the skill the session follows to
+`~/.claude/skills/differ-comments/SKILL.md`.
 
 ## Develop
 
