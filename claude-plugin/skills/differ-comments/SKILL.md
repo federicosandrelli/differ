@@ -1,14 +1,15 @@
 ---
 name: differ-comments
-description: Receive the line comments a reader sends from differ, a pull request viewer, to this session, and answer them. Use when the user asks to "listen for differ comments" (the prompt that differ's Copy connect prompt button copies), when a differ comment arrives on the monitor (a JSON frame with "event": "comment"), or when the user asks to re-arm or check the differ listener.
+description: Receive the line comments a reader sends from differ, a pull request viewer, to this session, and answer them in their threads. Use when the user asks to "listen for differ comments" (the prompt that differ's Copy connect prompt button copies), when a differ comment or follow-up arrives on the monitor (a JSON frame with "event": "comment" or "follow_up"), or when the user asks to re-arm or check the differ listener.
 ---
 
 # differ comments
 
 differ shows a pull request on one page, and the reader comments on its lines. A comment can go to GitHub, or to
-this session with the **Send to Claude** button. Comments reach this session through a WebSocket that the Monitor
-tool holds open. You answer each comment with a reply, which differ shows in the comment's thread, and you change the
-code when the comment asks for a change.
+this session with the **Send to Claude** button. Each comment starts a thread on its lines, and the reader can reply
+in the thread to carry on the conversation. Comments and replies reach this session through a WebSocket that the
+Monitor tool holds open. You answer each one with a reply, which differ adds to the end of the thread, and you change
+the code when the reader asks for a change.
 
 ## Connect
 
@@ -29,42 +30,67 @@ code when the comment asks for a change.
 
 3. End the turn with one line: you listen for differ comments on `<owner>/<repo>#<number>`.
 
-Comments that the reader sent while no session listened arrive as soon as the monitor connects.
+Threads that wait for your reply arrive as soon as the monitor connects: those that the reader wrote in while no
+session listened, and those you had not answered yet.
 
-## Handle a comment
+## Handle a comment or a follow-up
 
-A comment arrives as one text frame:
+A new comment arrives as one text frame with `"event": "comment"`:
 
 ```json
 {"event": "comment", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "path": "src/app.py", "line": 11, "start_line": null,
- "side": "RIGHT", "commit": "<sha>", "code": ["    print(\"hello\")"], "body": "Use a logger here", "replay": false}
+ "side": "RIGHT", "commit": "<sha>", "code": ["    print(\"hello\")"],
+ "messages": [{"author": "reader", "body": "Use a logger here", "at": "2026-11-03T09:12:40Z"}],
+ "seen": 1, "replay": false}
 ```
 
+When the reader replies in a thread, the whole thread arrives again with `"event": "follow_up"`. Its `messages` hold
+every message of the thread, oldest first, yours included:
+
+```json
+{"event": "follow_up", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "path": "src/app.py", "line": 11, "start_line": null,
+ "side": "RIGHT", "commit": "<sha>", "code": ["    print(\"hello\")"],
+ "messages": [{"author": "reader", "body": "Use a logger here", "at": "2026-11-03T09:12:40Z"},
+              {"author": "claude", "body": "Replaced the print with `log.info`.", "at": "2026-11-03T09:13:05Z"},
+              {"author": "reader", "body": "Make it debug, not info", "at": "2026-11-03T09:20:11Z"}],
+ "seen": 3, "replay": false}
+```
+
+- `id` names the thread. It stays the same for every reply in it.
 - `line` is the last line of the comment, and `start_line` the first when it covers several lines.
 - `side` is `RIGHT` for a line of the file at `commit`, and `LEFT` for a line of the old file, before the pull request.
-- `code` holds the lines the comment covers, as the reader saw them.
-- `replay` is true when differ sends the comment again because this session connected again. Skip a replayed
-  comment that you already answered or are working on.
+- `code` holds the lines the comment covers, as the reader saw them when they started the thread.
+- `messages` has `author` `reader` for the reader and `claude` for you.
+- `seen` is the number of messages in `messages`. Send it back with your reply.
+- `replay` is true when differ sends the thread again because this session connected again. Skip a replayed thread
+  that you are still working on.
 
-For each comment:
+Several frames with one `id` can wait for you, when the reader replies before you answer. Handle only the latest of
+them: it holds every message of the others. For each frame you handle:
 
-1. Read the file around the line. The branch may have new commits since `commit`, so find the code by its text.
-2. When the comment asks for a change, make it. Follow this repository's own rules for commits and pushes.
-3. Reply to every comment, also when it needs no change. The reply is one or two plain sentences: what you changed,
-   or the answer. differ shows Markdown.
+1. Read the whole thread in `messages`. Answer each message of the reader that none of your replies answers yet, in
+   the light of what was said before. A reply of yours can come after a message of the reader that it does not
+   answer, when the reader wrote while you worked.
+2. Read the file around the line. The branch may have new commits since `commit`, so find the code by its text.
+3. When the reader asks for a change, make it. Follow this repository's own rules for commits and pushes.
+4. Reply once, also when nothing needs a change. The reply is one or two plain sentences: what you changed, or the
+   answer. differ shows Markdown.
 
 Send the reply with `curl`. differ refuses a POST without its own Origin header and a JSON body. Write the body as
-JSON, with quotes, backslashes and new lines escaped:
+JSON, with quotes, backslashes and new lines escaped. Copy `seen` from the frame you answer, so that differ knows which
+of the reader's messages your reply answers:
 
 ```bash
 curl -sS -X POST "http://127.0.0.1:<port>/api/<owner>/<repo>/<number>/claude_reply" \
   -H "Origin: http://127.0.0.1:<port>" -H "Content-Type: application/json" \
   --data-binary @- <<'EOF'
-{"id": "5f0c2a9e41b7", "body": "Replaced the print with `log.info`."}
+{"id": "5f0c2a9e41b7", "seen": 1, "body": "Replaced the print with `log.info`."}
 EOF
 ```
 
-The answer is the comment as JSON with `"state": "answered"`. An answer with `"error"` says what to fix.
+differ adds the reply to the end of the thread. The answer is the thread as JSON, with `"state": "answered"`, or
+another state when the reader wrote again after the frame you answered; that newer message comes to you as its own
+frame. An answer with `"error"` says what to fix.
 
 ## When the monitor ends
 
@@ -77,4 +103,5 @@ The answer is the comment as JSON with `"state": "answered"`. An answer with `"e
 ## Rules
 
 - Answer every comment in differ, never on GitHub.
-- Never reply twice to one comment: a second reply replaces the first.
+- Reply once per frame you handle. Every reply you send adds a message to the thread.
+- Never delete a thread. The reader deletes threads in differ.

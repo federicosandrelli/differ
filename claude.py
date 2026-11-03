@@ -1,9 +1,10 @@
 """The comments the reader sends to the Claude Code session that works on a pull request, instead of to GitHub, and
 the session that listens for them.
 
-A pull request's comments live in claude/<owner>/<repo>/<number>.json in the cache, oldest first. A session listens
-over a WebSocket, one session per pull request. While one listens, a new comment goes to it at once as a text frame,
-and when one connects, every comment without a reply goes to it."""
+A pull request's comments live in claude/<owner>/<repo>/<number>.json in the cache, oldest first. Each one is a thread
+on its lines: the reader's messages and Claude's replies, oldest first. A session listens over a WebSocket, one
+session per pull request. While one listens, a new comment, or the reader's reply in a thread, goes to it at once as a
+text frame, and when one connects, every thread without Claude's reply to the reader's last message goes to it."""
 
 from __future__ import annotations
 
@@ -20,7 +21,9 @@ import build
 from github import PullRef
 
 Side = Literal["LEFT", "RIGHT"]
-# waiting: no session has the comment yet; sent: a listening session has it; answered: Claude replied.
+Author = Literal["reader", "claude"]
+# Where the reader's last message stands. waiting: no session has it yet; sent: a listening session has it;
+# answered: Claude replied to it.
 State = Literal["waiting", "sent", "answered"]
 # Sends one text frame to a listening session. Raises OSError once the session has gone.
 Send = Callable[[str], None]
@@ -47,7 +50,19 @@ def read(ref: PullRef) -> list[dict]:
         data = json.loads(path_of(ref).read_text())
     except (OSError, ValueError):
         return []
-    return [c for c in data if isinstance(c, dict)] if isinstance(data, list) else []
+    return [with_messages(c) for c in data if isinstance(c, dict)] if isinstance(data, list) else []
+
+
+def with_messages(c: dict) -> dict:
+    """The comment with its messages, converted in place. A comment kept before threads had messages holds the
+    reader's body and Claude's reply instead."""
+    if "messages" in c:
+        return c
+    old = {k: c.pop(k, "") for k in ("body", "reply", "answered")}
+    c["messages"] = [message("reader", old["body"], c.pop("created", ""))]
+    if old["reply"]:
+        c["messages"].append(message("claude", old["reply"], old["answered"]))
+    return c
 
 
 def write(ref: PullRef, comments: list[dict]) -> None:
@@ -64,6 +79,10 @@ def now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def message(author: Author, body: str, at: str) -> dict:
+    return {"author": author, "body": body, "at": at}
+
+
 def answer(ref: PullRef, comments: list[dict]) -> dict:
     """Whether a session listens on the pull request, and its comments. Call it with the lock held."""
     return {"listening": ref in listeners, "comments": comments}
@@ -75,10 +94,15 @@ def fetch(ref: PullRef) -> dict:
 
 
 def frame(ref: PullRef, c: dict, replay: bool) -> str:
-    """The text frame that brings a comment to the session: where it sits, the code it is on, and what it says.
-    `replay` marks a comment the session may have had before it connected again."""
-    keys = ("id", "path", "line", "start_line", "side", "commit", "code", "body")
-    return json.dumps({"event": "comment", "pr": str(ref), **{k: c[k] for k in keys}, "replay": replay})
+    """The text frame that brings a thread to the session: where it sits, the code it is on, every message of the
+    thread, and `seen`, the number of those messages, for Claude's reply to name. The event is `comment` for a new
+    thread, and `follow_up` once the reader replied in it. `replay` marks a thread the session may have had before it
+    connected again."""
+    keys = ("id", "path", "line", "start_line", "side", "commit", "code", "messages")
+    event = "comment" if len(c["messages"]) == 1 else "follow_up"
+    return json.dumps(
+        {"event": event, "pr": str(ref), **{k: c[k] for k in keys}, "seen": len(c["messages"]), "replay": replay}
+    )
 
 
 def deliver(ref: PullRef, comments: list[dict], replay: bool) -> None:
@@ -119,11 +143,8 @@ def add(
             "side": side,
             "commit": commit,
             "code": code,
-            "body": body,
             "state": "waiting",
-            "created": now(),
-            "reply": "",
-            "answered": "",
+            "messages": [message("reader", body, now())],
         }
         comments.append(c)
         deliver(ref, [c], replay=False)
@@ -138,14 +159,32 @@ def find(comments: list[dict], comment_id: str) -> dict:
     raise NoComment(f"no Claude comment {comment_id}")
 
 
-def reply(ref: PullRef, comment_id: str, body: str) -> dict:
-    """Keep Claude's reply to a comment, in place of an earlier one, and answer the comment."""
+def reply(ref: PullRef, comment_id: str, body: str, seen: int | None = None) -> dict:
+    """Add Claude's reply to the end of a comment's thread. `seen` is the number of the thread's messages that
+    Claude read before it replied, all of them when None. The state becomes `answered` unless the reader wrote after
+    those messages. Answers the comment as kept."""
     with lock:
         comments = read(ref)
         c = find(comments, comment_id)
-        c.update(reply=body, state="answered", answered=now())
+        unread = c["messages"][len(c["messages"]) if seen is None else seen :]
+        c["messages"].append(message("claude", body, now()))
+        if not any(m["author"] == "reader" for m in unread):
+            c["state"] = "answered"
         write(ref, comments)
         return c
+
+
+def follow_up(ref: PullRef, comment_id: str, body: str) -> dict:
+    """Add the reader's reply to the end of a comment's thread, and send the thread to the session if one listens,
+    else keep it waiting. Answers whether a session listens, and the comments."""
+    with lock:
+        comments = read(ref)
+        c = find(comments, comment_id)
+        c["messages"].append(message("reader", body, now()))
+        c["state"] = "waiting"
+        deliver(ref, [c], replay=False)
+        write(ref, comments)
+        return answer(ref, comments)
 
 
 def delete(ref: PullRef, comment_id: str) -> dict:
@@ -158,8 +197,8 @@ def delete(ref: PullRef, comment_id: str) -> dict:
 
 
 def attach(ref: PullRef, send: Send) -> None:
-    """Make the session that send reaches the listener of the pull request, and send it every comment without a
-    reply. Raises Busy while another session listens."""
+    """Make the session that send reaches the listener of the pull request, and send it every comment without
+    Claude's reply to the reader's last message. Raises Busy while another session listens."""
     with lock:
         if ref in listeners:
             raise Busy(f"Another Claude session listens for differ comments on {ref}.")

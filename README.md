@@ -84,12 +84,15 @@ A comment on a line can go to the Claude Code session that works on the pull
 request instead of GitHub: "Send to Claude" in the comment box sends it. It
 shows in a thread on its line, tagged "waiting for Claude" until a session
 has it and "sent to Claude" until Claude replies; Claude's reply shows under
-it, and "delete" removes the thread. A thread written on an older head commit
-is listed with the outdated threads of its file. A bot button in the footer
-of the sidebar has a dot that is green while a session listens and grey while
-none does. It opens a menu that says the same, and while no session listens,
-its "Copy connect prompt" button copies the words to paste into the session. The comments wait
-in the cache (`claude/` in it) for a session, and go to it when it connects.
+it. The thread's Reply button carries on the conversation: each reply goes to
+Claude with the whole thread, and Claude answers under it. "delete" removes
+the thread. A thread written on an older head commit is listed with the
+outdated threads of its file. A bot button in the footer of the sidebar has
+a dot that is green while a session listens and grey while none does. It
+opens a menu that says the same, and while no session listens, its "Copy
+connect prompt" button copies the words to paste into the session. The
+comments wait in the cache (`claude/` in it) for a session, and go to it when
+it connects.
 
 The session needs the differ plugin from this repository, installed once:
 
@@ -99,9 +102,9 @@ claude plugin install differ --marketplace federicosandrelli/differ
 
 Its skill, `claude-plugin/skills/differ-comments/SKILL.md`, has the session
 open a WebSocket to `/api/<owner>/<repo>/<number>/listen` with its Monitor
-tool, one session per pull request, and answer each comment with a POST to
-`claude_reply`. The Claude section of the settings turns the feature off for
-every page; it is on by default.
+tool, one session per pull request, and answer each comment and each reply
+with a POST to `claude_reply`. The Claude section of the settings turns the
+feature off for every page; it is on by default.
 
 ## Merging
 
