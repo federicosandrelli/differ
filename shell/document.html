@@ -16,7 +16,9 @@ input { flex: 1; }
 main:has(#board) { max-width: 1320px; }
 .group > h2 { display: flex; align-items: center; gap: 8px; font-size: 20px; margin: 32px 0 14px; }
 .group.opened > h2 { margin-bottom: 8px; }
-/* A row's columns take the shares the board names in --split, such as 3fr 7fr; a narrow window stacks them. */
+/* A group without a title is set apart from the one above by space alone. */
+.group:not(:has(> h2)) { margin-top: 56px; }
+/* A row's columns take the widths the board names in --split, such as 1fr 1fr; a narrow window stacks them. */
 .columns { display: grid; grid-template-columns: var(--split); gap: 20px; align-items: start; }
 @media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
 .column, .sub { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

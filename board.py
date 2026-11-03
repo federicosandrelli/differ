@@ -1,5 +1,6 @@
-"""The start page's sections: the viewer's own pull requests, other people's, and the ones opened today that neither
-shows. GitHub's last answer, sorted into sections, is kept in board.json in the cache."""
+"""The start page's sections: the pull requests that need the viewer, then the rest of the viewer's own and other
+people's, then the ones opened today that no section shows. GitHub's last answer, sorted into sections, is kept in
+board.json in the cache."""
 
 from __future__ import annotations
 
@@ -30,32 +31,40 @@ NONE_HTML = '<span class="hint none">None</span>'
 
 
 class Column(NamedTuple):
-    """A column of the start page: its label, the keys of its sections, most urgent first, its share of the row's
-    width, whether its rows are quiet, and whether it is folded: drawn under the row, closed until the reader opens
-    it."""
+    """A column of the start page: its label, the keys of its sections, most urgent first, whether its rows are
+    quiet, and whether it is folded: drawn under the row, closed until the reader opens it."""
 
     label: str
     sections: tuple[str, ...]
-    share: int = 1
     quiet: bool = False
     folded: bool = False
 
 
+class Group(NamedTuple):
+    """A group of the start page: its title, empty for a group set apart by space alone, its columns, and whether they
+    stack in one column instead of sharing a row."""
+
+    label: str
+    columns: tuple[Column, ...]
+    stacked: bool = False
+
+
 GROUPS = (
-    (
-        "Your pull requests",
+    Group(
+        "Need you",
         (
-            Column("Drafts", ("draft",), share=3),
-            Column("In review", ("action", "ci", "review"), share=7),
-            Column("Merged today", ("merged",), quiet=True, folded=True),
+            Column("Your pull requests", ("action",)),
+            Column("Waiting for your review", ("reviewing",)),
         ),
+        stacked=True,
     ),
-    (
-        "Other people's pull requests",
+    Group(
+        "",
         (
-            Column("Need a reviewer", ("unreviewed",)),
-            Column("Being reviewed", ("reviewing", "reviewed", "others")),
-            Column("Merged today", ("merged_others",), quiet=True, folded=True),
+            Column("Drafts", ("draft",)),
+            Column("Waiting for a reviewer", ("ci", "review", "unreviewed")),
+            Column("Being reviewed", ("reviewed", "others")),
+            Column("Merged today", ("merged", "merged_others"), quiet=True, folded=True),
         ),
     ),
 )
@@ -287,7 +296,9 @@ def row(pr: dict, reasons: list[Reason]) -> Row:
 def classify(viewer: str, found: list[list[dict]], repos: list[str]) -> dict[str, list[Row]]:
     """The rows of each section from the answers to `queries`, in its order, each section newest first. A pull
     request shows in one section only."""
-    sections: dict[str, list[Row]] = {key: [] for _, columns in GROUPS for column in columns for key in column.sections}
+    sections: dict[str, list[Row]] = {
+        key: [] for group in GROUPS for column in group.columns for key in column.sections
+    }
     open_mine, merged, asked, involved, reviewed, *rest = found
     followed_open, merged_others = rest or ([], [])
     for pr in open_mine:
@@ -517,7 +528,7 @@ def repos_html(board: Board, on: list[str]) -> str:
             "requests come from the repositories you follow.</span>"
             '<button class="ghost" data-settings="repositories">Follow a repository</button></div>'
         )
-    counted = [key for _, columns in GROUPS for c in columns if not c.folded for key in c.sections]
+    counted = [key for group in GROUPS for c in group.columns if not c.folded for key in c.sections]
     short = [name.split("/", 1)[1] for name in board["repos"]]
     toggles = []
     for name, repo in zip(board["repos"], short, strict=True):
@@ -536,10 +547,9 @@ def repos_html(board: Board, on: list[str]) -> str:
 
 
 def sections_html(on: list[str] | None = None) -> str:
-    """The start page's board, once GitHub has answered: the strip of followed repositories, a group for the viewer's
-    pull requests and one for other people's, each a row of columns, their widths in the shares the columns name, with
-    its folded columns under the row; then the pull requests opened today and missing from every section, then the
-    footer. The board shows the rows of the followed repositories that `on` names, or every row when `on` names no
+    """The start page's board, once GitHub has answered: the strip of followed repositories, then each group, its
+    columns stacked or side by side in equal widths, with its folded columns under them; then the pull requests opened
+    today and missing from every section, then the footer. The board shows the rows of the followed repositories that `on` names, or every row when `on` names no
     followed repository. A full section adds a plus to its column's count while the board shows only some
     repositories when it still has rows."""
     board = load()
@@ -558,13 +568,14 @@ def sections_html(on: list[str] | None = None) -> str:
     strip, groups = "", []
     if board["sections"]:
         strip = repos_html(board, chosen)
-        for name, columns in GROUPS:
-            row = [c for c in columns if not c.folded]
-            split = " ".join(f"{c.share}fr" for c in row)
+        for group in GROUPS:
+            row = [c for c in group.columns if not c.folded]
+            split = "1fr" if group.stacked else " ".join("1fr" for _ in row)
+            title = f"<h2>{html.escape(group.label)}</h2>" if group.label else ""
             parts = "".join(column_html(c, filtered) for c in row)
-            folded = "".join(column_html(c, filtered) for c in columns if c.folded)
+            folded = "".join(column_html(c, filtered) for c in group.columns if c.folded)
             groups.append(
-                f'<section class="group"><h2>{html.escape(name)}</h2>'
+                f'<section class="group">{title}'
                 f'<div class="columns" style="--split: {split}">{parts}</div>{folded}</section>'
             )
     if opened := kept(opened_rows(shown)):
