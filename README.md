@@ -54,13 +54,7 @@ connect prompt", in the bot menu in the sidebar footer, into the session. The
 bot's dot is green while a session listens.
 
 Nothing needs installing: each time the server starts, it writes the skill the
-session follows to `~/.claude/skills/differ-comments/SKILL.md`. If you
-installed the old differ plugin, remove it:
-
-```sh
-claude plugin uninstall differ@differ
-claude plugin marketplace remove differ
-```
+session follows to `~/.claude/skills/differ-comments/SKILL.md`.
 
 ## Develop
 
