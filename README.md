@@ -12,11 +12,16 @@ Code session that works on the pull request.
 
 ```sh
 brew install --cask federicosandrelli/tap/differ
-gh auth login
 ```
 
 The cask installs Python 3.13 and the GitHub CLI (`gh`). The app offers each
 new version in a card at the bottom of the window and updates through Homebrew.
+
+If you have not signed in to `gh` yet, sign in once:
+
+```sh
+gh auth login
+```
 
 ### From source
 
