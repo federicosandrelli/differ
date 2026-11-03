@@ -24,7 +24,8 @@
       "../*.py": "python/",
       "../page/*": "python/page/",
       "../page/vendor/*": "python/page/vendor/",
-      "../shell/*": "python/shell/"
+      "../shell/*": "python/shell/",
+      "../skill/*": "python/skill/"
     }
   }
 }

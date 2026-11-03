@@ -462,3 +462,39 @@ def test_a_sweep_deletes_the_comments_of_merged_and_closed_pull_requests(monkeyp
     assert sorted(asked, key=lambda r: r.number) == [*refs.values(), gone]
     kept = [ref for ref in [*refs.values(), gone] if claude.fetch(ref, "abc")["comments"]]
     assert kept == [refs["open"], refs["draft"], gone]
+
+
+@pytest.fixture
+def skills(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(claude, "SKILLS", tmp_path / "skills")
+    return tmp_path / "skills" / "differ-comments" / "SKILL.md"
+
+
+def test_install_skill_writes_the_shipped_skill_with_its_marker(skills: Path) -> None:
+    claude.install_skill()
+    text = skills.read_text()
+    shipped = claude.SKILL.read_text()
+    assert text.startswith(shipped.rstrip())
+    assert text.endswith(f"\n\n{claude.skill_marker(shipped)}\n")
+
+
+def test_install_skill_replaces_a_copy_from_another_version(skills: Path) -> None:
+    skills.parent.mkdir(parents=True)
+    skills.write_text("---\nname: differ-comments\n---\nold words\n\n<!-- differ skill 0123456789ab -->\n")
+    claude.install_skill()
+    assert "old words" not in skills.read_text()
+
+
+def test_install_skill_keeps_an_edited_copy_of_the_current_version(skills: Path) -> None:
+    claude.install_skill()
+    edited = skills.read_text().replace("\n", "\nMy own first line.\n", 1)
+    skills.write_text(edited)
+    claude.install_skill()
+    assert skills.read_text() == edited
+
+
+def test_install_skill_reports_a_folder_it_cannot_write(skills: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    skills.parent.parent.mkdir(parents=True)
+    skills.parent.write_text("a file where the folder should be")
+    claude.install_skill()
+    assert "Could not install the differ-comments skill" in capsys.readouterr().err

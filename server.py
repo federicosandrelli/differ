@@ -623,6 +623,7 @@ def main() -> None:
     if args.exit_with_parent:
         threading.Thread(target=exit_with_parent, daemon=True).start()
     build.prune_all()
+    claude.install_skill()
     threading.Thread(target=claude.sweep, daemon=True).start()
     if problem := gh_problem():
         sys.stderr.write(f"{problem} Run `gh auth login`; the start page checks again once a minute.\n")
