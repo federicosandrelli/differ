@@ -1,6 +1,6 @@
 {
   "name": "differ",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Receive the line comments a reader sends from differ to this Claude Code session, and answer them.",
   "author": { "name": "Federico Sandrelli" },
   "repository": "https://github.com/federicosandrelli/differ"

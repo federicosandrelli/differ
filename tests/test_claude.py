@@ -41,6 +41,15 @@ def states() -> list[str]:
     return [c["state"] for c in claude.fetch(REF)["comments"]]
 
 
+def said(c: dict) -> list[tuple[str, str]]:
+    return [(m["author"], m["body"]) for m in c["messages"]]
+
+
+def last_said(text: str | bytes) -> str:
+    """The body of the last message of the thread a frame brings."""
+    return json.loads(text)["messages"][-1]["body"]
+
+
 def test_the_accept_key_answers_the_handshake_key_of_the_rfc() -> None:
     assert websocket.accept_key("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
@@ -67,6 +76,7 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
     assert states() == ["waiting"]
     frames: list[str] = []
     claude.attach(REF, frames.append)
+    (sent,) = claude.fetch(REF)["comments"]
     assert [json.loads(f) for f in frames] == [
         {
             "event": "comment",
@@ -78,7 +88,8 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
             "side": "RIGHT",
             "commit": "abc",
             "code": ["print(1)"],
-            "body": "Use a logger here",
+            "messages": sent["messages"],
+            "seen": 1,
             "replay": True,
         }
     ]
@@ -90,7 +101,7 @@ def test_a_comment_goes_at_once_to_the_session_that_listens() -> None:
     claude.attach(REF, frames.append)
     assert frames == []
     add("Rename it")
-    assert [(json.loads(f)["body"], json.loads(f)["replay"]) for f in frames] == [("Rename it", False)]
+    assert [(last_said(f), json.loads(f)["replay"]) for f in frames] == [("Rename it", False)]
     assert states() == ["sent"]
 
 
@@ -135,7 +146,7 @@ def test_a_session_that_connects_again_gets_every_comment_without_a_reply() -> N
     claude.detach(REF, first)
     again: list[str] = []
     claude.attach(REF, again.append)
-    assert [json.loads(f)["body"] for f in again] == ["two"]
+    assert [last_said(f) for f in again] == ["two"]
     assert states() == ["answered", "sent"]
 
 
@@ -144,11 +155,91 @@ def test_a_reply_answers_its_comment_and_a_delete_removes_it() -> None:
     add("two")
     one, two = ids()
     c = claude.reply(REF, two, "Renamed it.")
-    assert (c["state"], c["reply"]) == ("answered", "Renamed it.") and c["answered"]
-    assert [c["body"] for c in claude.delete(REF, one)["comments"]] == ["two"]
+    assert c["state"] == "answered" and said(c) == [("reader", "two"), ("claude", "Renamed it.")]
+    assert [said(c) for c in claude.delete(REF, one)["comments"]] == [said(c)]
     assert add("three")["comments"][-1]["id"] not in {one, two}
     with pytest.raises(claude.NoComment):
         claude.reply(REF, one, "Too late.")
+
+
+def test_the_readers_reply_goes_to_the_session_with_the_whole_thread_and_waits_for_claude_again() -> None:
+    add("Use a logger here")
+    (thread,) = ids()
+    frames: list[str] = []
+    claude.attach(REF, frames.append)
+    claude.reply(REF, thread, "Logged it at info.")
+    (c,) = claude.follow_up(REF, thread, "Make it debug")["comments"]
+    assert c["state"] == "sent"
+    last = json.loads(frames[-1])
+    assert (last["event"], last["id"], last["seen"], last["replay"]) == ("follow_up", thread, 3, False)
+    assert said(last) == [
+        ("reader", "Use a logger here"),
+        ("claude", "Logged it at info."),
+        ("reader", "Make it debug"),
+    ]
+    claude.reply(REF, thread, "Made it debug.")
+    assert said(claude.fetch(REF)["comments"][0])[-2:] == [("reader", "Make it debug"), ("claude", "Made it debug.")]
+
+
+def test_claudes_reply_to_an_older_frame_keeps_the_readers_newer_message_waiting() -> None:
+    add("Use a logger here")
+    (thread,) = ids()
+    first = [].append
+    claude.attach(REF, first)
+    claude.follow_up(REF, thread, "At debug")
+    assert claude.reply(REF, thread, "Logged it.", seen=1)["state"] == "sent"
+    claude.detach(REF, first)
+    again: list[str] = []
+    claude.attach(REF, again.append)
+    assert [(json.loads(f)["seen"], last_said(f)) for f in again] == [(3, "Logged it.")]
+    assert claude.reply(REF, thread, "Made it debug.", seen=3)["state"] == "answered"
+
+
+def test_a_reply_written_while_no_session_listens_goes_to_the_next_one_as_a_follow_up() -> None:
+    add()
+    (thread,) = ids()
+    claude.reply(REF, thread, "Done.")
+    claude.follow_up(REF, thread, "One more thing")
+    assert states() == ["waiting"]
+    frames: list[str] = []
+    claude.attach(REF, frames.append)
+    assert [(json.loads(f)["event"], last_said(f), json.loads(f)["replay"]) for f in frames] == [
+        ("follow_up", "One more thing", True)
+    ]
+
+
+def test_a_comment_kept_before_threads_had_messages_reads_as_a_thread() -> None:
+    old = {"id": "a1", "path": "src/app.py", "line": 11, "start_line": None, "side": "RIGHT", "commit": "abc"}
+    claude.write(
+        REF,
+        [
+            {
+                **old,
+                "code": [],
+                "body": "one",
+                "state": "answered",
+                "created": "t1",
+                "reply": "Done.",
+                "answered": "t2",
+            },
+            {
+                **old,
+                "id": "b2",
+                "code": [],
+                "body": "two",
+                "state": "waiting",
+                "created": "t3",
+                "reply": "",
+                "answered": "",
+            },
+        ],
+    )
+    one, two = claude.fetch(REF)["comments"]
+    assert one["messages"] == [
+        {"author": "reader", "body": "one", "at": "t1"},
+        {"author": "claude", "body": "Done.", "at": "t2"},
+    ]
+    assert said(two) == [("reader", "two")] and "reply" not in two
 
 
 # ---------- through the server
@@ -213,8 +304,12 @@ def test_a_session_listens_over_a_websocket_and_replies_through_a_post(port: int
     until_listening(True)
     post(port, "claude", {"path": "src/app.py", "line": 11, "side": "RIGHT", "commit": "abc", "body": "Log it"})
     opcode, payload = receive(sock)
-    assert opcode == websocket.TEXT and json.loads(payload)["body"] == "Log it"
-    assert post(port, "claude_reply", {"id": json.loads(payload)["id"], "body": "Logged."})["state"] == "answered"
+    assert opcode == websocket.TEXT and last_said(payload) == "Log it"
+    thread = json.loads(payload)["id"]
+    assert post(port, "claude_reply", {"id": thread, "seen": 1, "body": "Logged."})["state"] == "answered"
+    post(port, "claude_follow_up", {"id": thread, "body": "At debug"})
+    opcode, payload = receive(sock)
+    assert (json.loads(payload)["event"], last_said(payload)) == ("follow_up", "At debug")
     sock.sendall(bytes([0x88, 0x82, 0, 0, 0, 0]) + struct.pack(">H", 1000))
     assert receive(sock)[0] == websocket.CLOSE
     sock.close()

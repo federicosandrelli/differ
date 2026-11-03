@@ -41,8 +41,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      conversation, viewed (marks a file viewed or not viewed while the head is
                                      the page's), open (opens a file in an editor, on the pull request's branch),
                                      merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed
-                                     jobs), claude, claude_reply, claude_delete (a comment for Claude, its reply, its
-                                     removal)
+                                     jobs), claude, claude_follow_up, claude_reply, claude_delete (a comment for
+                                     Claude, the reader's reply in its thread, Claude's reply, its removal)
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -454,8 +454,13 @@ class Handler(BaseHTTPRequestHandler):
                     code=lines_of(body.get("code", [])),
                     body=text_of(body["body"]),
                 )
+            elif action == "claude_follow_up":
+                result = claude.follow_up(ref, str(body["id"]), text_of(body["body"]))
             elif action == "claude_reply":
-                result = claude.reply(ref, str(body["id"]), text_of(body["body"]))
+                seen = body.get("seen")
+                result = claude.reply(
+                    ref, str(body["id"]), text_of(body["body"]), None if seen is None else count_of(seen)
+                )
             elif action == "claude_delete":
                 result = claude.delete(ref, str(body["id"]))
             elif action == "rebuild":
@@ -532,6 +537,13 @@ def line_number(value: object) -> int:
     """The line number a request's field names; else a ValueError, which answers 400."""
     if type(value) is not int or value < 1:
         raise ValueError(f"{value!r} is not a line number")
+    return value
+
+
+def count_of(value: object) -> int:
+    """The count a request's field names; else a ValueError, which answers 400."""
+    if type(value) is not int or value < 0:
+        raise ValueError(f"{value!r} is not a count")
     return value
 
 

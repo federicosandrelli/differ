@@ -1142,9 +1142,27 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
     expect(thread).to_contain_text("Logged it.")
     expect(thread.locator(".tag.claude")).to_have_count(0)
 
+    thread.locator("[data-reply]").click()
+    thread.locator("textarea[data-reply-text]").fill("Make it debug")
+    page.keyboard.press("ControlOrMeta+Enter")
+    expect(thread.locator(".comment")).to_have_count(3)
+    expect(thread.locator(".tag.claude")).to_have_count(1)
+    expect(thread.locator("textarea[data-reply-text]")).to_have_count(0)
+    messages = page.evaluate("CL.comments.at(-1).messages")
+    assert [(m["author"], m["body"]) for m in messages] == [
+        ("reader", "Use a logger here"),
+        ("claude", "Logged it."),
+        ("reader", "Make it debug"),
+    ]
+    expect(session).to_have_attribute("title", "No Claude session · 1 comment waiting")
+
+    thread.locator("[data-reply]").click()
+    thread.locator("textarea[data-reply-text]").fill("Never mind")
+    assert page.evaluate("hasDraft()")
     thread.locator("[data-claude-delete]").click()
     expect(section.locator("div.thread[data-thread^='claude:']")).to_have_count(0)
     expect(session).to_have_attribute("title", "No Claude session")
+    assert not page.evaluate("hasDraft()")
 
 
 @contextmanager

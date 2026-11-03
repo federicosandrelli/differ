@@ -169,16 +169,19 @@ function threadHtml(f, t) {
     return `<div class="thread card folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
   }
   const head = threadHead(t);
-  const reply = t.local ? '' : state.replyOpen.has(t.id) ? replyHtml(t) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
+  const reply = t.local ? '' : state.replyOpen.has(t.id) ? replyHtml(t, gitHubReplyButtons(t)) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
     ${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
   return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
 }
-function replyHtml(t) {
+// The reply box of a thread, with the buttons that send it after Cancel.
+function replyHtml(t, send) {
   return `<div class="form reply"><textarea data-reply-text="${esc(t.id)}" placeholder="Reply">${esc(state.replyOpen.get(t.id) || '')}</textarea>
     <div class="actions"><span class="spacer"></span>${btn(`data-reply-cancel="${esc(t.id)}"`, 'Cancel')}
-    ${btn(`data-reply-send="${esc(t.id)}" data-mode="single"`, 'Add single comment')}${btn(`data-reply-send="${esc(t.id)}" data-mode="review"`, C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
+    ${send}</div></div>`;
 }
+const gitHubReplyButtons = (t) => btn(`data-reply-send="${esc(t.id)}" data-mode="single"`, 'Add single comment')
+  + btn(`data-reply-send="${esc(t.id)}" data-mode="review"`, C.pending ? 'Add review comment' : 'Start a review', true);
 function composeHtml(f, c) {
   const where = `line${c.startLine !== c.line ? 's' : ''} ${lineRange(c.startLine, c.line)}${c.side === 'LEFT' ? ' of the old file' : ''}`;
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
@@ -348,6 +351,13 @@ function openCompose(path, side, line, extend) {
   render();
 }
 const joinDrafts = (first, then) => then.trim() ? first.trimEnd() + '\n\n' + then : first;
+// Open the reply box of the thread with that id again with its text, joined by the text written in it since. The box
+// takes focus unless another textarea has it.
+function restoreReply(id, text) {
+  const box = `[data-reply-text="${CSS.escape(id)}"]`;
+  state.replyOpen.set(id, joinDrafts(text, state.replyOpen.get(id) || ''));
+  if (!typingElsewhere(box)) state.focus = box;
+}
 // Open a comment box again with its text, joined by the text of a box or draft written on its line since. While a box
 // with text is open on another line, that box stays and the comment becomes a draft on its own line, marked `refused`.
 // The box takes focus unless another textarea has it.
@@ -443,11 +453,7 @@ async function commentClick(t, e) {
     if (!text.trim()) return true;
     const id = d.replySend;
     state.replyOpen.delete(id);
-    await postComment('reply', { thread: id, body: text, mode: d.mode }, { replyTo: id, comment: sendingComment(text, d.mode, true) }, () => {
-      const box = `[data-reply-text="${CSS.escape(id)}"]`;
-      state.replyOpen.set(id, joinDrafts(text, state.replyOpen.get(id) || ''));
-      if (!typingElsewhere(box)) state.focus = box;
-    });
+    await postComment('reply', { thread: id, body: text, mode: d.mode }, { replyTo: id, comment: sendingComment(text, d.mode, true) }, () => restoreReply(id, text));
     return true;
   }
   if (d.resolve !== undefined) { await post('resolve', { thread: d.resolve, resolved: d.resolved === '1' }); return true; }
