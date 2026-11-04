@@ -38,6 +38,24 @@ def test_start_page_builds_and_opens_a_pull_request(page: Page, server_url: str)
     expect(page.locator("#overview h1")).to_have_text(TITLE)
 
 
+def test_cmd_r_on_the_start_page_asks_github_again_and_says_why_an_update_failed(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/home")
+    notice = page.locator("[data-updated]")
+    expect(notice).to_contain_text("Updated")
+    with page.expect_response(lambda r: "/board?force=1" in r.url):
+        page.keyboard.press("Meta+R")
+    expect(notice).to_contain_text("Updated just now")
+    page.route(
+        "**/board?force=1",
+        lambda route: route.fulfill(status=502, content_type="text/plain", body="GitHub did not answer"),
+    )
+    page.keyboard.press("Meta+R")
+    expect(notice).to_have_text("Update failed: GitHub did not answer · try again")
+    page.unroute("**/board?force=1")
+    notice.get_by_text("try again").click()
+    expect(notice).to_contain_text("Updated just now")
+
+
 def test_the_overview_links_the_author_and_the_commits_to_github(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     meta = page.locator("#overview .meta")

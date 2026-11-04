@@ -30,6 +30,7 @@ const saveOn = () => { try { localStorage.setItem(REPOS_KEY, JSON.stringify(on))
 board.addEventListener('click', (e) => {
   const settings = e.target.closest('[data-settings]');
   if (settings) { SHELL?.settings(settings.dataset.settings); return; }
+  if (e.target.closest('[data-update]')) { e.preventDefault(); update(); return; }
   const toggle = e.target.closest('[data-repo]');
   if (toggle) {
     const repo = toggle.dataset.repo;
@@ -43,16 +44,37 @@ board.addEventListener('click', (e) => {
   opened.add(more.parentElement.dataset.key);
   showOpened();
 });
-// A cached load draws the board from GitHub's last answer at once; the others ask GitHub again first. The board is
-// stale until a load that asks GitHub draws it, so a cached load that ends while the board is stale asks GitHub
-// next: a toggle click may have cancelled the load that asked. The redraw keeps the focus on the toggle it had.
-let loading = null, stale = true;
+// A cached load draws the board from GitHub's last answer at once; the others ask GitHub again first, and the update
+// notice at the end of the repository strip turns busy meanwhile. The board is stale until a load that asks
+// GitHub draws it, so a cached load that ends while the board is stale asks GitHub next: a toggle click may have
+// cancelled the load that asked. The redraw keeps the focus on the toggle it had. Cmd+R or a click on the update
+// link forces the update, which makes the board stale: the loads ask GitHub even when it answered a moment ago,
+// until one of them ends. The update notice keeps its width while it is busy, so the strip keeps its lines.
+let loading = null, stale = true, force = false;
+const setUpdate = (html) => {
+  const updated = board.querySelector('[data-updated]');
+  if (!updated) return;
+  updated.style.minWidth = `${updated.offsetWidth}px`;
+  updated.innerHTML = html;
+};
+// The board's HTML, or an error that says why the server sent none: a plain text answer gives the reason.
+const fetchBoard = async (query, signal) => {
+  let r;
+  try { r = await fetch(`/board?${query}`, { signal }); } catch (e) {
+    throw signal.aborted ? e : new Error(`could not reach the server (${e.message})`);
+  }
+  if (r.ok) return r.text();
+  throw new Error(r.headers.get('Content-Type')?.startsWith('text/plain') ? await r.text() : `HTTP ${r.status}`);
+};
 const loadBoard = (cached) => {
   if (loading) loading.abort();
   const { signal } = loading = new AbortController();
+  const forced = !cached && force;
   const query = new URLSearchParams(on.map(repo => ['repo', repo]));
   if (cached) query.set('cached', '1');
-  fetch(`/board?${query}`, { signal }).then(r => r.ok ? r.text() : Promise.reject()).then((h) => {
+  if (forced) query.set('force', '1');
+  if (!cached) setUpdate(Notice.busy('Updating…'));
+  fetchBoard(query, signal).then((h) => {
     const focused = document.activeElement?.dataset?.repo;
     board.innerHTML = h;
     showOpened();
@@ -62,8 +84,22 @@ const loadBoard = (cached) => {
       saveOn();
     }
     if (!cached) stale = false;
-  }).catch(() => {}).finally(() => { if (cached && stale && !signal.aborted) loadBoard(); });
+  }).catch((e) => {
+    if (!signal.aborted) setUpdate(Notice.failed('Update', e.message, 'data-update'));
+  }).finally(() => {
+    if (signal.aborted) return;
+    if (forced) force = false;
+    if (cached && stale) loadBoard();
+  });
 };
+const update = () => {
+  if (force) return;
+  force = stale = true;
+  loadBoard();
+};
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r') { e.preventDefault(); update(); }
+});
 // The server drew the board with every row, so saved toggles first need a cached load.
 loadBoard(on.length > 0);
 document.addEventListener('tab-shown', () => loadBoard());

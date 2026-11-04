@@ -9,11 +9,13 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /                                  the tabbed shell: the start page as a home tab, and a tab per open page
   /home                              the start page: a search bar and the sections of pull requests, drawn
                                      from GitHub's last answer
-  /board?repo=<owner/repo>&cached=1  the sections of the start page, as an HTML fragment: your pull requests,
+  /board?repo=<owner/repo>&cached=1&force=1
+                                     the sections of the start page, as an HTML fragment: your pull requests,
                                      other people's, and the ones opened today, after asking GitHub again (at
-                                     most every 30 seconds, unless the followed repositories changed). With
-                                     repo, once per followed repository, only the rows of those repositories;
-                                     with cached=1, from GitHub's last answer, without asking again
+                                     most every 30 seconds, unless the followed repositories changed or force=1
+                                     is given; with force=1, a 502 when GitHub can't answer). With repo, once per
+                                     followed repository, only the rows of those repositories; with cached=1, from
+                                     GitHub's last answer, without asking again (force=1 then does nothing)
   /settings                          the body of the settings modal, as an HTML fragment: the followed
                                      repositories, the shortcuts, the file type rules, the folds, the editors,
                                      the cache and the version
@@ -221,8 +223,10 @@ class Handler(BaseHTTPRequestHandler):
                     threading.Thread(target=claude.sweep, daemon=True).start()
                     statuses = threading.Thread(target=recent.refresh)
                     statuses.start()
-                    board.refresh()
+                    answered = board.refresh(force="force" in query)
                     statuses.join()
+                    if "force" in query and not answered:
+                        return self.send(502, b"GitHub did not answer", "text/plain; charset=utf-8")
                 return self.send(200, board.sections_html(repos_in(query)).encode())
             if url.path == "/settings":
                 return self.send(200, settings.settings_html().encode())
