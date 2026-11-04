@@ -73,18 +73,29 @@ def test_the_home_page_serves_a_cross_site_get(tmp_path: Path, monkeypatch: pyte
 
 def test_board_asks_github_again_and_answers_the_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     asked = []
-    monkeypatch.setattr(server.board, "refresh", lambda: asked.append("board"))
+    monkeypatch.setattr(server.board, "refresh", lambda force: asked.append(f"board {force}") or True)
     monkeypatch.setattr(server.recent, "refresh", lambda: asked.append("recent"))
     monkeypatch.setattr(server.board, "sections_html", lambda on: f"<h2>{on}</h2>")
     status, body = get("/board")
     assert status == 200 and body == b"<h2>[]</h2>"
-    assert sorted(asked) == ["board", "recent"]
+    assert sorted(asked) == ["board False", "recent"]
+    asked.clear()
+    get("/board?force=1")
+    assert sorted(asked) == ["board True", "recent"]
+
+
+def test_a_forced_board_answers_502_when_github_cannot_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.board, "refresh", lambda force: False)
+    monkeypatch.setattr(server.recent, "refresh", lambda: None)
+    monkeypatch.setattr(server.board, "sections_html", lambda on: "<h2>board</h2>")
+    assert get("/board?force=1") == (502, b"GitHub did not answer")
+    assert get("/board")[0] == 200
 
 
 def test_board_draws_the_repositories_named_and_answers_from_the_cache_on_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(server.board, "refresh", lambda: pytest.fail("a cached board asked GitHub"))
+    monkeypatch.setattr(server.board, "refresh", lambda force: pytest.fail("a cached board asked GitHub"))
     monkeypatch.setattr(server.recent, "refresh", lambda: pytest.fail("a cached board asked GitHub"))
     monkeypatch.setattr(server.board, "sections_html", lambda on: f"<h2>{on}</h2>")
     status, body = get("/board?repo=Acme/API&repo=acme%2Fweb&cached=1")

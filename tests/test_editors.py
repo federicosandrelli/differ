@@ -3,6 +3,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -322,18 +323,19 @@ def test_a_jetbrains_hand_over_in_progress_leaves_another_editor_free_to_open_th
 
 @pytest.fixture
 def running_tool(tmp_path: Path) -> Iterator[tuple[Path, int]]:
-    """Sleep run through a link at the same path as the tool but with "x" in place of the dot, then twice through a
-    link at the tool's path, which holds a dot and a space; all three run until the test ends. Yields the tool and
-    the pid of its first process. macOS kills a copy of sleep, so the tool is a link."""
+    """Python run through a link at the same path as the tool but with "x" in place of the dot, then twice through a
+    link at the tool's path, which holds a dot and a space; all three sleep until the test ends. Yields the tool and
+    the pid of its first process. macOS kills a copy of a system binary, so the tool is a link. The link points at
+    Python, which runs under any name: a multicall coreutils, such as Ubuntu 26.04's, picks the tool by its name."""
     tool = tmp_path / "a b.app/sl.eep"
     other = tmp_path / "a bxapp/sl.eep"
     procs: list[subprocess.Popen[bytes]] = []
     try:
         for path in (other, tool):
             path.parent.mkdir()
-            path.symlink_to("/bin/sleep")
+            path.symlink_to(os.path.realpath(sys.executable))
         for path in (other, tool, tool):
-            procs.append(subprocess.Popen([str(path), "30"]))
+            procs.append(subprocess.Popen([str(path), "-c", "import time; time.sleep(30)"]))
         yield tool, procs[1].pid
     finally:
         for p in procs:

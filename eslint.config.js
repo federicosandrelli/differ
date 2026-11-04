@@ -1,5 +1,6 @@
-// render.py inlines shell/frame.js and then page/*.js in name order into one script, with shell/theme.js in the
-// head of every document, so a name declared at the top level of one of those files is a global in the others.
+// render.py inlines shell/frame.js and then page/*.js in name order into one script, with shell/theme.js and
+// shell/notice.js in the head of every document, so a name declared at the top level of one of those files is a
+// global in the others.
 // The page's globals are read from the files themselves, so the config needs no change when a file declares a
 // new name; a name declared twice across files is a redeclaration, as it would be in the page.
 const fs = require("node:fs");
@@ -13,7 +14,7 @@ const pageFiles = fs
   .filter((name) => name.endsWith(".js"))
   .sort()
   .map((name) => `page/${name}`);
-const sharedFiles = ["shell/theme.js", "shell/frame.js", ...pageFiles];
+const sharedFiles = ["shell/theme.js", "shell/notice.js", "shell/frame.js", ...pageFiles];
 
 const declaration = /^(?:const|let|var|function|async function|class)\s+([A-Za-z_$][\w$]*)/gm;
 

@@ -61,6 +61,7 @@ def test_sources_lists_every_file_a_page_inlines() -> None:
         "base.css",
         "theme.js",
         "tooltip.js",
+        "notice.js",
         "highlight.min.js",
         "frame.js",
         "00-data.js",

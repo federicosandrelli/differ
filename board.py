@@ -369,19 +369,20 @@ def save(board: Board) -> None:
         os.replace(tmp, PATH)
 
 
-def refresh() -> None:
+def refresh(force: bool = False) -> bool:
     """Ask GitHub again and save the sections, unless GitHub answered less than REFRESH_SECONDS ago about the same
-    followed repositories. The merged sections hold the pull requests merged today, by GitHub's date (UTC). When
-    GitHub can't answer, the saved sections stay. A refresh that starts while another runs waits for it, and then
-    finds its answer fresh."""
+    followed repositories and `force` is off. The merged sections hold the pull requests merged today, by GitHub's
+    date (UTC). When GitHub can't answer, the saved sections stay and the refresh returns False; otherwise it returns
+    True. A refresh that starts while another runs waits for it, and then finds its answer fresh, unless `force` is
+    on."""
     with refreshing:
         repos = followed.load()
         saved = load()
-        if saved["repos"] == repos and time.time() - saved["fetched"] < REFRESH_SECONDS:
-            return
+        if not force and saved["repos"] == repos and time.time() - saved["fetched"] < REFRESH_SECONDS:
+            return True
         answer = github.search_prs(queries(repos, datetime.now(UTC).date()))
         if answer is None:
-            return
+            return False
         viewer, found = answer
         save(
             Board(
@@ -392,6 +393,7 @@ def refresh() -> None:
                 full=full(found),
             )
         )
+        return True
 
 
 def ago(ts: float) -> str:
@@ -482,11 +484,10 @@ def list_html(key: str, rows: list[Row], viewer: str, quiet: bool) -> str:
 
 
 def footer_html(board: Board) -> str:
-    """The start page's footer: the viewer's login and when GitHub last answered, both left out until GitHub has
-    answered, then a button that opens the Settings."""
+    """The start page's footer: the viewer's login, left out until GitHub has answered, then a button that opens the
+    Settings."""
     known = (
         f'<span>Signed in as <span class="login">{html.escape(board["viewer"])}</span></span>'
-        f"<span>Updated from GitHub {html.escape(ago(board['fetched']))}</span>"
         if board["viewer"]
         else ""
     )
@@ -512,6 +513,15 @@ def column_html(column: Column, board: Board) -> str:
 
 def name_of(r: Row) -> str:
     return f"{r['owner']}/{r['repo']}"
+
+
+def updated_html(board: Board) -> str:
+    """A notice that names how long ago GitHub last answered, with an update link marked `data-update` and its
+    shortcut, inside a box marked `data-updated`."""
+    return (
+        f'<div class="updated" data-updated><div class="notice">Updated {html.escape(ago(board["fetched"]))}'
+        ' · <a href="#" data-update>update</a> (⌘R)</div></div>'
+    )
 
 
 def repos_html(board: Board, on: list[str]) -> str:
@@ -565,7 +575,7 @@ def sections_html(on: list[str] | None = None) -> str:
     }
     strip, groups = "", []
     if board["sections"]:
-        strip = repos_html(board, chosen)
+        strip = f'<div class="strip">{repos_html(board, chosen)}{updated_html(board)}</div>'
         for group in GROUPS:
             row = [c for c in group.columns if not c.folded]
             title = f"<h2>{html.escape(group.label)}</h2>" if group.label else ""

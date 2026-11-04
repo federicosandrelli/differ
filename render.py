@@ -5,8 +5,8 @@ Usage: render.py --splash   writes the desktop app's first page, web/index.html
 
 The page's script is page/vendor/highlight.min.js, then shell/frame.js, then page/*.js in name order (hence the
 numeric prefixes), and its stylesheet page/page.css. Both are inlined, so a page works from disk as well as from
-the server, and never loads anything from the network. The theme (shell/theme.js and the palettes here) and
-the tooltip (shell/tooltip.js) go into the head of every document the server sends.
+the server, and never loads anything from the network. The theme (shell/theme.js and the palettes here), the
+tooltip (shell/tooltip.js) and the notices (shell/notice.js) go into the head of every document the server sends.
 """
 
 from __future__ import annotations
@@ -345,10 +345,10 @@ def search_clear_css() -> str:
 
 def theme_head() -> str:
     """The theme variables, the status and reason icons, the base stylesheet, the search clear button and the scripts that
-    apply the saved theme and draw the tooltip, for the head of a document so it never flashes the default theme.
-    The base stylesheet comes after the icons, so a component can recolour the icon it holds."""
+    apply the saved theme, draw the tooltip and draw notices, for the head of a document so it never flashes the
+    default theme. The base stylesheet comes after the icons, so a component can recolour the icon it holds."""
     css = "\n".join([theme_css(), icon_css(), (SHELL_DIR / "base.css").read_text(), search_clear_css()])
-    js = "\n".join((SHELL_DIR / name).read_text() for name in ("theme.js", "tooltip.js"))
+    js = "\n".join((SHELL_DIR / name).read_text() for name in ("theme.js", "tooltip.js", "notice.js"))
     return f"<style>{css}</style>\n<script>{js}</script>"
 
 
@@ -406,6 +406,7 @@ def sources() -> list[Path]:
         SHELL_DIR / "base.css",
         SHELL_DIR / "theme.js",
         SHELL_DIR / "tooltip.js",
+        SHELL_DIR / "notice.js",
         *page_scripts(),
     ]
 

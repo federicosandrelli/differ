@@ -369,12 +369,10 @@ def test_load_treats_a_board_with_rows_without_reasons_as_empty(paths: Path) -> 
     assert board.sections_html().startswith('<div class="empty">No pull requests yet.</div>')
 
 
-def test_footer_names_the_viewer_and_the_last_answer_only_once_github_has_answered() -> None:
-    footer = board.footer_html(board.load())
-    assert "Signed in" not in footer and "Updated" not in footer
+def test_footer_names_the_viewer_only_once_github_has_answered() -> None:
+    assert "Signed in" not in board.footer_html(board.load())
     save({}, viewer="ann")
-    footer = board.footer_html(board.load())
-    assert 'Signed in as <span class="login">ann</span>' in footer and "Updated from GitHub just now" in footer
+    assert 'Signed in as <span class="login">ann</span>' in board.footer_html(board.load())
 
 
 def test_html_names_a_deleted_author_ghost() -> None:
@@ -527,12 +525,13 @@ def answer(*found: list[dict]) -> tuple[str, list[list[dict]]]:
 
 def test_refresh_saves_the_sections_and_keeps_them_when_github_cannot_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(board.github, "search_prs", lambda queries: answer([pr(1)]))
-    board.refresh()
+    assert board.refresh()
     saved = board.load()
     assert saved["viewer"] == ME and [r["number"] for r in saved["sections"]["review"]] == [1]
+    assert board.refresh()
     monkeypatch.setattr(board.github, "search_prs", lambda queries: None)
     monkeypatch.setattr(board, "REFRESH_SECONDS", 0)
-    board.refresh()
+    assert not board.refresh()
     assert board.load()["sections"] == saved["sections"]
 
 
@@ -548,6 +547,14 @@ def test_refresh_waits_a_while_unless_the_followed_repositories_changed(
     board.refresh()
     assert len(asked) == 2 and "repo:acme/tools" in asked[1][-1]
     assert json.loads((paths / "board.json").read_text())["repos"] == ["acme/tools"]
+
+
+def test_a_forced_refresh_asks_github_even_right_after_it_answered(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[list[str]] = []
+    monkeypatch.setattr(board.github, "search_prs", lambda queries: asked.append(queries) or answer())
+    board.refresh()
+    board.refresh(force=True)
+    assert len(asked) == 2
 
 
 def test_a_refresh_that_starts_during_another_waits_and_uses_its_answer(monkeypatch: pytest.MonkeyPatch) -> None:
