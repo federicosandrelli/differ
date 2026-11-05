@@ -632,7 +632,7 @@ def main() -> None:
     if problem := gh_problem():
         sys.stderr.write(f"{problem} Run `gh auth login`; the start page checks again once a minute.\n")
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"Serving pull request reviews on http://localhost:{port}/")
+    print(f"Serving pull request reviews on http://localhost:{port}/", flush=True)
     server.serve_forever()
 
 

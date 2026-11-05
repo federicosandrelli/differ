@@ -1,20 +1,27 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 mod update;
 
 use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::{
-    AppHandle, LogicalPosition, Manager, RunEvent, Theme, TitleBarStyle, Url, WebviewUrl,
+    AppHandle, LogicalPosition, Manager, RunEvent, State, Theme, TitleBarStyle, Url, WebviewUrl,
     WebviewWindowBuilder, Wry,
 };
 
-struct Sidecar(Mutex<Option<Child>>);
+struct Sidecar {
+    python: PathBuf,
+    script: PathBuf,
+    port: AtomicU16,
+    child: Mutex<Option<Child>>,
+}
 
 // Marks the page as running in the app, so its CSS leaves room for the transparent title bar, and lays
 // a drag region over that strip: the webview covers the title bar, so the window only moves when Tauri's
@@ -150,16 +157,62 @@ fn python_or_exit() -> PathBuf {
     }
 }
 
-fn wait_for(port: u16, limit: Duration) -> bool {
-    let addr = format!("127.0.0.1:{port}").parse().unwrap();
-    let start = Instant::now();
-    while start.elapsed() < limit {
-        if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(100));
+fn server_url(port: u16) -> Url {
+    format!("http://127.0.0.1:{port}/").parse().unwrap()
+}
+
+// Opens the server in the window once it prints its first line, which says it serves: a port that merely answers
+// may belong to another server. Until then the window shows web/index.html.
+fn start_server(app: &AppHandle) -> std::io::Result<()> {
+    let sidecar = app.state::<Sidecar>();
+    let port = pick_port()?;
+    let mut command = Command::new(&sidecar.python);
+    // A __pycache__ written next to the bundled scripts would break the app's code signature.
+    command
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .arg(&sidecar.script)
+        .arg(port.to_string())
+        .arg("--exit-with-parent")
+        .stdout(Stdio::piped());
+    if let Some(path) = server_log() {
+        command.arg("--log").arg(path);
     }
-    false
+    let mut child = command.spawn()?;
+    let stdout = child.stdout.take().expect("stdout is piped");
+    sidecar.port.store(port, Ordering::Relaxed);
+    *sidecar.child.lock().unwrap() = Some(child);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut lines = BufReader::new(stdout).lines();
+        if matches!(lines.next(), Some(Ok(_))) {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.navigate(server_url(port));
+            }
+        }
+        // The server would block on a full pipe.
+        for _ in lines {}
+    });
+    Ok(())
+}
+
+fn server_exited(sidecar: &Sidecar) -> bool {
+    let mut child = sidecar.child.lock().unwrap();
+    child
+        .as_mut()
+        .is_none_or(|child| !matches!(child.try_wait(), Ok(None)))
+}
+
+#[tauri::command]
+fn server_failed(sidecar: State<Sidecar>) -> bool {
+    server_exited(&sidecar)
+}
+
+#[tauri::command]
+fn retry_server(app: AppHandle) -> Result<(), String> {
+    if !server_exited(&app.state::<Sidecar>()) {
+        return Ok(());
+    }
+    start_server(&app).map_err(|err| err.to_string())
 }
 
 const CLOSE_TAB: &str = "close-tab";
@@ -223,7 +276,9 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             update::update_check,
-            update::update_run
+            update::update_run,
+            server_failed,
+            retry_server
         ])
         .menu(app_menu)
         .on_menu_event(|app, event| {
@@ -239,59 +294,43 @@ fn main() {
             }
         })
         .setup(|app| {
-            let python = python_or_exit();
-            let port = pick_port()?;
-            let log = server_log();
-            let mut server_command = Command::new(python);
-            // A __pycache__ written next to the bundled scripts would break the app's code signature.
-            server_command
-                .env("PYTHONDONTWRITEBYTECODE", "1")
-                .arg(server_script(app)?)
-                .arg(port.to_string())
-                .arg("--exit-with-parent");
-            if let Some(path) = &log {
-                server_command.arg("--log").arg(path);
-            }
-            let child = server_command.spawn()?;
-            app.manage(Sidecar(Mutex::new(Some(child))));
-
-            let server: Url = format!("http://127.0.0.1:{port}/").parse().unwrap();
-            let local = server.clone();
-            let window =
-                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("differ")
-                    .theme(Some(Theme::Dark))
-                    .inner_size(1440.0, 900.0)
-                    // The page's default 420px sidebar plus a diff pane wide enough for a whole file header.
-                    .min_inner_size(1024.0, 640.0)
-                    .title_bar_style(TitleBarStyle::Overlay)
-                    .hidden_title(true)
-                    // Centred on the 40px tab strip the shell draws across the title bar.
-                    .traffic_light_position(LogicalPosition::new(13.0, 20.0))
-                    .initialization_script(PAGE_SETUP)
-                    .on_navigation(move |target| {
-                        let is_local =
-                            target.host_str() == local.host_str() && target.port() == local.port();
-                        if is_local || target.scheme() == "tauri" {
-                            return true;
-                        }
-                        let _ = tauri_plugin_opener::open_url(target.as_str(), None::<&str>);
-                        false
-                    })
-                    .build()?;
-
-            std::thread::spawn(move || {
-                if wait_for(port, Duration::from_secs(30)) {
-                    let _ = window.navigate(server);
-                }
+            app.manage(Sidecar {
+                python: python_or_exit(),
+                script: server_script(app)?,
+                port: AtomicU16::new(0),
+                child: Mutex::new(None),
             });
+            let handle = app.handle().clone();
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                .title("differ")
+                .theme(Some(Theme::Dark))
+                .inner_size(1440.0, 900.0)
+                // The page's default 420px sidebar plus a diff pane wide enough for a whole file header.
+                .min_inner_size(1024.0, 640.0)
+                .title_bar_style(TitleBarStyle::Overlay)
+                .hidden_title(true)
+                // Centred on the 40px tab strip the shell draws across the title bar.
+                .traffic_light_position(LogicalPosition::new(13.0, 20.0))
+                .initialization_script(PAGE_SETUP)
+                .on_navigation(move |target| {
+                    let port = handle.state::<Sidecar>().port.load(Ordering::Relaxed);
+                    let is_local =
+                        target.host_str() == Some("127.0.0.1") && target.port() == Some(port);
+                    if is_local || target.scheme() == "tauri" {
+                        return true;
+                    }
+                    let _ = tauri_plugin_opener::open_url(target.as_str(), None::<&str>);
+                    false
+                })
+                .build()?;
+            start_server(app.handle())?;
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building the app")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                if let Some(mut child) = app.state::<Sidecar>().0.lock().unwrap().take() {
+                if let Some(mut child) = app.state::<Sidecar>().child.lock().unwrap().take() {
                     let _ = child.kill();
                 }
             }
