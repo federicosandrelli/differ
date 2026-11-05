@@ -39,8 +39,17 @@ document.addEventListener('click', e => {
 // scopes to the origin, so the server needs the same port on every launch for them to survive.
 const APP_PORT: u16 = 8766;
 
+// Rust binds with SO_REUSEADDR, so a bind to 127.0.0.1 succeeds even while another server listens on the port
+// on [::] or ::1. server.py then refuses the port, and the window would load that other server.
+fn answers(port: u16) -> bool {
+    ["127.0.0.1", "[::1]"].iter().any(|host| {
+        let addr = format!("{host}:{port}").parse().unwrap();
+        TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+    })
+}
+
 fn pick_port() -> std::io::Result<u16> {
-    if TcpListener::bind(("127.0.0.1", APP_PORT)).is_ok() {
+    if !answers(APP_PORT) && TcpListener::bind(("127.0.0.1", APP_PORT)).is_ok() {
         return Ok(APP_PORT);
     }
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
@@ -287,4 +296,26 @@ fn main() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::answers;
+    use std::net::TcpListener;
+
+    #[test]
+    fn sees_a_server_that_listens_on_ipv6_only() {
+        let listener = TcpListener::bind("[::1]:0").unwrap();
+        assert!(answers(listener.local_addr().unwrap().port()));
+    }
+
+    #[test]
+    fn sees_a_free_port() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        assert!(!answers(port));
+    }
 }
