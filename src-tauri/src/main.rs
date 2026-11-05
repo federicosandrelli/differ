@@ -157,12 +157,8 @@ fn python_or_exit() -> PathBuf {
     }
 }
 
-fn server_url(port: u16) -> Url {
-    format!("http://127.0.0.1:{port}/").parse().unwrap()
-}
-
 // Opens the server in the window once it prints its first line, which says it serves: a port that merely answers
-// may belong to another server. Until then the window shows web/index.html.
+// may belong to another server.
 fn start_server(app: &AppHandle) -> std::io::Result<()> {
     let sidecar = app.state::<Sidecar>();
     let port = pick_port()?;
@@ -183,19 +179,24 @@ fn start_server(app: &AppHandle) -> std::io::Result<()> {
     *sidecar.child.lock().unwrap() = Some(child);
     let app = app.clone();
     std::thread::spawn(move || {
-        let mut lines = BufReader::new(stdout).lines();
-        if matches!(lines.next(), Some(Ok(_))) {
+        let mut reader = BufReader::new(stdout);
+        if reader
+            .read_line(&mut String::new())
+            .is_ok_and(|read| read > 0)
+        {
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.navigate(server_url(port));
+                let url: Url = format!("http://127.0.0.1:{port}/").parse().unwrap();
+                let _ = window.navigate(url);
             }
         }
         // The server would block on a full pipe.
-        for _ in lines {}
+        let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
     Ok(())
 }
 
-fn server_exited(sidecar: &Sidecar) -> bool {
+#[tauri::command]
+fn server_failed(sidecar: State<Sidecar>) -> bool {
     let mut child = sidecar.child.lock().unwrap();
     child
         .as_mut()
@@ -203,13 +204,8 @@ fn server_exited(sidecar: &Sidecar) -> bool {
 }
 
 #[tauri::command]
-fn server_failed(sidecar: State<Sidecar>) -> bool {
-    server_exited(&sidecar)
-}
-
-#[tauri::command]
 fn retry_server(app: AppHandle) -> Result<(), String> {
-    if !server_exited(&app.state::<Sidecar>()) {
+    if !server_failed(app.state()) {
         return Ok(());
     }
     start_server(&app).map_err(|err| err.to_string())
@@ -323,7 +319,9 @@ fn main() {
                     false
                 })
                 .build()?;
-            start_server(app.handle())?;
+            if let Err(err) = start_server(app.handle()) {
+                eprintln!("The review server did not start: {err}");
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
