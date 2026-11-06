@@ -14,6 +14,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import Dialog, Page
 
 from helpers import Files, commit_tree, git, make_repo
 
@@ -116,6 +117,25 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if E2E in item.path.parents:
             item.add_marker(pytest.mark.e2e)
+
+
+@pytest.fixture(autouse=True)
+def no_native_dialogs(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Fails a test whose page opens alert, confirm or prompt. The desktop app's webview answers them at once
+    without showing a dialog, so a page that relies on one works in Chromium and breaks in the app."""
+    if "page" not in request.fixturenames:
+        yield
+        return
+    page: Page = request.getfixturevalue("page")
+    opened: list[str] = []
+
+    def dismiss(dialog: Dialog) -> None:
+        opened.append(dialog.message)
+        dialog.dismiss()
+
+    page.on("dialog", dismiss)
+    yield
+    assert not opened, f"The page opened native dialogs, which the desktop app cancels unseen: {opened}"
 
 
 @pytest.fixture(scope="session")

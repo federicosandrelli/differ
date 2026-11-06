@@ -15,6 +15,14 @@ styles the same kind of thing (pills, counts, notices, buttons), and reuse it.
   list it in `CONTEXT.md`.
 - Tooltips: give the element a `title`. Never draw a tooltip of your own.
 
+## Desktop app
+
+The app shows the pages in macOS WKWebView, through wry, not in Chromium, where the tests and the preview run. Never
+rely on a browser feature that the webview may lack. `alert`, `confirm` and `prompt` are the known case: the webview
+answers them at once without showing a dialog. To ask before an action that is hard to undo, use `confirmed()` in
+`page/50-comments.js`, which asks with a second click on the same button. ESLint's `no-alert` rule and the e2e
+`no_native_dialogs` fixture enforce this.
+
 ## File types and languages
 
 Never branch on a path's suffix, or on a file name that names a file type (such as `Makefile`), to choose

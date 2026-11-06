@@ -149,7 +149,7 @@ function mergeMessage(method) {
 // The merge button with the ⋮ that chooses the merge method, when the repository allows more than one.
 function methodPick(label, action, off) {
   const method = mergeMethod(), dis = state.busy || off ? 'disabled' : '';
-  const button = `<button class="primary" data-merge-do="${action}" ${dis}>${label}</button>`;
+  const button = `<button class="primary" data-merge-do="${action}" ${dis}>${confirming(action) ? 'Confirm merge' : label}</button>`;
   if (M.methods.length < 2) return button;
   const more = `<button class="more primary" data-merge-menu title="Choose how to merge" aria-haspopup="menu" aria-expanded="${state.mergeMenu}" ${state.busy ? 'disabled' : ''}><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3.5" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.5" r="1.3"/></svg></button>`;
   const menu = state.mergeMenu ? `<div class="menu" role="menu">${M.methods.map(m => `<button role="menuitemradio" aria-checked="${m === method}" data-merge-method="${m}" class="${m === method ? 'on' : ''}">${METHODS[m].label}</button>`).join('')}</div>` : '';
@@ -194,7 +194,7 @@ function mergePanelHtml() {
 
 // ---------- actions
 const MERGE_ATTRS = '[data-merge-panel],[data-merge-checks],[data-merge-menu],[data-merge-method],[data-merge-do],[data-merge-rerun],[data-merge-reload]';
-async function mergeClick(t) {
+async function mergeClick(t, e) {
   const d = t.dataset;
   if (d.mergePanel !== undefined) { state.mergePanel = !state.mergePanel; state.mergeMenu = false; renderSide(); return; }
   if (d.mergeChecks !== undefined) { state.checksOpen = t.getAttribute('aria-expanded') !== 'true'; renderSide(); return; }
@@ -205,7 +205,7 @@ async function mergeClick(t) {
   const method = mergeMethod();
   switch (d.mergeDo) {
     case 'merge':
-      if (!confirm(`${METHODS[method].label}: #${PR.number} into ${M.base}?`)) return;
+      if (!confirmed('merge', e)) return;
       await mergeSend('merge', { method, head: PR.head, ...mergeMessage(method) });
       break;
     case 'autoon': await mergeSend('automerge', { on: true, method, head: PR.head, ...mergeMessage(method) }); break;

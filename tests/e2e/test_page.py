@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from playwright.sync_api import APIResponse, Dialog, Locator, Page, Position, Response, Route, expect
+from playwright.sync_api import APIResponse, Locator, Page, Position, Response, Route, expect
 
 from e2e.conftest import TITLE
 from helpers import Files
@@ -1051,30 +1051,72 @@ def test_cmd_r_without_new_commits_says_so_and_keeps_the_page(page: Page, server
     assert page.evaluate("window.beforeRebuild")
 
 
-def test_a_rebuild_with_unsent_text_waits_for_cmd_r_which_asks_before_it_discards_the_text(
+def test_a_rebuild_carries_the_unsent_text_and_the_focused_box_into_the_rebuilt_page(
     page: Page, server_url: str, add_pr: AddPr, push_pr: PushPr
 ) -> None:
     pr = add_pr(CONFIG_OLD, CONFIG_NEW)
     open_pr(page, server_url, pr)
-    page.locator("section[data-file='src/config.py'] tr.add td.n.key").first.click()
+    page.click("#side button[data-review-panel]")
+    page.locator("textarea[data-review-text]").fill("Looks good")
+    added = page.locator("section[data-file='src/config.py'] tr.add td.n.key")
+    added.first.click()
     box = page.locator("textarea[data-compose-text]")
     box.fill("Rename this")
-    box.press("Escape")
+    added.nth(1).click()
+    box.fill("And this")
+    head = push_pr(pr, {**CONFIG_NEW, "src/added.py": "x = 1\n"})
+    page.evaluate("window.beforeRebuild = true")
+    page.keyboard.press("Meta+r")
+    page.wait_for_function("!window.beforeRebuild && typeof C !== 'undefined' && C.loaded", timeout=30000)
+    assert page.evaluate("PR.head") == head
+    expect(box).to_have_value("And this")
+    expect(box).to_be_focused()
+    assert page.evaluate("[...state.drafts.values()].map(d => d.text)") == ["Rename this"]
+    expect(page.locator("textarea[data-review-text]")).to_have_value("Looks good")
+    assert page.evaluate("sessionStorage.length") == 0
+
+
+def test_a_rebuild_puts_a_comment_without_its_line_into_the_conversation_box(
+    page: Page, server_url: str, add_pr: AddPr, push_pr: PushPr
+) -> None:
+    pr = add_pr(CONFIG_OLD, CONFIG_NEW)
+    open_pr(page, server_url, pr)
+    page.locator("section[data-file='src/near.py'] tr.del td.n.key").first.click()
+    page.locator("textarea[data-compose-text]").fill("Why drop this?")
+    push_pr(pr, {**CONFIG_NEW, "src/near.py": CONFIG_NEW["src/near.py"].replace("x = 10", "x = 1")})
+    page.evaluate("window.beforeRebuild = true")
+    page.keyboard.press("Meta+r")
+    page.wait_for_function("!window.beforeRebuild && typeof C !== 'undefined' && C.loaded", timeout=30000)
+    expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
+    expect(page.locator("textarea[data-conv-text]")).to_have_value("On line 1 of src/near.py:\nWhy drop this?")
+
+
+def test_a_rebuild_waits_for_the_comments_load_after_a_sent_comment_so_its_text_stays_sent(
+    page: Page, server_url: str, add_pr: AddPr, push_pr: PushPr
+) -> None:
+    pr = add_pr(CONFIG_OLD, CONFIG_NEW)
+    open_pr(page, server_url, pr)
+    page.locator("textarea[data-conv-text]").fill("Ship it")
     push_pr(pr, {**CONFIG_NEW, "src/added.py": "x = 1\n"})
-    asked: list[str] = []
-
-    def dismiss(dialog: Dialog) -> None:
-        asked.append(dialog.message)
-        dialog.dismiss()
-
-    page.on("dialog", dismiss)
+    loads = hold_requests(page, "**/comments")
+    page.click("button[data-conv-send]")
+    wait_for(page, lambda: len(loads) == 1)
+    statuses = hold_requests(page, "**/status/acme/widgets/*")
+    page.evaluate("window.beforeRebuild = true")
     page.keyboard.press("Meta+r")
-    expect(page.locator("#side [data-sect='rebuild']")).to_contain_text("The rebuilt page is ready", timeout=30000)
-    assert asked == []
-    page.keyboard.press("Meta+r")
-    wait_for(page, lambda: bool(asked))
-    assert asked == ["Rebuilding the page discards your unsent text. Rebuild anyway?"]
-    expect(box).to_have_value("Rename this")
+    done = False
+    while not done:
+        wait_for(page, lambda: bool(statuses), timeout=30)
+        held = statuses.pop(0)
+        done = held[1].json()["state"] == "done"
+        answer(held)
+    page.unroute("**/status/acme/widgets/*")
+    page.wait_for_timeout(1000)
+    assert page.evaluate("window.beforeRebuild")
+    answer(loads[0])
+    page.unroute("**/comments")
+    page.wait_for_function("!window.beforeRebuild && typeof C !== 'undefined' && C.loaded", timeout=30000)
+    expect(page.locator("textarea[data-conv-text]")).to_have_value("")
 
 
 def test_threads_show_on_their_lines_and_in_the_overview(page: Page, server_url: str) -> None:
@@ -1713,14 +1755,13 @@ def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, se
 
 
 def test_a_posted_conversation_comment_empties_its_box(page: Page, server_url: str, gh_state: Path) -> None:
+    before = len(sent(gh_state, "addComment"))
     open_pr(page, server_url)
     box = page.locator("textarea[data-conv-text]")
     box.fill("Thanks for this")
     page.click("button[data-conv-send]")
     expect(box).to_have_value("")
-
-    mutations = [json.loads(line) for line in (gh_state / "mutations.log").read_text().splitlines()]
-    assert [m["variables"]["body"] for m in mutations if "addComment(" in m["query"]] == ["Thanks for this"]
+    assert [m["body"] for m in sent(gh_state, "addComment")[before:]] == ["Thanks for this"]
 
 
 def test_a_title_shows_as_a_quick_tooltip_and_comes_back_after_the_pointer_leaves(page: Page, server_url: str) -> None:
@@ -2151,7 +2192,7 @@ def test_merging_sends_the_method_the_commit_message_and_the_pages_head_then_dro
     open_pr(page, server_url, mine(add_pr, gh_state))
     page.click("#side button[data-merge-panel]")
     page.locator("textarea[data-merge-text='SQUASH']").fill("Rename the helper\n\nAnd greet.")
-    page.on("dialog", lambda dialog: dialog.accept())
+    page.click("button[data-merge-do='merge']")
     page.click("button[data-merge-do='merge']")
     expect(page.locator("#side .head button[data-merge-panel]")).to_have_count(0)
     expect(page.locator("#side .head .status")).to_have_text("Merged")
@@ -2177,7 +2218,7 @@ def test_the_merge_method_chosen_in_the_menu_is_sent_and_kept_for_the_repository
     expect(page.locator("textarea[data-merge-text]")).to_have_count(0)
     open_pr(page, server_url, mine(add_pr, gh_state))
     page.click("#side button[data-merge-panel]")
-    page.on("dialog", lambda dialog: dialog.accept())
+    page.click("button[data-merge-do='merge']")
     page.click("button[data-merge-do='merge']")
     expect(page.locator("#side .head .status")).to_have_text("Merged")
     last = sent(gh_state, "mergePullRequest")[-1]
@@ -2190,21 +2231,44 @@ def test_an_empty_commit_message_leaves_the_message_to_github(
     open_pr(page, server_url, mine(add_pr, gh_state))
     page.click("#side button[data-merge-panel]")
     expect(page.locator("textarea[data-merge-text='SQUASH']")).to_have_value("")
-    page.on("dialog", lambda dialog: dialog.accept())
+    page.click("button[data-merge-do='merge']")
     page.click("button[data-merge-do='merge']")
     expect(page.locator("#side .head .status")).to_have_text("Merged")
     last = sent(gh_state, "mergePullRequest")[-1]
     assert (last["method"], last["headline"], last["body"]) == ("SQUASH", None, None)
 
 
-def test_a_declined_merge_sends_nothing(page: Page, server_url: str, add_pr: AddPr, gh_state: Path) -> None:
+def test_a_double_click_on_merge_only_asks_to_confirm(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
     open_pr(page, server_url, mine(add_pr, gh_state))
     before = len(sent(gh_state, "mergePullRequest"))
     page.click("#side button[data-merge-panel]")
-    page.on("dialog", lambda dialog: dialog.dismiss())
-    page.click("button[data-merge-do='merge']")
-    expect(page.locator("#side .head button[data-merge-panel]")).to_have_text("Ready to merge")
+    button = page.locator("button[data-merge-do='merge']")
+    button.dblclick()
+    expect(button).to_have_text("Confirm merge")
     assert len(sent(gh_state, "mergePullRequest")) == before
+
+
+def test_discarding_a_pending_review_takes_a_second_click(page: Page, server_url: str, gh_state: Path) -> None:
+    with kept_comments(gh_state):
+        comments = json.loads((gh_state / "comments.json").read_text())
+        pending = {
+            **comments["reviews"][0],
+            "id": "R_pending",
+            "state": "PENDING",
+            "author": {"login": "tester"},
+            "body": "",
+        }
+        (gh_state / "comments.json").write_text(json.dumps({**comments, "reviews": [*comments["reviews"], pending]}))
+        open_pr(page, server_url)
+        page.click("#side .head button[data-review-panel]")
+        button = page.locator("button[data-discard]")
+        button.click()
+        expect(button).to_have_text("Confirm discard")
+        assert sent(gh_state, "deletePullRequestReview") == []
+        button.click()
+        wait_for(page, lambda: sent(gh_state, "deletePullRequestReview") == [{"id": "R_pending"}])
 
 
 def test_while_github_blocks_the_merge_auto_merge_turns_on_and_off(

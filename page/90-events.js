@@ -52,7 +52,7 @@ document.addEventListener('click', (e) => {
   if (state.mergeMenu && !e.target.closest('.merge-pick')) { state.mergeMenu = false; renderSide(); }
   if (CL.menu && !e.target.closest('.claude-pick')) { CL.menu = false; renderSide(); }
   const merge = e.target.closest(MERGE_ATTRS);
-  if (merge) { e.preventDefault(); mergeClick(merge); return; }
+  if (merge) { e.preventDefault(); mergeClick(merge, e); return; }
   const claude = e.target.closest(CLAUDE_ATTRS);
   if (claude) { e.preventDefault(); claudeClick(claude); return; }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
@@ -243,6 +243,7 @@ window.addEventListener('hashchange', () => {
 (function init() {
   state.showNoiseOnly = lsGet('dr:noise-only') === '1';
   state.showGenerated = lsGet('dr:generated') === '1';
+  const unsentFocus = takeUnsent();
   if (!FILES.some(kindVisible)) state.filter = 'all';
   document.body.classList.toggle('commentable', !!API);
   render();
@@ -250,6 +251,7 @@ window.addEventListener('hashchange', () => {
   const t = hashTarget();
   if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
   else if (t) go(t.path, t.key);
+  refocusBox(document.body, unsentFocus);
   loadComments().then(loadMerge);
   loadViewed();
   loadClaude();
