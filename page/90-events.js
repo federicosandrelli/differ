@@ -50,9 +50,10 @@ document.addEventListener('click', (e) => {
   // A click anywhere but on the open editor menu or its button closes the menu, and does what it would do anyway.
   if (EDITOR.menu !== null && !e.target.closest('.editor-pick')) { EDITOR.menu = null; render(); }
   if (state.mergeMenu && !e.target.closest('.merge-pick')) { state.mergeMenu = false; renderSide(); }
-  if (CL.menu && !e.target.closest('.claude-pick')) { CL.menu = false; renderSide(); }
   const merge = e.target.closest(MERGE_ATTRS);
   if (merge) { e.preventDefault(); mergeClick(merge); return; }
+  const term = e.target.closest(TERM_ATTRS);
+  if (term) { e.preventDefault(); termClick(term); return; }
   const claude = e.target.closest(CLAUDE_ATTRS);
   if (claude) { e.preventDefault(); claudeClick(claude); return; }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
@@ -161,10 +162,11 @@ function stepFile(dir) {
 document.addEventListener('keydown', (e) => {
   if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? openFileSearch() : openSearch(); return; }
   if (API && e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r') { e.preventDefault(); rebuild(); return; }
+  // The terminal takes every other key while it has focus; xterm.js types through a hidden textarea.
+  if (e.target.closest && e.target.closest('.xterm')) return;
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }
   if (e.key === 'Escape' && EDITOR.menu !== null) { EDITOR.menu = null; render(); return; }
   if (e.key === 'Escape' && state.mergeMenu) { state.mergeMenu = false; renderSide(); return; }
-  if (e.key === 'Escape' && CL.menu) { CL.menu = false; renderSide(); return; }
   if (e.key === 'Escape') { closeSearch(); if (document.activeElement) document.activeElement.blur(); return; }
   if (e.target.classList && e.target.classList.contains('list') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (treeKey(e)) { e.preventDefault(); return; }

@@ -40,7 +40,7 @@ NEW = {
 TITLE = "Rename old_name to new_name"
 
 
-def pr_meta(number: int, base: str, head: str) -> dict:
+def pr_meta(number: int, base: str, head: str, branch: str = "greeting") -> dict:
     return {
         "number": number,
         "title": TITLE,
@@ -50,7 +50,7 @@ def pr_meta(number: int, base: str, head: str) -> dict:
         "baseRefOid": base,
         "headRefOid": head,
         "baseRefName": "main",
-        "headRefName": "greeting",
+        "headRefName": branch,
         "isCrossRepository": False,
         "commits": [{"oid": head}],
         "state": "OPEN",
@@ -137,15 +137,18 @@ def gh_state(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.fixture(scope="session")
 def add_pr(gh_state: Path) -> Callable[[Files, Files], str]:
     """A function that opens another pull request on the fixture repo, from the files `old` to the files `new`, and
-    returns the path of its page."""
+    returns the path of its page. With `branch`, the pull request's head branch exists in the repository under that
+    name, as a branch a Claude session can check out."""
     repo = Path((gh_state / "repo.txt").read_text())
     numbers = itertools.count(3)
 
-    def add(old: Files, new: Files) -> str:
+    def add(old: Files, new: Files, branch: str | None = None) -> str:
         number = next(numbers)
         base, head = commit_tree(repo, old, f"#{number} base"), commit_tree(repo, new, f"#{number} head")
         git(repo, "update-ref", f"refs/pull/{number}/head", head)
-        (gh_state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, base, head)))
+        if branch:
+            git(repo, "update-ref", f"refs/heads/{branch}", head)
+        (gh_state / f"pr{number}.json").write_text(json.dumps(pr_meta(number, base, head, branch or "greeting")))
         return f"/acme/widgets/pull/{number}"
 
     return add
@@ -188,6 +191,8 @@ def server_url(gh_state: Path, cache_dir: Path, tmp_path_factory: pytest.TempPat
         "PATH": f"{E2E / 'fakegh'}{os.pathsep}{os.environ['PATH']}",
         "DIFFER_CACHE": str(cache_dir),
         "FAKE_GH_STATE": str(gh_state),
+        "DIFFER_CLAUDE": str(E2E.parent / "fakeclaude"),
+        "FAKE_CLAUDE_LOG": str(cache_dir / "claude-starts.log"),
     }
     log = tmp_path_factory.mktemp("server") / "server.log"
     with log.open("w") as out:

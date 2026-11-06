@@ -10,5 +10,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
+libc = "0.2"
 rfd = { version = "0.16", default-features = false }
 serde = { version = "1", features = ["derive"] }

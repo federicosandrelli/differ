@@ -39,10 +39,18 @@
     if (!tab) { tab = { key, url, title: '…', status: '', badge: 0, frame: null }; tabs.push(tab); }
     activate(tab);
   }
+  // A closed tab ends its pull request's Claude session, if one runs; the server keeps the session's id, so the next
+  // open of the pull request resumes the conversation.
+  function endSession(tab) {
+    const m = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(tab.key);
+    if (!m) return;
+    fetch(`/api/${m[1]}/${m[2]}/claude_close`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {});
+  }
   function close(tab) {
     const i = tabs.indexOf(tab);
     if (i < 0) return;
     tabs.splice(i, 1);
+    endSession(tab);
     if (tab.frame) tab.frame.remove();
     if (active === tab) activate(tabs[i] || tabs[i - 1] || home); else { draw(); save(); }
   }

@@ -1,5 +1,6 @@
-"""The normal clone of each repository, with file contents, that the editors open, and how it moves to a pull
-request's branch without losing the user's work."""
+"""The folders with file contents that the editors and the Claude sessions work in: the normal clone of each
+repository that an editor opens, which moves between pull requests' branches without losing the user's work, and the
+worktree of each pull request, made from the bare mirror, that a Claude session runs in."""
 
 from __future__ import annotations
 
@@ -21,6 +22,128 @@ class Refused(Exception):
     """The server won't open the file now; the message says why and what to do."""
 
 
+_branches: dict[PullRef, tuple[str, bool]] = {}
+_branches_lock = threading.Lock()
+# One lock per mirror, held while a worktree is made, moved or removed in it, so two pull requests of one repository,
+# or a start and a close of one pull request, never run git in the mirror at once.
+_mirrors: dict[Path, threading.Lock] = {}
+_mirrors_lock = threading.Lock()
+
+
+def _mirror_lock(mirror: Path) -> threading.Lock:
+    with _mirrors_lock:
+        return _mirrors.setdefault(mirror, threading.Lock())
+
+
+def branch_of(ref: PullRef) -> tuple[str, bool]:
+    """The pull request's head branch and whether it lives in a fork, read from GitHub once, since neither
+    changes."""
+    with _branches_lock:
+        if ref in _branches:
+            return _branches[ref]
+    fields = "headRefName,isCrossRepository"
+    meta = json.loads(github.gh("pr", "view", str(ref.number), "--repo", ref.slug, "--json", fields))
+    with _branches_lock:
+        _branches[ref] = meta["headRefName"], meta["isCrossRepository"]
+        return _branches[ref]
+
+
+def worktree_of(ref: PullRef) -> Path:
+    return build.CACHE / "worktrees" / ref.owner / ref.repo / str(ref.number)
+
+
+def worktree(ref: PullRef, head: str | None = None) -> Path:
+    """The pull request's worktree: a folder of its own, made from the bare mirror the first time, on the pull
+    request's branch at `head`, the pull request's head on GitHub, read now when not given. A session commits and
+    pushes from it, and nothing else moves it. A folder that is no longer a worktree, because it was deleted by hand
+    or its mirror was cloned again, is made again. Moves a force-pushed branch as `check_out` does. Raises Refused
+    when the worktree has uncommitted changes to tracked files on a branch of another pull request or of none, and
+    CommandError when gh or git fails."""
+    mirror = build.ensure_repo(ref, lambda _: None)
+    branch, fork = branch_of(ref)
+    head = head or build.recent_head(ref)
+    with _mirror_lock(mirror):
+        build.fetch(mirror, ref.number, head, head, lambda _: None)
+        _configure(mirror)
+        if not fork:
+            remote = f"+refs/heads/{branch}:refs/remotes/origin/{branch}"
+            build.git(mirror, "fetch", "--quiet", "--no-tags", "origin", remote, timeout=commands.LONG_TIMEOUT)
+        folder = worktree_of(ref)
+        build.git(mirror, "worktree", "prune")
+        if folder.exists() and _try_git(folder, "rev-parse", "--git-dir").returncode != 0:
+            shutil.rmtree(folder)
+            build.git(mirror, "worktree", "prune")
+        if not folder.exists():
+            folder.parent.mkdir(parents=True, exist_ok=True)
+            build.git(mirror, "worktree", "add", "--detach", str(folder), head, timeout=commands.LONG_TIMEOUT)
+        if _current_branch(folder) != branch or build.git(folder, "rev-parse", "HEAD").decode().strip() != head:
+            _drop_copied_branch(mirror, branch)
+            check_out(folder, ref, branch, fork)
+    return folder
+
+
+def _configure(mirror: Path) -> None:
+    """Set up the bare mirror for checkouts, once. A bare clone has no fetch refspec, so git would not take
+    origin/<branch> for a remote-tracking branch, which `gh pr checkout` needs to track it; the build's fetches name
+    their refs, so the refspec changes none of them. A bare clone logs no ref updates either, and `check_out` reads
+    the heads a force-pushed branch had from the reflog of origin/<branch>."""
+    settings = (("remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"), ("core.logAllRefUpdates", "true"))
+    for key, value in settings:
+        if _try_git(mirror, "config", "--get", key).returncode != 0:
+            build.git(mirror, "config", key, value)
+
+
+def _drop_copied_branch(mirror: Path, branch: str) -> None:
+    """Delete the mirror's copy of the branch from clone time, if that is what refs/heads/<branch> is: a branch
+    without an upstream. `gh pr checkout` would fast-forward it, which fails once the branch was force-pushed. A
+    branch a checkout made has an upstream, and stays with the commits a session left on it."""
+    if _try_git(mirror, "config", "--get", f"branch.{branch}.remote").returncode == 0:
+        return
+    if _try_git(mirror, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}").returncode == 0:
+        _try_git(mirror, "branch", "-D", branch)
+
+
+def remove_worktree(ref: PullRef) -> None:
+    """Delete the pull request's worktree, if it has one, with whatever it holds."""
+    folder, mirror = worktree_of(ref), build.mirror_of(ref)
+    with _mirror_lock(mirror):
+        if folder.exists() and mirror.exists():
+            _try_git(mirror, "worktree", "remove", "--force", str(folder))
+        shutil.rmtree(folder, ignore_errors=True)
+        if mirror.exists():
+            _try_git(mirror, "worktree", "prune")
+
+
+def check_out(folder: Path, ref: PullRef, branch: str, fork: bool) -> None:
+    """Check the pull request's branch out in the folder, at the pull request's head on GitHub. Moves a force-pushed
+    branch to the new head with `git checkout -B` only when that loses no work: it never loses uncommitted changes,
+    untracked files or commits missing from every remote. Raises Refused when the folder has uncommitted changes to
+    tracked files on a branch of another pull request or of none, and CommandError when gh or git fails."""
+    changed = build.git(folder, "status", "--porcelain", "--untracked-files=no").strip()
+    if changed and _branch_pull_request(folder) != ref.number:
+        raise Refused(
+            f"The clone at {folder} has uncommitted changes on {_current_branch(folder) or 'a detached HEAD'}. "
+            "Commit or stash them first."
+        )
+    try:
+        github.gh("pr", "checkout", str(ref.number), "--repo", ref.slug, timeout=commands.LONG_TIMEOUT, cwd=folder)
+    except commands.CommandError:
+        # A force-pushed branch can't fast-forward. When the local branch diverged from the remote one and holds
+        # no commit missing from every remote and from every head the remote branch had, checkout -B moves it to
+        # the new head; it refuses rather than overwrite an untracked file or an uncommitted change, and the
+        # branch keeps its upstream.
+        local, remote = f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"
+        if fork or _try_git(folder, "merge-base", "--is-ancestor", local, remote).returncode != 1:
+            raise
+        heads = build.git(folder, "log", "-g", "--format=%H", remote).decode().split()
+        # The reflog lists each new head; the head the clone started from is the old value of the oldest entry.
+        first = _try_git(folder, "rev-parse", "--verify", "--quiet", f"{remote}@{{{len(heads)}}}")
+        heads += first.stdout.decode().split()
+        if int(build.git(folder, "rev-list", "--count", local, "--not", *heads, "--remotes")):
+            raise
+        build.git(folder, "checkout", "-B", branch, remote)
+
+
 class Checkouts:
     """The clones in the folder `root`, one per repository. `head` gives a pull request's head commit on GitHub."""
 
@@ -29,7 +152,6 @@ class Checkouts:
         self._locks: dict[str, threading.Lock] = {}
         self._locks_lock = threading.Lock()
         self._opened: dict[str, tuple[int, str]] = {}
-        self._branches: dict[PullRef, tuple[str, bool]] = {}
 
     def folder(self, ref: PullRef) -> Path:
         return self.root / ref.owner / ref.repo
@@ -39,7 +161,7 @@ class Checkouts:
         `Clone.at_head` waits for neither. Raises CommandError when gh or git fails."""
         with self._lock(ref):
             self._clone(ref)
-        self._branch(ref)
+        branch_of(ref)
 
     @contextmanager
     def held(self, ref: PullRef) -> Iterator[Clone]:
@@ -66,20 +188,11 @@ class Checkouts:
         github.gh("repo", "set-default", ref.slug, cwd=partial)
         partial.rename(folder)
 
-    def _branch(self, ref: PullRef) -> tuple[str, bool]:
-        """The pull request's head branch and whether it lives in a fork, read from GitHub once, since neither
-        changes."""
-        if ref not in self._branches:
-            fields = "headRefName,isCrossRepository"
-            meta = json.loads(github.gh("pr", "view", str(ref.number), "--repo", ref.slug, "--json", fields))
-            self._branches[ref] = meta["headRefName"], meta["isCrossRepository"]
-        return self._branches[ref]
-
     def _at_head(self, ref: PullRef) -> None:
         folder = self.folder(ref)
         self._clone(ref)
         if not self._up_to_date(ref, folder):
-            self._check_out(ref, folder)
+            check_out(folder, ref, *branch_of(ref))
             self._opened[ref.slug] = (ref.number, _current_branch(folder))
 
     def _up_to_date(self, ref: PullRef, folder: Path) -> bool:
@@ -91,32 +204,6 @@ class Checkouts:
             and branch == _current_branch(folder)
             and build.git(folder, "rev-parse", "HEAD").decode().strip() == self.head(ref)
         )
-
-    def _check_out(self, ref: PullRef, folder: Path) -> None:
-        changed = build.git(folder, "status", "--porcelain", "--untracked-files=no").strip()
-        if changed and _branch_pull_request(folder) != ref.number:
-            raise Refused(
-                f"The clone at {folder} has uncommitted changes on {_current_branch(folder) or 'a detached HEAD'}. "
-                "Commit or stash them first."
-            )
-        branch, fork = self._branch(ref)
-        try:
-            github.gh("pr", "checkout", str(ref.number), "--repo", ref.slug, timeout=commands.LONG_TIMEOUT, cwd=folder)
-        except commands.CommandError:
-            # A force-pushed branch can't fast-forward. When the local branch diverged from the remote one and holds
-            # no commit missing from every remote and from every head the remote branch had, checkout -B moves it to
-            # the new head; it refuses rather than overwrite an untracked file or an uncommitted change, and the
-            # branch keeps its upstream.
-            local, remote = f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"
-            if fork or _try_git(folder, "merge-base", "--is-ancestor", local, remote).returncode != 1:
-                raise
-            heads = build.git(folder, "log", "-g", "--format=%H", remote).decode().split()
-            # The reflog lists each new head; the head the clone started from is the old value of the oldest entry.
-            first = _try_git(folder, "rev-parse", "--verify", "--quiet", f"{remote}@{{{len(heads)}}}")
-            heads += first.stdout.decode().split()
-            if int(build.git(folder, "rev-list", "--count", local, "--not", *heads, "--remotes")):
-                raise
-            build.git(folder, "checkout", "-B", branch, remote)
 
 
 class Clone:

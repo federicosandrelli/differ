@@ -1,4 +1,5 @@
 import json
+import shutil
 import threading
 from pathlib import Path
 
@@ -348,3 +349,75 @@ def test_after_warm_at_head_runs_no_clone_and_no_head_branch_lookup(
     gh.clear_calls()
     at_head(checkouts)
     assert gh.calls() == [CHECKOUT]
+
+
+@pytest.fixture
+def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(checkout.build, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(checkout, "_branches", {})
+    return tmp_path / "cache"
+
+
+def test_a_worktree_is_made_from_the_mirror_on_the_pull_requests_branch_at_its_head(
+    gh: FakeGitHub, cache: Path
+) -> None:
+    head = gh.commit(7, {**BASE, "a.txt": "feature\n"})
+    folder = checkout.worktree(REF, head)
+    assert folder == checkout.worktree_of(REF) == cache / "worktrees/o/r/7"
+    assert branch_of(folder) == "feature" and head_of(folder) == head
+    assert checkout.build.mirror_of(REF).exists()
+    assert (folder / "a.txt").read_text() == "feature\n"
+
+
+def test_a_worktree_moves_to_a_new_head_and_each_pull_request_gets_its_own(gh: FakeGitHub, cache: Path) -> None:
+    first = gh.commit(7, BASE)
+    folder = checkout.worktree(REF, first)
+    second = gh.commit(7, {**BASE, "b.txt": "three\n"})
+    assert checkout.worktree(REF, second) == folder and head_of(folder) == second
+    other = gh.commit(8, {**BASE, "a.txt": "other\n"})
+    other_folder = checkout.worktree(OTHER, other)
+    assert other_folder != folder and branch_of(other_folder) == "other" and head_of(other_folder) == other
+    assert branch_of(folder) == "feature" and head_of(folder) == second
+
+
+def test_a_worktree_follows_a_force_push_after_a_close_left_its_branch_behind(gh: FakeGitHub, cache: Path) -> None:
+    first = gh.commit(7, {**BASE, "a.txt": "first\n"})
+    folder = checkout.worktree(REF, first)
+    checkout.remove_worktree(REF)
+    amended = gh.commit(7, {**BASE, "a.txt": "amended\n"}, amend=True)
+    assert checkout.worktree(REF, amended) == folder
+    assert branch_of(folder) == "feature" and head_of(folder) == amended
+    again = gh.commit(7, {**BASE, "a.txt": "again\n"}, amend=True)
+    assert checkout.worktree(REF, again) == folder and head_of(folder) == again
+
+
+def test_a_worktree_follows_a_force_push_over_the_mirrors_copy_of_the_branch(gh: FakeGitHub, cache: Path) -> None:
+    first = gh.commit(7, {**BASE, "a.txt": "first\n"})
+    mirror = checkout.build.ensure_repo(REF, lambda _: None)
+    assert head_of(mirror, "refs/heads/feature") == first
+    amended = gh.commit(7, {**BASE, "a.txt": "amended\n"}, amend=True)
+    folder = checkout.worktree(REF, amended)
+    assert branch_of(folder) == "feature" and head_of(folder) == amended
+    assert git(mirror, "config", "--get", "branch.feature.remote").strip() == "origin"
+
+
+def test_a_worktree_keeps_a_commit_a_session_left_on_the_branch_and_says_so(gh: FakeGitHub, cache: Path) -> None:
+    first = gh.commit(7, {**BASE, "a.txt": "first\n"})
+    folder = checkout.worktree(REF, first)
+    local = commit_tree(folder, {**BASE, "a.txt": "first\n", "mine.txt": "unpushed\n"}, "left behind")
+    checkout.remove_worktree(REF)
+    amended = gh.commit(7, {**BASE, "a.txt": "amended\n"}, amend=True)
+    with pytest.raises(CommandError, match="fast-forward"):
+        checkout.worktree(REF, amended)
+    assert head_of(checkout.build.mirror_of(REF), "refs/heads/feature") == local
+
+
+def test_a_worktree_deleted_by_hand_is_made_again_and_remove_worktree_removes_it(gh: FakeGitHub, cache: Path) -> None:
+    head = gh.commit(7, BASE)
+    folder = checkout.worktree(REF, head)
+    shutil.rmtree(folder)
+    assert checkout.worktree(REF, head) == folder and head_of(folder) == head
+    checkout.remove_worktree(REF)
+    assert not folder.exists()
+    assert str(folder) not in git(checkout.build.mirror_of(REF), "worktree", "list")
+    checkout.remove_worktree(REF)

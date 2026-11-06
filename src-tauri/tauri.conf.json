@@ -24,6 +24,7 @@
       "../*.py": "python/",
       "../page/*": "python/page/",
       "../page/vendor/*": "python/page/vendor/",
+      "../prompts/*": "python/prompts/",
       "../shell/*": "python/shell/",
       "../skill/*": "python/skill/"
     }

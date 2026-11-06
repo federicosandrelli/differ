@@ -1,12 +1,14 @@
 // The comments the reader sends to the Claude Code session that works on the pull request instead of to GitHub, the
-// threads they show as, and the sidebar footer's button that says whether a session listens for them.
+// threads they show as, and the sidebar footer's button that says whether the session listens for them and shows
+// its terminal (page/53-terminal.js).
 
-// CL holds the server's answer to /claude, and `error` why the reader's last action on it failed, until the next one.
-// `started` and `applied` count the loads and the reader's actions as LOADS does for the comments, so a load that
-// answers after a later load or action changes nothing. `copied` is when the reader last copied the connect prompt,
-// and `menu` whether the footer's menu is open.
-const CL = { loaded: false, listening: false, comments: [], error: '', timer: 0, started: 0, applied: 0, copied: 0, menu: false };
+// CL holds the server's answer to /claude, with `session`, where the embedded session stands, and `error`, why the
+// reader's last action on it failed, until the next one. `started` and `applied` count the loads and the reader's
+// actions as LOADS does for the comments, so a load that answers after a later load or action changes nothing.
+const CL = { loaded: false, listening: false, comments: [], session: null, error: '', timer: 0, started: 0, applied: 0 };
 const CLAUDE_POLL_MS = 5000;
+// The poll while the session starts, so the terminal's header follows the start.
+const CLAUDE_STARTING_POLL_MS = 1000;
 const CLAUDE_KEY = 'dr:claude';
 // The words of the tag the reader's last message shows while it waits for Claude's reply.
 const CLAUDE_TAGS = { waiting: 'waiting for Claude', sent: 'sent to Claude' };
@@ -16,7 +18,6 @@ const CLAUDE_ENDED = ['merged', 'closed'];
 const claudeOn = () => !!API && lsGet(CLAUDE_KEY) !== 'off';
 // The key of the thread of the comment with that id, in the threads and in `state.replyOpen`.
 const claudeKey = (id) => `claude:${id}`;
-const connectPrompt = () => `Listen for differ comments on ${PR.repo}#${PR.number} at ws://127.0.0.1:${location.port}${API}/listen`;
 
 async function loadClaude() {
   clearTimeout(CL.timer); CL.timer = 0;
@@ -31,16 +32,18 @@ async function loadClaude() {
 // planned before.
 function pollClaude() {
   clearTimeout(CL.timer);
-  CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, CLAUDE_POLL_MS);
+  const ms = CL.session && CL.session.starting ? CLAUDE_STARTING_POLL_MS : CLAUDE_POLL_MS;
+  CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
-// Show the server's answer: the threads when the comments changed, else the footer when the session came or went.
-// A reply being written in a thread that is gone goes with it.
+// Show the server's answer: the threads when the comments changed, else the footer when the session came or went,
+// else the terminal's header when the session moved. A reply being written in a thread that is gone goes with it.
 function applyClaude(d) {
   const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
+  const session = JSON.stringify(d.session) !== JSON.stringify(CL.session);
   const ids = new Set(d.comments.map(c => claudeKey(c.id)));
   for (const key of state.replyOpen.keys()) if (key.startsWith(claudeKey('')) && !ids.has(key)) state.replyOpen.delete(key);
   Object.assign(CL, d, { loaded: true });
-  if (threads) { threadsChanged(); render(); } else if (footer) renderSide();
+  if (threads) { threadsChanged(); render(); } else if (footer || session) renderSide();
 }
 // Show the server's answer to the load or action with that number, unless the answer to a later one shows already.
 function showClaude(load, d) {
@@ -117,44 +120,23 @@ function claudeOrphansHtml() {
   if (!threads.length) return '';
   return `<h2>Comments for Claude on files outside this diff</h2>${threads.map(t => `<p class="hint mono">${esc(t.path)}${t.line == null || threadHead(t) ? '' : `:${t.line}`}</p>${claudeThreadHtml(null, t)}`).join('')}`;
 }
+// The footer's buttons: the bot button, whose dot is lit while the session listens, shows and hides the terminal;
+// the arrow next to it moves the terminal between the sidebar and its own column.
 function claudeFootHtml() {
-  if (!claudeOn()) return '';
-  const waiting = CL.comments.filter(c => c.state === 'waiting').length;
-  const title = CL.listening ? 'Claude is listening' : `No Claude session${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
-  const note = CL.listening
-    ? 'A Claude Code session listens on this pull request. Comments you send to Claude go straight to it.'
-    : `No Claude Code session listens on this pull request. Paste the connect prompt into the session that works on it.${waiting ? ` ${plural(waiting, 'comment')} will go to it when it connects.` : ''}`;
-  const copy = CL.listening ? '' : `<button data-claude-connect>${Date.now() - CL.copied < 2000 ? 'Copied' : 'Copy connect prompt'}</button>`;
-  const menu = CL.menu ? `<div class="menu"><div class="hint note">${note}</div>${copy}</div>` : '';
-  return `<div class="foot claude"><span class="claude-pick"><button class="ghost session" data-claude-menu title="${title}">${iconHtml('bot')}<span class="dot${CL.listening ? ' on' : ''}"></span></button>${menu}</span>
+  if (!termAvailable()) return '';
+  const s = CL.session || {}, waiting = CL.comments.filter(c => c.state === 'waiting').length;
+  const standing = CL.listening ? 'Claude is listening' : s.starting ? 'Claude is starting' : s.running ? 'Claude runs, but does not listen yet'
+    : `No Claude session${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
+  const dock = TERM.open ? `<button class="ghost" data-term-dock title="${TERM.dock === 'side' ? 'Move the terminal to its own column' : 'Move the terminal into this pane'}">${TERM.dock === 'side' ? ARROW_RIGHT : ARROW_LEFT}</button>` : '';
+  return `<div class="foot claude"><span class="claude-pick"><button class="ghost session${TERM.open ? ' on' : ''}" data-term-toggle title="${standing} · ${TERM.open ? 'hide' : 'show'} the terminal">${iconHtml('bot')}<span class="dot${CL.listening ? ' on' : ''}"></span></button>${dock}</span>
     ${CL.error ? `<div class="hint err">${esc(CL.error)}</div>` : ''}</div>`;
 }
 
 // ---------- actions
-// Copy the text through the Clipboard API, else through a selected textarea, which some embedded browsers allow when
-// they refuse the API. False when both fail.
-async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); return true; } catch { /* try the textarea */ }
-  const box = document.createElement('textarea'), prev = document.activeElement;
-  box.value = text; box.readOnly = true; box.style.position = 'fixed'; box.style.opacity = '0';
-  document.body.appendChild(box); box.select();
-  let ok = false;
-  try { ok = document.execCommand('copy'); } catch { /* ok stays false */ }
-  box.remove();
-  if (prev && prev.focus) prev.focus({ preventScroll: true });
-  return ok;
-}
-const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-connect],[data-claude-menu],[data-claude-follow]';
+const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-follow]';
 async function claudeClick(t) {
   const d = t.dataset;
   CL.error = '';
-  if (d.claudeMenu !== undefined) { CL.menu = !CL.menu; renderSide(); return; }
-  if (d.claudeConnect !== undefined) {
-    if (!await copyText(connectPrompt())) { CL.error = `The clipboard refused the prompt. Copy it from here: ${connectPrompt()}`; renderSide(); return; }
-    CL.copied = Date.now(); renderSide();
-    setTimeout(renderSide, 2000);
-    return;
-  }
   if (d.claudeFollow !== undefined) { await followUp(d.claudeFollow); return; }
   if (d.claudeDelete !== undefined) {
     try { await postClaude('claude_delete', { id: d.claudeDelete }); } catch (e) { CL.error = e.message; renderSide(); }

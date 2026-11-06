@@ -75,7 +75,19 @@ def test_splash_page_is_written_from_the_dark_palette() -> None:
 
 def test_every_token_is_used_and_every_used_token_is_defined() -> None:
     defined = {f"--{k.rstrip('_').replace('_', '-')}" for k in render.PALETTES["light"]}
-    non_colour = {"--mono", "--sans", "--dim", "--d", "--titlebar", "--side", "--cols", "--n", "--column-min", "--gap"}
+    non_colour = {
+        "--mono",
+        "--sans",
+        "--dim",
+        "--d",
+        "--titlebar",
+        "--side",
+        "--term",
+        "--cols",
+        "--n",
+        "--column-min",
+        "--gap",
+    }
     non_colour |= {"--radius-sm", "--radius", "--radius-lg", "--radius-pill", "--control-font", "--control-line"}
     used: set[str] = set()
     for path in styled_sources():
@@ -84,9 +96,10 @@ def test_every_token_is_used_and_every_used_token_is_defined() -> None:
 
 
 def test_colours_live_only_in_the_palettes() -> None:
-    """A stylesheet or script names a token, never a colour; render.py mixes every tint."""
+    """A stylesheet or script names a token, never a colour; render.py mixes every tint. A colour's name as an object
+    key (`red:`), such as a slot of the terminal's theme, names no colour."""
     hex_colour = r"#(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{3,8}\b"
-    named = r"\b(white|black|red|green|blue|yellow|orange|purple|gr[ae]y)(?![\w-])"
+    named = r"\b(white|black|red|green|blue|yellow|orange|purple|gr[ae]y)(?![\w:-])"
     literal = re.compile(rf"{hex_colour}|rgba?\(|hsla?\(|color-mix\(|{named}")
     found = [
         f"{p}:{n}"

@@ -21,6 +21,7 @@ sees what it sent, and the answer holds the new comment's id. The `viewed` list 
 viewer marked viewed. Marking a file viewed or not viewed leaves that list as it is, so no test leaves files viewed
 for the next. A merge, a reopen or a mark ready moves the status in pr<n>.json, and turning auto-merge on or off changes merge<n>.json.
 `gh api -X POST <endpoint>` does nothing.
+`gh api user --jq .login` prints tester.
 """
 
 import json
@@ -307,6 +308,8 @@ def main() -> None:
         pass
     elif args[:3] == ["api", "-X", "POST"]:
         pass
+    elif args[:2] == ["api", "user"]:
+        print("tester")
     elif args[:2] == ["api", "graphql"]:
         graphql(args)
     elif args[:3] == ["api", "-H", "Accept: application/vnd.github.raw"]:

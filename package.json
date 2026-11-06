@@ -8,6 +8,8 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@tauri-apps/cli": "^2.12.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "eslint": "^9.39.5",
     "globals": "^17.13.0"
   }

@@ -121,6 +121,14 @@ def head_sha(ref: PullRef) -> str:
     return gh("pr", "view", str(ref.number), "--repo", ref.slug, "--json", "headRefOid", "--jq", ".headRefOid").strip()
 
 
+def viewer_login() -> str:
+    """The login gh is signed in as, or an empty string when gh can't tell."""
+    try:
+        return gh("api", "user", "--jq", ".login").strip()
+    except commands.CommandError:
+        return ""
+
+
 def clone(ref: PullRef, mirror: Path) -> None:
     """A bare clone of the pull request's repository without file contents; git fetches each file when it is read."""
     gh(
