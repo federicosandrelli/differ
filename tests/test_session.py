@@ -502,3 +502,54 @@ def test_a_start_goes_on_when_the_trust_cannot_be_recorded(
     session.start(REF, fake.port, 100, 30)
     wait_for(running)
     assert "Could not record the trust" in capsys.readouterr().err and config.read_text() == "[]"
+
+
+def test_trust_writes_through_a_symbolic_link(tmp_path: Path) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    target = tmp_path / "dotfiles" / "claude.json"
+    target.parent.mkdir()
+    target.write_text(json.dumps({"numStartups": 1}))
+    config.symlink_to(target)
+    mirror = tmp_path / "repos" / "acme" / "widgets.git"
+    session.trust(mirror)
+    assert config.is_symlink()
+    assert json.loads(target.read_text())["projects"] == {os.path.realpath(mirror): {"hasTrustDialogAccepted": True}}
+
+
+def test_trust_from_two_threads_keeps_both_mirrors(tmp_path: Path) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    config.write_text("{}")
+    mirrors = [tmp_path / "repos" / "acme" / f"repo{i}.git" for i in range(8)]
+    threads = [threading.Thread(target=session.trust, args=(m,)) for m in mirrors]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert set(json.loads(config.read_text())["projects"]) == {os.path.realpath(m) for m in mirrors}
+    assert list(config.parent.iterdir()) == [config]
+
+
+def test_trust_keeps_a_change_another_process_made_while_it_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    config.write_text(json.dumps({"numStartups": 1}))
+    read = session.read_config
+
+    def read_then_change(path: Path) -> dict:
+        data = read(path)
+        if json.loads(config.read_text())["numStartups"] == 1:
+            config.write_text(json.dumps({"numStartups": 2, "theme": "light"}))
+        return data
+
+    monkeypatch.setattr(session, "read_config", read_then_change)
+    mirror = tmp_path / "repos" / "acme" / "widgets.git"
+    session.trust(mirror)
+    assert json.loads(config.read_text()) == {
+        "numStartups": 2,
+        "theme": "light",
+        "projects": {os.path.realpath(mirror): {"hasTrustDialogAccepted": True}},
+    }

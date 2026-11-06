@@ -142,9 +142,9 @@
 
   // The settings: a modal in the middle of the window, opened by the gear in the bottom left, by Cmd+, (a page
   // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker and
-  // Auto start are the shell's own, and so is the Update section, since only the shell knows the app's version; the rest of the
-  // body comes from /settings on each open, so the editors, the cache and the commit are current. A page may name a
-  // section of that body, which the dialog scrolls to once the body has loaded.
+  // Auto start are the shell's own, and so is the Update section, since only the shell knows the app's version; the
+  // rest of the body comes from /settings on each open, so the editors, the cache and the commit are current. A page
+  // may name a section of that body, which the dialog scrolls to once the body has loaded.
   const settings = document.getElementById('settings');
   function openSettings(section) {
     // A change made while the body loads is newer than the list the body holds, so the fields keep that change.
@@ -241,8 +241,8 @@
   settings.addEventListener('click', (e) => {
     const attr = Object.keys(ON_OFF).find(a => e.target.closest(`[${a}]`));
     if (!attr) return;
-    const key = ON_OFF[attr];
-    try { if (e.target.closest(`[${attr}]`).getAttribute(attr) === 'on') localStorage.removeItem(key); else localStorage.setItem(key, 'off'); } catch {}
+    const key = ON_OFF[attr], on = e.target.closest(`[${attr}]`).getAttribute(attr) === 'on';
+    try { if (on) localStorage.removeItem(key); else localStorage.setItem(key, 'off'); } catch {}
     drawOnOff();
   });
   document.getElementById('gear').addEventListener('click', () => openSettings());

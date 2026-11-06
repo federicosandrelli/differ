@@ -54,7 +54,8 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 ## Claude in the page
 
 Every pull request gets a Claude Code session of its own, started when its
-page opens. The bot button in the sidebar footer shows its terminal under the
+page opens. Turn Auto start off in the settings to start it from the terminal
+instead. The bot button in the sidebar footer shows its terminal under the
 file tree, and the arrow next to it moves the terminal to a column of its own
 between the tree and the code. differ starts `claude` in a worktree of the
 repository, on the pull request's branch, kept in `~/.cache/differ/worktrees`.
@@ -67,11 +68,13 @@ The session needs Claude Code 2.1.316 or later, and runs on your own login.
   prompt, so you can ask about them there.
 - The session runs with permissions bypassed: it reads, edits, commits and
   pushes without asking. The repository's own `CLAUDE.md`, hooks and settings
-  load, on anyone's pull request. If you also push to the branch from your own
-  clone, the two can race, and the later push has to rebase.
+  load, on anyone's pull request, as soon as its page opens while Auto start is
+  on. If you also push to the branch from your own clone, the two can race, and
+  the later push has to rebase.
 - differ records the repository's mirror as trusted in `~/.claude.json` before
   the first session, the entry Claude Code's docs name for trusting a folder by
-  hand, so Claude Code asks nothing in the terminal before it listens.
+  hand, so Claude Code does not ask whether you trust the folder. Other first-run
+  questions, such as accepting bypassed permissions, still show in the terminal.
 - Closing the tab ends the session and removes the worktree. The next open
   resumes the conversation.
 

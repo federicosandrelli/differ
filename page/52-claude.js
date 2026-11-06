@@ -126,7 +126,7 @@ function claudeFootHtml() {
   if (!termAvailable()) return '';
   const s = CL.session || {}, waiting = CL.comments.filter(c => c.state === 'waiting').length;
   const standing = CL.listening ? 'Claude is listening' : s.starting ? 'Claude is starting' : s.running ? 'Claude runs, but does not listen yet'
-    : s.error ? `Claude could not start: ${s.error}` : `No Claude session${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
+    : s.error ? `Claude could not start: ${esc(s.error)}` : `No Claude session${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
   const dock = TERM.open ? `<button class="ghost" data-term-dock title="${TERM.dock === 'side' ? 'Move the terminal to its own column' : 'Move the terminal into this pane'}">${TERM.dock === 'side' ? ARROW_RIGHT : ARROW_LEFT}</button>` : '';
   return `<div class="foot claude"><span class="claude-pick"><button class="ghost session${TERM.open ? ' on' : ''}" data-term-toggle title="${standing} · ${TERM.open ? 'hide' : 'show'} the terminal">${iconHtml('bot')}<span class="dot${CL.listening ? ' on' : ''}"></span></button>${dock}</span>
     ${CL.error ? `<div class="hint err">${esc(CL.error)}</div>` : ''}</div>`;

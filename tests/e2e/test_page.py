@@ -1293,6 +1293,22 @@ def test_auto_start_starts_the_session_with_the_page_and_leaves_the_terminal_hid
     assert closed.ok
 
 
+def test_a_terminal_left_open_with_auto_start_off_comes_back_without_starting_the_session(
+    page: Page, server_url: str
+) -> None:
+    open_pr(page, server_url)
+    page.evaluate("localStorage.setItem(TERM_OPEN_KEY, 'open')")
+    opens: list[str] = []
+    page.on("request", lambda r: opens.append(r.url) if r.url.endswith("/claude_open") else None)
+    try:
+        open_pr(page, server_url)
+        expect(page.locator("#termslot .term .thead [data-term-start]")).to_be_visible()
+        page.wait_for_function("CL.loaded")
+        assert opens == []
+    finally:
+        page.evaluate("localStorage.removeItem(TERM_OPEN_KEY)")
+
+
 @contextmanager
 def kept_comments(gh_state: Path) -> Iterator[None]:
     """Put the fake gh's comments back as they were after the block."""
@@ -1745,6 +1761,18 @@ def test_the_start_pages_settings_button_opens_the_settings(page: Page, server_u
     page.goto(server_url + "/")
     page.frame_locator("#panes iframe.on").locator("footer.start [data-settings]").click()
     expect(page.locator("#settings")).to_be_visible()
+
+
+def test_auto_start_in_the_settings_saves_its_own_setting_only(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.click("#gear")
+    dialog = page.locator("#settings")
+    expect(dialog.locator("[data-claude-start='off']")).to_have_class(re.compile(r"\bon\b"))
+    dialog.locator("[data-claude-start='on']").click()
+    assert page.evaluate("[localStorage.getItem('dr:claudeStart'), localStorage.getItem('dr:claude')]") == [None, None]
+    dialog.locator("[data-claude-start='off']").click()
+    assert page.evaluate("[localStorage.getItem('dr:claudeStart'), localStorage.getItem('dr:claude')]") == ["off", None]
+    expect(dialog.locator("[data-claude-setting='on']")).to_have_class(re.compile(r"\bon\b"))
 
 
 def test_the_settings_save_the_followed_repositories_as_they_change(page: Page, server_url: str) -> None:

@@ -24,9 +24,11 @@ import re
 import select
 import shutil
 import signal
+import stat
 import struct
 import subprocess
 import sys
+import tempfile
 import termios
 import threading
 import time
@@ -164,37 +166,73 @@ def environment() -> dict[str, str]:
 
 
 def config_path() -> Path:
-    """Claude Code's config file, `~/.claude.json`, which CLAUDE_CONFIG_DIR moves with the rest of `~/.claude`."""
+    """Claude Code's config file, `~/.claude.json`, which CLAUDE_CONFIG_DIR moves with the rest of `~/.claude`. Claude
+    Code may read the legacy `~/.claude/.config.json` instead; this path never names that file."""
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home()) / ".claude.json"
+
+
+# Held around every change to Claude Code's config file, so two starts in this server never write it at once.
+config_lock = threading.Lock()
+# How many times `trust` reads the config file again when another process changed it during a write.
+TRUST_TRIES = 5
 
 
 def trust(mirror: Path) -> None:
     """Record in Claude Code's config file that the user trusts the mirror, the entry Claude Code's docs name as the
-    way to trust a folder by hand, unless the file has it already. The file is written whole, as a copy next to it
-    that then takes its place, with its mode kept. Raises ValueError when the file is not a JSON object, and OSError
-    when it cannot be read or written; the caller goes on, and the dialog shows."""
-    path, key = config_path(), os.path.realpath(mirror)
-    try:
-        data = json.loads(path.read_text())
-    except FileNotFoundError:
-        data = {}
-    projects = data.get("projects", {}) if isinstance(data, dict) else None
-    if not isinstance(projects, dict):
+    way to trust a folder by hand, unless the file has it already. A config file behind a symbolic link is written where
+    the link leads. The new file is written next to the old one, with its mode, and takes its place only while the old
+    one is as it was when read; otherwise the write starts again from the changed file. Raises ValueError when the file
+    is not a JSON object, and OSError when it cannot be read or written, or keeps changing."""
+    key = os.path.realpath(mirror)
+    with config_lock:
+        for _ in range(TRUST_TRIES):
+            path = config_path().resolve()
+            before = _stat(path)
+            data = read_config(path) if before is not None else {}
+            projects = data.get("projects", {})
+            if not isinstance(projects, dict):
+                raise ValueError(f"{path} is not the config file Claude Code writes.")
+            project = projects.get(key)
+            if not isinstance(project, dict):
+                project = {}
+            if project.get("hasTrustDialogAccepted") is True:
+                return
+            data["projects"] = {**projects, key: {**project, "hasTrustDialogAccepted": True}}
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.differ-")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(data, indent=2))
+                if before is not None:
+                    os.chmod(name, stat.S_IMODE(before.st_mode))
+                if _same(_stat(path), before):
+                    os.replace(name, path)
+                    return
+            finally:
+                Path(name).unlink(missing_ok=True)
+        raise OSError(f"{config_path()} kept changing while differ wrote it.")
+
+
+def read_config(path: Path) -> dict:
+    """The config file's JSON object. Raises ValueError when the file holds anything else."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
         raise ValueError(f"{path} is not the config file Claude Code writes.")
-    project = projects.get(key)
-    if not isinstance(project, dict):
-        project = {}
-    if project.get("hasTrustDialogAccepted") is True:
-        return
-    data["projects"] = {**projects, key: {**project, "hasTrustDialogAccepted": True}}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    copy = path.with_name(f"{path.name}.differ-{os.getpid()}")
-    copy.write_text(json.dumps(data, indent=2))
+    return data
+
+
+def _stat(path: Path) -> os.stat_result | None:
     try:
-        shutil.copymode(path, copy)
+        return path.stat()
     except FileNotFoundError:
-        os.chmod(copy, 0o600)
-    os.replace(copy, path)
+        return None
+
+
+def _same(a: os.stat_result | None, b: os.stat_result | None) -> bool:
+    """Whether two looks at a file found it unchanged: both missing, or the same file with the same size and time."""
+    if a is None or b is None:
+        return a is b
+    return (a.st_ino, a.st_size, a.st_mtime_ns) == (b.st_ino, b.st_size, b.st_mtime_ns)
 
 
 def system_prompt(ref: PullRef, pr: github.PullRequest, viewer: str) -> str:
