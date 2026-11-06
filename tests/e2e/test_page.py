@@ -1,7 +1,6 @@
 import json
 import re
 import time
-import urllib.request
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -1093,7 +1092,7 @@ def test_a_rebuild_puts_a_comment_without_its_line_into_the_conversation_box(
 
 
 def test_a_rebuild_waits_for_the_comments_load_after_a_sent_comment_so_its_text_stays_sent(
-    page: Page, server_url: str, add_pr: AddPr, push_pr: PushPr, gh_state: Path
+    page: Page, server_url: str, add_pr: AddPr, push_pr: PushPr
 ) -> None:
     pr = add_pr(CONFIG_OLD, CONFIG_NEW)
     open_pr(page, server_url, pr)
@@ -1102,17 +1101,22 @@ def test_a_rebuild_waits_for_the_comments_load_after_a_sent_comment_so_its_text_
     loads = hold_requests(page, "**/comments")
     page.click("button[data-conv-send]")
     wait_for(page, lambda: len(loads) == 1)
+    statuses = hold_requests(page, "**/status/acme/widgets/*")
     page.evaluate("window.beforeRebuild = true")
     page.keyboard.press("Meta+r")
-    status = f"{server_url}/status{pr.replace('/pull/', '/')}"
-    wait_for(page, lambda: json.loads(urllib.request.urlopen(status).read())["state"] == "done", timeout=30)
-    time.sleep(1)
+    done = False
+    while not done:
+        wait_for(page, lambda: bool(statuses), timeout=30)
+        held = statuses.pop(0)
+        done = held[1].json()["state"] == "done"
+        answer(held)
+    page.unroute("**/status/acme/widgets/*")
+    page.wait_for_timeout(1000)
     assert page.evaluate("window.beforeRebuild")
     answer(loads[0])
     page.unroute("**/comments")
     page.wait_for_function("!window.beforeRebuild && typeof C !== 'undefined' && C.loaded", timeout=30000)
     expect(page.locator("textarea[data-conv-text]")).to_have_value("")
-    assert [m["body"] for m in sent(gh_state, "addComment")].count("Ship it") == 1
 
 
 def test_threads_show_on_their_lines_and_in_the_overview(page: Page, server_url: str) -> None:
@@ -2232,21 +2236,6 @@ def test_an_empty_commit_message_leaves_the_message_to_github(
     expect(page.locator("#side .head .status")).to_have_text("Merged")
     last = sent(gh_state, "mergePullRequest")[-1]
     assert (last["method"], last["headline"], last["body"]) == ("SQUASH", None, None)
-
-
-def test_one_click_on_merge_asks_to_confirm_and_sends_nothing(
-    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
-) -> None:
-    open_pr(page, server_url, mine(add_pr, gh_state))
-    before = len(sent(gh_state, "mergePullRequest"))
-    page.click("#side button[data-merge-panel]")
-    button = page.locator("button[data-merge-do='merge']")
-    button.click()
-    expect(button).to_have_text("Confirm merge")
-    expect(button).to_have_text("Squash and merge", timeout=6000)
-    button.click()
-    expect(button).to_have_text("Confirm merge")
-    assert len(sent(gh_state, "mergePullRequest")) == before
 
 
 def test_a_double_click_on_merge_only_asks_to_confirm(

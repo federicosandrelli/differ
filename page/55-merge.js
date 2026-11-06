@@ -196,10 +196,10 @@ function mergePanelHtml() {
 const MERGE_ATTRS = '[data-merge-panel],[data-merge-checks],[data-merge-menu],[data-merge-method],[data-merge-do],[data-merge-rerun],[data-merge-reload]';
 async function mergeClick(t, e) {
   const d = t.dataset;
-  if (d.mergePanel !== undefined) { disarm(); state.mergePanel = !state.mergePanel; state.mergeMenu = false; renderSide(); return; }
+  if (d.mergePanel !== undefined) { state.mergePanel = !state.mergePanel; state.mergeMenu = false; renderSide(); return; }
   if (d.mergeChecks !== undefined) { state.checksOpen = t.getAttribute('aria-expanded') !== 'true'; renderSide(); return; }
   if (d.mergeMenu !== undefined) { state.mergeMenu = !state.mergeMenu; renderSide(); return; }
-  if (d.mergeMethod !== undefined) { disarm(); lsSet(methodKey(), d.mergeMethod); state.mergeMenu = false; renderSide(); return; }
+  if (d.mergeMethod !== undefined) { lsSet(methodKey(), d.mergeMethod); state.mergeMenu = false; renderSide(); return; }
   if (d.mergeReload !== undefined) { M.error = ''; renderSide(); loadMerge(); return; }
   if (d.mergeRerun !== undefined) { M.rerunAt = Date.now(); await mergeSend('rerun', { run: Number(d.mergeRerun) }); return; }
   const method = mergeMethod();

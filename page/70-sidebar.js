@@ -149,7 +149,6 @@ function renderSide() {
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
   else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus(); el.setSelectionRange(...selection); } }
   refocusBox(side, typing);
-  refocusUnsent();
   revealActive();
   updateSearchMeta();
 }

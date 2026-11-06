@@ -152,7 +152,8 @@ const confirming = (action) => CONFIRMING.action === action;
 function confirmed(action, e) {
   if (confirming(action)) {
     if (e.detail > 1) return false;
-    disarm();
+    clearTimeout(CONFIRMING.timer);
+    CONFIRMING.action = '';
     return true;
   }
   clearTimeout(CONFIRMING.timer);
@@ -160,7 +161,6 @@ function confirmed(action, e) {
   renderSide();
   return false;
 }
-function disarm() { clearTimeout(CONFIRMING.timer); CONFIRMING.action = ''; }
 
 // ---------- HTML
 // GitHub's own rendering of a body, when it has one, except for suggestions: the page draws those against the file.
@@ -290,46 +290,42 @@ function reloadRebuilt() {
   keepUnsent();
   location.reload();
 }
-// Save the unsent text, the open panels and threads, and the text box with focus to sessionStorage, for takeUnsent.
+// Save the unsent text, the kind filter, the open sections, panels and threads, and the text box with focus to
+// sessionStorage, for takeUnsent.
 const UNSENT_KEY = `dr:unsent:${PR.repo}/${PR.number}`;
 function keepUnsent() {
   const unsent = { compose: state.compose, drafts: [...state.drafts], replies: [...state.replyOpen], reviewText: state.reviewText,
     convText: state.convText, mergeText: state.mergeText, reviewPanel: state.reviewPanel, mergePanel: state.mergePanel,
-    openThreads: [...state.openThreads], showOutdated: [...state.showOutdated], focus: focusedBox(document.body) };
+    openThreads: [...state.openThreads], showOutdated: [...state.showOutdated], filter: state.filter, overrides: [...state.openOverride],
+    focus: focusedBox(document.body) };
   try { sessionStorage.setItem(UNSENT_KEY, JSON.stringify(unsent)); } catch {}
 }
-// The text box that had focus when keepUnsent ran, until it has focus again or the reader clicks or types first.
-let unsentFocus = null;
-// Take back what keepUnsent saved, and remove it from sessionStorage. A comment box or draft keeps its line number.
-// One without a row on that line goes into the conversation box with its file and line, so its text stays in view.
+// Take back what keepUnsent saved, and remove it from sessionStorage, returning the text box that had focus. A
+// comment box or draft keeps its line number. One without a row on that line goes into the conversation box with its
+// file and line, so its text stays in view.
 function takeUnsent() {
   let u = null;
   try { u = JSON.parse(sessionStorage.getItem(UNSENT_KEY)); sessionStorage.removeItem(UNSENT_KEY); } catch {}
-  if (!u) return;
+  if (!u) return null;
   Object.assign(state, {
     replyOpen: new Map(u.replies), reviewText: u.reviewText, convText: u.convText, mergeText: u.mergeText,
     reviewPanel: u.reviewPanel, mergePanel: u.mergePanel, openThreads: new Set(u.openThreads), showOutdated: new Set(u.showOutdated),
+    filter: u.filter, openOverride: new Map(u.overrides),
   });
   const lost = [];
-  for (const c of [u.compose, ...u.drafts.map(([, d]) => d)].filter(Boolean)) {
-    if (!hasRow(c)) lost.push(`On line ${c.line} of ${c.path}:\n${c.text.trim()}`);
-    else if (c === u.compose) state.compose = c;
+  for (const c of [u.compose, ...u.drafts.map(([, d]) => d)].filter(c => c && c.text.trim())) {
+    if (!hasRow(c)) { lost.push(`On line ${c.line} of ${c.path}:\n${c.text.trim()}`); continue; }
+    state.openOverride.set(c.path, true);
+    if (c === u.compose) state.compose = c;
     else state.drafts.set(draftKey(c.path, c.side, c.line), c);
   }
   if (lost.length) state.convText = [state.convText.trim(), ...lost].filter(Boolean).join('\n\n');
-  unsentFocus = u.focus;
-  if (unsentFocus) for (const type of ['pointerdown', 'keydown']) document.addEventListener(type, () => { unsentFocus = null; }, { once: true, capture: true });
+  return u.focus;
 }
 // Whether the file of comment box c has a row for its line on its side.
 function hasRow(c) {
   const f = BY_PATH[c.path];
   return !!f && buildRows(f).some(r => (c.side === 'RIGHT' ? r.type !== 'del' && r.newNo : r.type === 'del' && r.oldNo) === c.line);
-}
-function refocusUnsent() {
-  if (!unsentFocus) return;
-  refocusBox(document.body, unsentFocus);
-  const box = focusedBox(document.body);
-  if (box && box.key === unsentFocus.key) unsentFocus = null;
 }
 // The notice of the rebuild section, between hairlines under the sidebar's head; empty closes the section.
 function rebuildNotice() {
@@ -517,7 +513,7 @@ async function commentClick(t, e) {
   if (d.threadClose !== undefined) { state.openThreads.delete(d.threadClose); render(); return true; }
   if (d.threadGo !== undefined) { e.preventDefault(); const th = C.threads.find(x => x.id === d.threadGo); if (th) goThread(th); return true; }
   if (d.outdated !== undefined) { e.preventDefault(); state.showOutdated.has(d.outdated) ? state.showOutdated.delete(d.outdated) : state.showOutdated.add(d.outdated); render(); return true; }
-  if (d.reviewPanel !== undefined) { e.preventDefault(); disarm(); state.reviewPanel = !state.reviewPanel; if (state.reviewPanel) state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
+  if (d.reviewPanel !== undefined) { e.preventDefault(); state.reviewPanel = !state.reviewPanel; if (state.reviewPanel) state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
   if (d.submit !== undefined) {
     if (!hasReviewSummary() && (d.submit === 'REQUEST_CHANGES' || (d.submit === 'COMMENT' && !pendingCount() && !C.pending))) { state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
     if (await post('submit', { event: d.submit, body: state.reviewText })) { state.reviewText = ''; state.reviewPanel = false; renderSide(); }

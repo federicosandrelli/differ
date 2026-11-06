@@ -243,14 +243,15 @@ window.addEventListener('hashchange', () => {
 (function init() {
   state.showNoiseOnly = lsGet('dr:noise-only') === '1';
   state.showGenerated = lsGet('dr:generated') === '1';
+  const unsentFocus = takeUnsent();
   if (!FILES.some(kindVisible)) state.filter = 'all';
   document.body.classList.toggle('commentable', !!API);
-  takeUnsent();
   render();
   // A hash without a line puts the reader back on its file and leaves a reviewed file closed.
   const t = hashTarget();
   if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
   else if (t) go(t.path, t.key);
+  refocusBox(document.body, unsentFocus);
   loadComments().then(loadMerge);
   loadViewed();
   loadClaude();

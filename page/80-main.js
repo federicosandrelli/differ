@@ -340,7 +340,6 @@ function render() {
   markActive();
   restoreFocus();
   refocusBox(main, typing);
-  refocusUnsent();
   animateNotes(before, anchor);
 }
 
