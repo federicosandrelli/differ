@@ -37,7 +37,8 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 #side .sect.resizing { overflow: clip; }
 #side .sect.leaving { pointer-events: none; }
 #side .sect .notice { padding: 8px 16px; }
-#side .list { overflow-y: auto; flex: 1; padding-bottom: 24px; }
+#side .scroll { overflow-y: auto; flex: 1; min-height: 0; }
+#side .list { padding-bottom: 24px; }
 #side .foot { flex: none; border-top: 1px solid var(--border); padding: 6px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; font-size: 12px; }
 /* Inside the shell, its settings gear sits over the bottom left corner of the footer, so the footer starts to its right. */
 html.framed #side .foot { padding-left: 44px; }
