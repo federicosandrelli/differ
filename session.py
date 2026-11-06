@@ -17,6 +17,7 @@ import fcntl
 import json
 import os
 import re
+import select
 import shutil
 import signal
 import struct
@@ -233,6 +234,9 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
     rows, cols = s.size[1], s.size[0]
     master, slave = os.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+    # The master never blocks: the reader waits for output with select, and a write the process does not read yet
+    # waits in short steps, so it can stop when the process is gone instead of hanging on to the descriptor.
+    os.set_blocking(master, False)
     session_flag = ["--resume", s.id] if s.resume else ["--session-id", s.id]
     args = [
         str(claude_bin),
@@ -276,8 +280,11 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
     start whose id has no conversation gets a new id and starts again; one whose id is in use already resumes it."""
     while True:
         try:
+            select.select([fd], [], [])
             data = os.read(fd, 65536)
-        except OSError:
+        except BlockingIOError:
+            continue
+        except (OSError, ValueError):
             data = b""
         if not data:
             break
@@ -357,15 +364,31 @@ def detach(ref: PullRef, send: Send) -> None:
         session_of(ref).clients.discard(send)
 
 
+# How long a write waits for the process to read before it looks again whether the process is still there.
+WRITE_WAIT = 0.2
+
+
 def write(ref: PullRef, data: bytes) -> None:
-    """Type the bytes into the session, if a process runs. Waits while the process has not read what was typed before."""
+    """Type the bytes into the session, if a process runs. Waits while the process has not read what was typed before,
+    and stops once the process is gone."""
     with lock:
         s = session_of(ref)
-    with s.writes:
-        with lock:
-            fd = s.fd
-        while fd is not None and data:
-            data = data[os.write(fd, data) :]
+    left = memoryview(bytes(data))
+    while left:
+        with s.writes:
+            with lock:
+                fd = s.fd
+            if fd is None:
+                return
+            try:
+                left = left[os.write(fd, left) :]
+                continue
+            except BlockingIOError:
+                pass
+        try:
+            select.select([], [fd], [], WRITE_WAIT)
+        except (OSError, ValueError):
+            pass
 
 
 def paste(ref: PullRef, text: str) -> None:
