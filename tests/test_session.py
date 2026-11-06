@@ -50,6 +50,7 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleName
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(tmp_path / "starts.log"))
     monkeypatch.delenv("FAKE_CLAUDE_FAIL", raising=False)
     monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
     folder = tmp_path / "worktree"
     folder.mkdir()
     removed: list[PullRef] = []
@@ -154,6 +155,8 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
     assert saved == {"id": session_id, "resume": False, "pid": start["pid"]}
     status = session.status(REF)
     assert status == {"starting": False, "running": True, "error": "", "branch": "greeting", "head": "c" * 40}
+    trusted = json.loads(session.config_path().read_text())["projects"]
+    assert trusted == {os.path.realpath(build.mirror_of(REF)): {"hasTrustDialogAccepted": True}}
 
 
 def test_a_second_open_while_the_session_runs_starts_nothing(fake: SimpleNamespace) -> None:
@@ -384,10 +387,12 @@ def test_the_environment_drops_the_variables_of_a_parent_claude_session(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
+    monkeypatch.setenv("CLAUDE_CODE_CHILD_SESSION", "1")
     monkeypatch.setenv("CLAUDE_AGENT_SDK_VERSION", "1")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/keep")
     env = session.environment()
     assert "CLAUDECODE" not in env and "CLAUDE_CODE_ENTRYPOINT" not in env and "CLAUDE_AGENT_SDK_VERSION" not in env
+    assert "CLAUDE_CODE_CHILD_SESSION" not in env
     assert env["CLAUDE_CONFIG_DIR"] == "/keep" and env["TERM"] == "xterm-256color"
 
 
@@ -435,3 +440,65 @@ def test_the_relay_carries_bytes_both_ways_and_a_text_frame_sets_the_size(fake: 
     with session.lock:
         assert session.session_of(REF).size == (132, 40)
     sock.close()
+
+
+def test_trust_adds_the_mirror_to_the_config_and_keeps_the_rest(tmp_path: Path) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    config.write_text(json.dumps({"numStartups": 3, "projects": {"/elsewhere": {"allowedTools": ["Bash"]}}}))
+    config.chmod(0o600)
+    mirror = tmp_path / "repos" / "acme" / "widgets.git"
+    session.trust(mirror)
+    assert json.loads(config.read_text()) == {
+        "numStartups": 3,
+        "projects": {
+            "/elsewhere": {"allowedTools": ["Bash"]},
+            os.path.realpath(mirror): {"hasTrustDialogAccepted": True},
+        },
+    }
+    assert config.stat().st_mode & 0o777 == 0o600
+    assert list(config.parent.iterdir()) == [config]
+
+
+def test_trust_keeps_the_rest_of_an_entry_and_leaves_a_trusted_one_alone(tmp_path: Path) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    mirror = tmp_path / "repos" / "acme" / "widgets.git"
+    key = os.path.realpath(mirror)
+    config.write_text(json.dumps({"projects": {key: {"allowedTools": ["Bash"], "hasTrustDialogAccepted": False}}}))
+    session.trust(mirror)
+    assert json.loads(config.read_text())["projects"] == {
+        key: {"allowedTools": ["Bash"], "hasTrustDialogAccepted": True}
+    }
+    before = config.stat().st_mtime_ns
+    session.trust(mirror)
+    assert config.stat().st_mtime_ns == before
+
+
+def test_trust_makes_the_config_when_there_is_none(tmp_path: Path) -> None:
+    config = session.config_path()
+    mirror = tmp_path / "repos" / "acme" / "widgets.git"
+    session.trust(mirror)
+    assert json.loads(config.read_text()) == {"projects": {os.path.realpath(mirror): {"hasTrustDialogAccepted": True}}}
+    assert config.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("text", ["[]", '{"projects": []}', "{not json"])
+def test_trust_leaves_a_config_that_is_not_claude_codes_alone(tmp_path: Path, text: str) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    config.write_text(text)
+    with pytest.raises(ValueError):
+        session.trust(tmp_path / "repos" / "acme" / "widgets.git")
+    assert config.read_text() == text
+
+
+def test_a_start_goes_on_when_the_trust_cannot_be_recorded(
+    fake: SimpleNamespace, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    config.write_text("[]")
+    session.start(REF, fake.port, 100, 30)
+    wait_for(running)
+    assert "Could not record the trust" in capsys.readouterr().err and config.read_text() == "[]"

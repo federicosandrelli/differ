@@ -141,8 +141,8 @@
   });
 
   // The settings: a modal in the middle of the window, opened by the gear in the bottom left, by Cmd+, (a page
-  // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker is
-  // the shell's own, and so is the Update section, since only the shell knows the app's version; the rest of the
+  // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker and
+  // Auto start are the shell's own, and so is the Update section, since only the shell knows the app's version; the rest of the
   // body comes from /settings on each open, so the editors, the cache and the commit are current. A page may name a
   // section of that body, which the dialog scrolls to once the body has loaded.
   const settings = document.getElementById('settings');
@@ -151,12 +151,13 @@
     const before = followed.newest;
     const loading = settings.querySelector('.state .loading');
     if (loading) { loading.textContent = 'Loading…'; loading.classList.remove('err'); }
+    drawOnOff();
     followed.saving.then(() => fetch('/settings')).then(r => r.ok ? r.text() : Promise.reject()).then((body) => {
       settings.querySelector('.state').innerHTML = body;
       const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
       if (followed.newest === before) followed.saved = saved;
       followed.draw(followed.newest === before ? saved : followed.repos);
-      claudeSetting.draw();
+      drawOnOff();
       if (section) settings.querySelector(`[data-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: 'start' });
     }).catch(() => {
       if (loading) { loading.textContent = 'Could not load the settings.'; loading.classList.add('err'); }
@@ -228,16 +229,21 @@
     row.remove();
     followed.save();
   });
-  // Whether a comment can go to a Claude Code session, saved as dr:claude: 'off', or nothing for on.
-  const claudeSetting = {
-    on: () => { try { return localStorage.getItem('dr:claude') !== 'off'; } catch { return true; } },
-    draw() { for (const b of settings.querySelectorAll('[data-claude-setting]')) b.classList.toggle('on', (b.dataset.claudeSetting === 'on') === this.on()); },
-  };
+  // The settings that are on unless saved as 'off', by the attribute of their buttons: whether a comment can go to a
+  // Claude Code session, in the body, and whether a pull request's page starts its session when it opens.
+  const ON_OFF = { 'data-claude-setting': 'dr:claude', 'data-claude-start': 'dr:claudeStart' };
+  const isOn = (key) => { try { return localStorage.getItem(key) !== 'off'; } catch { return true; } };
+  function drawOnOff() {
+    for (const [attr, key] of Object.entries(ON_OFF)) {
+      for (const b of settings.querySelectorAll(`[${attr}]`)) b.classList.toggle('on', (b.getAttribute(attr) === 'on') === isOn(key));
+    }
+  }
   settings.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-claude-setting]');
-    if (!b) return;
-    try { if (b.dataset.claudeSetting === 'on') localStorage.removeItem('dr:claude'); else localStorage.setItem('dr:claude', 'off'); } catch {}
-    claudeSetting.draw();
+    const attr = Object.keys(ON_OFF).find(a => e.target.closest(`[${a}]`));
+    if (!attr) return;
+    const key = ON_OFF[attr];
+    try { if (e.target.closest(`[${attr}]`).getAttribute(attr) === 'on') localStorage.removeItem(key); else localStorage.setItem(key, 'off'); } catch {}
+    drawOnOff();
   });
   document.getElementById('gear').addEventListener('click', () => openSettings());
   // A click on the dialog itself, outside its box, is a click on the backdrop.

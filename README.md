@@ -53,12 +53,12 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 
 ## Claude in the page
 
-Every pull request gets a Claude Code session of its own. The bot button in the
-sidebar footer opens a terminal under the file tree, and the arrow next to it
-moves the terminal to a column of its own between the tree and the code. differ
-starts `claude` in a worktree of the repository, on the pull request's branch,
-kept in `~/.cache/differ/worktrees`. The session needs Claude Code 2.1.316 or
-later, and runs on your own login.
+Every pull request gets a Claude Code session of its own, started when its
+page opens. The bot button in the sidebar footer shows its terminal under the
+file tree, and the arrow next to it moves the terminal to a column of its own
+between the tree and the code. differ starts `claude` in a worktree of the
+repository, on the pull request's branch, kept in `~/.cache/differ/worktrees`.
+The session needs Claude Code 2.1.316 or later, and runs on your own login.
 
 - "Send to Claude" in a comment box sends the comment to the session instead of
   GitHub. The session listens for these comments, and its reply shows in the
@@ -69,8 +69,9 @@ later, and runs on your own login.
   pushes without asking. The repository's own `CLAUDE.md`, hooks and settings
   load, on anyone's pull request. If you also push to the branch from your own
   clone, the two can race, and the later push has to rebase.
-- The first time a worktree opens, Claude Code asks in the terminal whether
-  you trust the folder. Answer there; the session listens once it starts.
+- differ records the repository's mirror as trusted in `~/.claude.json` before
+  the first session, the entry Claude Code's docs name for trusting a folder by
+  hand, so Claude Code asks nothing in the terminal before it listens.
 - Closing the tab ends the session and removes the worktree. The next open
   resumes the conversation.
 

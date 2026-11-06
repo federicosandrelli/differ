@@ -1274,6 +1274,25 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
     assert closed.ok and not worktree.exists()
 
 
+def test_auto_start_starts_the_session_with_the_page_and_leaves_the_terminal_hidden(
+    page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
+) -> None:
+    pr = add_pr(OLD, NEW, branch="auto-start")
+    number = pr.rsplit("/", 1)[1]
+    page.add_init_script("localStorage.removeItem('dr:claudeStart')")
+    try:
+        open_pr(page, server_url, pr)
+        session = page.locator("#side .foot [data-term-toggle]")
+        expect(session).to_have_attribute("title", "Claude is listening · show the terminal", timeout=60000)
+        expect(page.locator(".term")).to_have_count(0)
+        assert (cache_dir / "worktrees" / "acme" / "widgets" / number / "src" / "app.py").exists()
+    finally:
+        closed = page.request.post(
+            f"{server_url}/api/acme/widgets/{number}/claude_close", data={}, headers={"Origin": server_url}
+        )
+    assert closed.ok
+
+
 @contextmanager
 def kept_comments(gh_state: Path) -> Iterator[None]:
     """Put the fake gh's comments back as they were after the block."""

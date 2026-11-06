@@ -7,6 +7,10 @@ A pull request's session file, sessions/<owner>/<repo>/<number>.json in the cach
 the last process and whether the id has a conversation to resume. The process's output is kept in a buffer of
 BUFFER_MAX bytes, replayed to a terminal that connects, so a reloaded page shows what the session showed.
 
+Before a start, `trust` records the repository's bare mirror as trusted in Claude Code's config file, so the process
+starts without the folder trust dialog: Claude Code keys the trust of a worktree on its repository, which for the
+pull request's worktree is the mirror.
+
 The module lock guards the sessions' state and is never held across a read or write of a pseudoterminal or a socket:
 a session's own `writes` and `sends` locks order those, so a paste the process does not read yet, or a terminal that
 stops reading, holds up that session alone."""
@@ -46,9 +50,15 @@ MIN_VERSION = (2, 1, 316)
 BUFFER_MAX = 256 * 1024
 # A process that ends this soon after a start did not start: its output says why.
 QUICK_EXIT = 15
-# The variables a server started from a Claude Code session inherits, which would tie the child to that session or
-# put it in bare mode, without the user's login.
-DROPPED_VARIABLES = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SIMPLE", "CLAUDE_CODE_SSE_PORT")
+# The variables a server started from a Claude Code session inherits, which would tie the child to that session, put
+# it in bare mode, without the user's login, or turn its transcript off, so that nothing could resume it.
+DROPPED_VARIABLES = (
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SIMPLE",
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_CODE_CHILD_SESSION",
+)
 DROPPED_PREFIXES = ("CLAUDE_AGENT_SDK",)
 # Sends bytes of the process's output to one terminal. Raises OSError once the terminal has gone.
 Send = Callable[[bytes], None]
@@ -153,6 +163,40 @@ def environment() -> dict[str, str]:
     return env
 
 
+def config_path() -> Path:
+    """Claude Code's config file, `~/.claude.json`, which CLAUDE_CONFIG_DIR moves with the rest of `~/.claude`."""
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home()) / ".claude.json"
+
+
+def trust(mirror: Path) -> None:
+    """Record in Claude Code's config file that the user trusts the mirror, the entry Claude Code's docs name as the
+    way to trust a folder by hand, unless the file has it already. The file is written whole, as a copy next to it
+    that then takes its place, with its mode kept. Raises ValueError when the file is not a JSON object, and OSError
+    when it cannot be read or written; the caller goes on, and the dialog shows."""
+    path, key = config_path(), os.path.realpath(mirror)
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        data = {}
+    projects = data.get("projects", {}) if isinstance(data, dict) else None
+    if not isinstance(projects, dict):
+        raise ValueError(f"{path} is not the config file Claude Code writes.")
+    project = projects.get(key)
+    if not isinstance(project, dict):
+        project = {}
+    if project.get("hasTrustDialogAccepted") is True:
+        return
+    data["projects"] = {**projects, key: {**project, "hasTrustDialogAccepted": True}}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    copy = path.with_name(f"{path.name}.differ-{os.getpid()}")
+    copy.write_text(json.dumps(data, indent=2))
+    try:
+        shutil.copymode(path, copy)
+    except FileNotFoundError:
+        os.chmod(copy, 0o600)
+    os.replace(copy, path)
+
+
 def system_prompt(ref: PullRef, pr: github.PullRequest, viewer: str) -> str:
     """The shipped prompt with the pull request, its author and the reader filled in."""
     return (
@@ -214,6 +258,10 @@ def _start(ref: PullRef, port: int, generation: int) -> None:
             raise RuntimeError(f"The pull request is {pr.status}, so it gets no session.")
         viewer = github.viewer_login()
         folder = checkout.worktree(ref, pr.head)
+        try:
+            trust(build.mirror_of(ref))
+        except (OSError, ValueError) as exc:
+            sys.stderr.write(f"Could not record the trust of {build.mirror_of(ref)}: {exc}\n")
         with lock:
             s = session_of(ref)
             if s.generation != generation:
