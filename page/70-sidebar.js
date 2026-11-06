@@ -128,12 +128,12 @@ function renderSide() {
     <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? headButtons() : ''}</div></div>
     ${sectionHtml('rebuild', rebuildNotice())}
     ${commentNotices()}${mergeNotice()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}${state.mergePanel && isOwn() ? mergePanelHtml() : ''}
-    ${sectionHtml('filters', `<div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>`)}
+    <div class="scroll">${sectionHtml('filters', `<div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>`)}
     ${sectionHtml('search', `<div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>`)}
-    <div class="list" tabindex="0">${renderList()}</div>${claudeFootHtml()}<div class="grip"></div>`;
-  const prev = document.querySelector('#side .list');
+    <div class="list" tabindex="0">${renderList()}</div></div>${claudeFootHtml()}<div class="grip"></div>`;
+  const prev = document.querySelector('#side .scroll');
   const scroll = prev ? prev.scrollTop : 0;
   const ae = document.activeElement;
   const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : null);
@@ -145,7 +145,7 @@ function renderSide() {
   animateSections(side, sections);
   fillBoxes(side);
   if (SHELL) SHELL.draft(hasDraft());
-  document.querySelector('#side .list').scrollTop = scroll;
+  document.querySelector('#side .scroll').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
   else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus(); el.setSelectionRange(...selection); } }
   refocusBox(side, typing);
@@ -155,7 +155,7 @@ function renderSide() {
 function revealActive() {
   const active = document.querySelector('#side .row.active');
   if (!active) return;
-  const list = document.querySelector('#side .list'), a = active.getBoundingClientRect(), l = list.getBoundingClientRect();
+  const a = active.getBoundingClientRect(), l = document.querySelector('#side .scroll').getBoundingClientRect();
   if (a.top < l.top || a.bottom > l.bottom) active.scrollIntoView({ block: 'center' });
 }
 // Mark the file under the top of the main pane in the tree and the URL, without rebuilding the sidebar.
@@ -180,7 +180,7 @@ function setCursor(el) {
   state.cursor = cursorKey(el);
   for (const x of document.querySelectorAll('#side .row.cursor')) x.classList.remove('cursor');
   el.classList.add('cursor');
-  const list = document.querySelector('#side .list'), a = el.getBoundingClientRect(), l = list.getBoundingClientRect();
+  const a = el.getBoundingClientRect(), l = document.querySelector('#side .scroll').getBoundingClientRect();
   if (a.top < l.top || a.bottom > l.bottom) el.scrollIntoView({ block: 'nearest' });
   const f = el.dataset.path && BY_PATH[el.dataset.path];
   if (f) passFile(f);
