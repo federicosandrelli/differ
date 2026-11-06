@@ -106,12 +106,12 @@ function openSearch() {
   const text = String(window.getSelection()).split('\n').map(l => l.trim()).find(Boolean);
   const box = document.querySelector('#side .search');
   if (box && (text || state.fileSearch)) { if (text) box.value = text; state.fileSearch = false; box.dispatchEvent(new Event('input', { bubbles: true })); }
-  focusBox('#side .search');
+  focusSearch();
 }
 // Shift+Cmd+F searches the file paths, and keeps the query.
 function openFileSearch() {
   if (!state.fileSearch) { state.fileSearch = true; state.hit = null; render(); }
-  focusBox('#side .search');
+  focusSearch();
 }
 // Ending the search also takes it back to the rows. The files it hid come back around the active file, which stays put.
 function closeSearch() {
@@ -170,7 +170,7 @@ document.addEventListener('keydown', (e) => {
     if (treeKey(e)) { e.preventDefault(); return; }
   }
   if (e.target.classList && e.target.classList.contains('search')) {
-    if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); focusBox('.search'); }
+    if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); focusSearch(); }
     return;
   }
   if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
