@@ -123,13 +123,13 @@
   <h2>Claude</h2>
   <div>
     <p>Each pull request gets a Claude Code session of its own, started by differ when its page opens (turn Auto
-    start off to start it from the terminal), in a worktree of the repository, and shown in a terminal: the bot button in the sidebar footer opens it under the
-    file tree, and the arrow next to the button moves it to a column of its own. The session listens for the
-    comments you send with <b>Send to Claude</b> in a comment box, and its replies show in their threads; the
-    bot's dot is lit while it listens. The session runs with permissions bypassed, and it can commit and push.
-    Before the first session of a repository, differ records the repository's mirror as trusted in
-    <code>~/.claude.json</code>, so Claude Code does not ask whether you trust the folder. Closing the tab ends the session;
-    the next open resumes the conversation.</p>
+    start off to start it from the terminal), in a worktree of the repository, and shown in a terminal: the bot
+    button in the sidebar footer opens it under the file tree, and the arrow next to the button moves it to a
+    column of its own. The session listens for the comments you send with <b>Send to Claude</b> in a comment box,
+    and its replies show in their threads; the bot's dot is lit while it listens. The session runs with
+    permissions bypassed, and it can commit and push. Before the first session of a repository, differ records
+    the repository's mirror as trusted in <code>~/.claude.json</code>, so Claude Code does not ask whether you
+    trust the folder. Closing the tab ends the session; the next start resumes the conversation.</p>
     <p>The server also installs the skill a session you start by hand follows, as
     <code>~/.claude/skills/differ-comments/SKILL.md</code>, each time it starts. Such a session listens with the URL
     <code>ws://127.0.0.1:&lt;port&gt;/api/&lt;owner&gt;/&lt;repo&gt;/&lt;number&gt;/listen</code>, while differ's own

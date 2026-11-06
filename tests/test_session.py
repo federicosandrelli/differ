@@ -134,6 +134,8 @@ def test_a_too_old_claude_does_not_start_and_the_status_says_why(
 
 
 def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: SimpleNamespace) -> None:
+    session.config_path().parent.mkdir()
+    session.config_path().write_text("{}")
     session.start(REF, fake.port, 100, 30)
     wait_for(running)
     wait_for(lambda: starts(fake.log) != [])
@@ -475,12 +477,14 @@ def test_trust_keeps_the_rest_of_an_entry_and_leaves_a_trusted_one_alone(tmp_pat
     assert config.stat().st_mtime_ns == before
 
 
-def test_trust_makes_the_config_when_there_is_none(tmp_path: Path) -> None:
+def test_trust_writes_nothing_when_there_is_no_config(tmp_path: Path) -> None:
     config = session.config_path()
-    mirror = tmp_path / "repos" / "acme" / "widgets.git"
-    session.trust(mirror)
-    assert json.loads(config.read_text()) == {"projects": {os.path.realpath(mirror): {"hasTrustDialogAccepted": True}}}
-    assert config.stat().st_mode & 0o777 == 0o600
+    session.trust(tmp_path / "repos" / "acme" / "widgets.git")
+    assert not config.exists() and not config.parent.exists()
+    config.parent.mkdir()
+    config.symlink_to(tmp_path / "missing" / "claude.json")
+    session.trust(tmp_path / "repos" / "acme" / "widgets.git")
+    assert not (tmp_path / "missing").exists()
 
 
 @pytest.mark.parametrize("text", ["[]", '{"projects": []}', "{not json"])
@@ -553,3 +557,21 @@ def test_trust_keeps_a_change_another_process_made_while_it_wrote(
         "theme": "light",
         "projects": {os.path.realpath(mirror): {"hasTrustDialogAccepted": True}},
     }
+
+
+def test_trust_gives_up_on_a_config_that_keeps_changing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = session.config_path()
+    config.parent.mkdir()
+    config.write_text(json.dumps({"numStartups": 0}))
+    read = session.read_config
+
+    def read_then_change(path: Path) -> dict:
+        data = read(path)
+        config.write_text(json.dumps({"numStartups": data["numStartups"] + 1}))
+        return data
+
+    monkeypatch.setattr(session, "read_config", read_then_change)
+    with pytest.raises(OSError, match="kept changing"):
+        session.trust(tmp_path / "repos" / "acme" / "widgets.git")
+    assert json.loads(config.read_text()) == {"numStartups": session.TRUST_TRIES}
+    assert list(config.parent.iterdir()) == [config]

@@ -216,7 +216,8 @@ def server_url(gh_state: Path, cache_dir: Path, tmp_path_factory: pytest.TempPat
 
 
 @pytest.fixture(autouse=True)
-def without_auto_start(page: Page) -> None:
-    """Every page opens with Auto start off, so a session starts only in a test that turns the setting on or opens
+def without_auto_start(page: Page, request: pytest.FixtureRequest) -> None:
+    """Every page opens with Auto start off, so a session starts only in a test marked `auto_start` or one that opens
     the terminal."""
-    page.add_init_script("localStorage.setItem('dr:claudeStart', 'off')")
+    if request.node.get_closest_marker("auto_start") is None:
+        page.add_init_script("localStorage.setItem('dr:claudeStart', 'off')")

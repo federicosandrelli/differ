@@ -171,24 +171,27 @@ def config_path() -> Path:
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home()) / ".claude.json"
 
 
-# Held around every change to Claude Code's config file, so two starts in this server never write it at once.
+# Held around every change to Claude Code's config file, so two threads never write it at once.
 config_lock = threading.Lock()
-# How many times `trust` reads the config file again when another process changed it during a write.
+# How many times `trust` tries to write the config file before it gives up.
 TRUST_TRIES = 5
 
 
-def trust(mirror: Path) -> None:
-    """Record in Claude Code's config file that the user trusts the mirror, the entry Claude Code's docs name as the
-    way to trust a folder by hand, unless the file has it already. A config file behind a symbolic link is written where
+def trust(folder: Path) -> None:
+    """Record in Claude Code's config file that the user trusts the folder, the entry Claude Code's docs name as the
+    way to trust a folder by hand, unless the file has it already. Writes nothing when the config file is missing, so
+    Claude Code still finds it missing and offers its backup. A config file behind a symbolic link is written where
     the link leads. The new file is written next to the old one, with its mode, and takes its place only while the old
     one is as it was when read; otherwise the write starts again from the changed file. Raises ValueError when the file
     is not a JSON object, and OSError when it cannot be read or written, or keeps changing."""
-    key = os.path.realpath(mirror)
+    key = os.path.realpath(folder)
     with config_lock:
         for _ in range(TRUST_TRIES):
             path = config_path().resolve()
             before = _stat(path)
-            data = read_config(path) if before is not None else {}
+            if before is None:
+                return
+            data = read_config(path)
             projects = data.get("projects", {})
             if not isinstance(projects, dict):
                 raise ValueError(f"{path} is not the config file Claude Code writes.")
@@ -198,13 +201,13 @@ def trust(mirror: Path) -> None:
             if project.get("hasTrustDialogAccepted") is True:
                 return
             data["projects"] = {**projects, key: {**project, "hasTrustDialogAccepted": True}}
-            path.parent.mkdir(parents=True, exist_ok=True)
             fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.differ-")
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(json.dumps(data, indent=2))
-                if before is not None:
-                    os.chmod(name, stat.S_IMODE(before.st_mode))
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(name, stat.S_IMODE(before.st_mode))
                 if _same(_stat(path), before):
                     os.replace(name, path)
                     return
@@ -228,10 +231,10 @@ def _stat(path: Path) -> os.stat_result | None:
         return None
 
 
-def _same(a: os.stat_result | None, b: os.stat_result | None) -> bool:
-    """Whether two looks at a file found it unchanged: both missing, or the same file with the same size and time."""
-    if a is None or b is None:
-        return a is b
+def _same(a: os.stat_result | None, b: os.stat_result) -> bool:
+    """Whether a second look at a file found it unchanged: the same file, with the same size and time."""
+    if a is None:
+        return False
     return (a.st_ino, a.st_size, a.st_mtime_ns) == (b.st_ino, b.st_size, b.st_mtime_ns)
 
 

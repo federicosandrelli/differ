@@ -1274,12 +1274,12 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
     assert closed.ok and not worktree.exists()
 
 
+@pytest.mark.auto_start
 def test_auto_start_starts_the_session_with_the_page_and_leaves_the_terminal_hidden(
     page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
 ) -> None:
     pr = add_pr(OLD, NEW, branch="auto-start")
     number = pr.rsplit("/", 1)[1]
-    page.add_init_script("localStorage.removeItem('dr:claudeStart')")
     try:
         open_pr(page, server_url, pr)
         session = page.locator("#side .foot [data-term-toggle]")
@@ -1291,6 +1291,16 @@ def test_auto_start_starts_the_session_with_the_page_and_leaves_the_terminal_hid
             f"{server_url}/api/acme/widgets/{number}/claude_close", data={}, headers={"Origin": server_url}
         )
     assert closed.ok
+
+
+@pytest.mark.auto_start
+def test_auto_start_starts_nothing_while_comments_for_claude_are_off(page: Page, server_url: str) -> None:
+    page.add_init_script("localStorage.setItem('dr:claude', 'off')")
+    opens: list[str] = []
+    page.on("request", lambda r: opens.append(r.url) if r.url.endswith("/claude_open") else None)
+    open_pr(page, server_url)
+    expect(page.locator("#side .foot [data-term-toggle]")).to_have_count(0)
+    assert opens == []
 
 
 def test_a_terminal_left_open_with_auto_start_off_comes_back_without_starting_the_session(

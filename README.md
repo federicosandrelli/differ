@@ -49,7 +49,8 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 - The `</>` button in a file header opens the repository in your editor (VS
   Code, Cursor or a JetBrains IDE) on the pull request's branch, or opens the
   file on github.com.
-- Cmd+, opens the settings: the theme and the repositories you follow.
+- Cmd+, opens the settings: the theme, Auto start for the Claude session, and
+  the repositories you follow.
 
 ## Claude in the page
 
@@ -75,8 +76,8 @@ The session needs Claude Code 2.1.316 or later, and runs on your own login.
   the first session, the entry Claude Code's docs name for trusting a folder by
   hand, so Claude Code does not ask whether you trust the folder. Other first-run
   questions, such as accepting bypassed permissions, still show in the terminal.
-- Closing the tab ends the session and removes the worktree. The next open
-  resumes the conversation.
+- Closing the tab ends the session and removes the worktree. The next
+  start resumes the conversation.
 
 The server still writes the skill a session you start by hand follows to
 `~/.claude/skills/differ-comments/SKILL.md`. Such a session listens with the URL
