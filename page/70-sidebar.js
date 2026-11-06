@@ -64,7 +64,7 @@ function updateSearchMeta() {
   const where = at >= 0 ? ` · ${at + 1} / ${all.length}` : state.fileSearch ? '' : ` · ${plural(all.length, 'line')}`;
   el.textContent = plural(visibleFiles().length, 'file') + where;
 }
-function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
 
 // The status GitHub reports now, once the comments load; until then the one the page was built with.
 function statusChip() {
@@ -147,7 +147,7 @@ function renderSide() {
   if (SHELL) SHELL.draft(hasDraft());
   document.querySelector('#side .scroll').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
-  else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus(); el.setSelectionRange(...selection); } }
+  else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...selection); } }
   refocusBox(side, typing);
   revealActive();
   updateSearchMeta();
