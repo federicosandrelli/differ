@@ -64,7 +64,7 @@ function updateSearchMeta() {
   const where = at >= 0 ? ` · ${at + 1} / ${all.length}` : state.fileSearch ? '' : ` · ${plural(all.length, 'line')}`;
   el.textContent = plural(visibleFiles().length, 'file') + where;
 }
-function focusBox(sel) { const i = document.querySelector(sel); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
+function focusSearch() { const i = document.querySelector('#side .search'); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
 
 // The status GitHub reports now, once the comments load; until then the one the page was built with.
 function statusChip() {
@@ -145,7 +145,7 @@ function renderSide() {
   animateSections(side, sections);
   fillBoxes(side);
   if (SHELL) SHELL.draft(hasDraft());
-  document.querySelector('#side .scroll').scrollTop = scroll;
+  side.querySelector('.scroll').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
   else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...selection); } }
   refocusBox(side, typing);
@@ -155,8 +155,15 @@ function renderSide() {
 function revealActive() {
   const active = document.querySelector('#side .row.active');
   if (!active) return;
-  const a = active.getBoundingClientRect(), l = document.querySelector('#side .scroll').getBoundingClientRect();
-  if (a.top < l.top || a.bottom > l.bottom) active.scrollIntoView({ block: 'center' });
+  if (!inTreeView(active)) active.scrollIntoView({ block: 'center' });
+}
+// Whether the whole of a tree row shows in the scrolling part of the sidebar, below the search box while the box
+// floats over the tree.
+function inTreeView(row) {
+  const side = document.getElementById('side'), view = side.querySelector('.scroll').getBoundingClientRect();
+  const top = Math.max(view.top, side.querySelector('[data-sect="search"]').getBoundingClientRect().bottom);
+  const r = row.getBoundingClientRect();
+  return r.top >= top && r.bottom <= view.bottom;
 }
 // Mark the file under the top of the main pane in the tree and the URL, without rebuilding the sidebar.
 function setActive(path) {
@@ -180,8 +187,7 @@ function setCursor(el) {
   state.cursor = cursorKey(el);
   for (const x of document.querySelectorAll('#side .row.cursor')) x.classList.remove('cursor');
   el.classList.add('cursor');
-  const a = el.getBoundingClientRect(), l = document.querySelector('#side .scroll').getBoundingClientRect();
-  if (a.top < l.top || a.bottom > l.bottom) el.scrollIntoView({ block: 'nearest' });
+  if (!inTreeView(el)) el.scrollIntoView({ block: 'nearest' });
   const f = el.dataset.path && BY_PATH[el.dataset.path];
   if (f) passFile(f);
 }

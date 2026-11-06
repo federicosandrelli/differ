@@ -713,28 +713,35 @@ def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, se
     expect(page.locator(f"#{hit_row(page)}")).to_contain_text('print("hello")')
 
 
-def test_cmd_f_shows_the_search_box_over_a_scrolled_tree_and_keeps_it_while_searching(
+def test_cmd_f_shows_the_search_box_over_a_scrolled_tree_and_keeps_the_active_file_below_it(
     page: Page, server_url: str, add_pr: AddPr
 ) -> None:
     page.set_viewport_size({"width": 1100, "height": 400})
     open_pr(page, server_url, add_pr({}, {f"f{i:02}.py": f'print("hello {i}")\n' for i in range(30)}))
-    page.click("#side .leaf[data-path='f29.py']")
-    in_view = """() => {
+    page.click("#side .leaf[data-path='f15.py']")
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "f15.py")
+    scrolled = page.evaluate("""() => {
+      const scroll = document.querySelector('#side .scroll'), row = document.querySelector('#side .row.active');
+      scroll.scrollTop += row.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 10;
+      return scroll.scrollTop;
+    }""")
+    assert scrolled > 0
+    page.keyboard.press("Meta+f")
+    expect(page.locator("#side .search")).to_be_focused()
+    assert page.evaluate("document.querySelector('#side .scroll').scrollTop") == scrolled
+    box_in_view = """() => {
       const bar = document.querySelector('#side .searchbar').getBoundingClientRect();
       const scroll = document.querySelector('#side .scroll').getBoundingClientRect();
       return bar.top >= scroll.top - 1 && bar.bottom <= scroll.bottom + 1;
     }"""
-    scrolled = page.evaluate("document.querySelector('#side .scroll').scrollTop")
-    assert scrolled > 0
-    page.keyboard.press("Meta+f")
-    assert page.evaluate(in_view)
-    assert page.evaluate("document.querySelector('#side .scroll').scrollTop") == scrolled
+    assert page.evaluate(box_in_view)
     page.keyboard.type("hello")
     expect(page.locator("#searchmeta")).to_have_text("30 files · 30 lines")
-    assert page.evaluate(in_view)
-    for _ in range(3):
-        page.keyboard.press("Enter")
-        assert page.evaluate(in_view)
+    assert page.evaluate(box_in_view)
+    assert page.evaluate("""() => {
+      const row = document.querySelector('#side .row.active').getBoundingClientRect();
+      return row.top >= document.querySelector('#side [data-sect="search"]').getBoundingClientRect().bottom - 1;
+    }""")
 
 
 def test_a_match_across_highlighter_tokens_is_one_mark(page: Page, server_url: str) -> None:
