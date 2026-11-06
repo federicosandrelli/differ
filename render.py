@@ -217,20 +217,62 @@ SPLASH = """<!doctype html>
 <meta charset="utf-8">
 <title>differ</title>
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; padding-top: 28px; height: 100vh; display: grid; place-items: center; font: 14px -apple-system, BlinkMacSystemFont, sans-serif; color: __TEXT__; background: __BG__; }
+  /* The claude theme's tokens from palette() in render.py and the button from shell/base.css: the review server
+     serves both, and this page shows while it is not running. */
+  :root {
+    color-scheme: dark;
+    --bg-canvas: __BG__; --bg-hover: __HOVER__; --text: __TEXT__; --text-secondary: __TEXT_SECONDARY__; --border: __BORDER__;
+    --radius: 6px; --control-font: 13px; --control-line: 20px;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  body { margin: 0; padding-top: 28px; box-sizing: border-box; height: 100vh; display: grid; place-items: center; font: 14px var(--sans); color: var(--text-secondary); background: var(--bg-canvas); }
+  main { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  button { font: var(--control-font)/var(--control-line) var(--sans); color: var(--text); background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 1px 10px; cursor: pointer; }
+  button:hover { background: var(--bg-hover); }
 </style>
 </head>
-<body>Starting the review server…</body>
+<body>
+<main>
+  <span id="status">Starting the review server…</span>
+  <button id="retry" hidden>Retry</button>
+</main>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const status = document.getElementById('status');
+  const retry = document.getElementById('retry');
+  function show(failed) {
+    status.textContent = failed ? "The review server didn't start." : 'Starting the review server…';
+    retry.hidden = !failed;
+  }
+  async function check() {
+    if (await invoke('server_failed').catch(() => true)) show(true);
+    else setTimeout(check, 500);
+  }
+  retry.addEventListener('click', async () => {
+    show(false);
+    await invoke('retry_server').catch(() => {});
+    check();
+  });
+  check();
+</script>
+</body>
 </html>
 """
 
 
 def splash_html() -> str:
-    """The desktop app's first page, shown until the server answers. It loads before any server document, so
-    its two colours come from the Claude palette at write time: `render.py --splash` writes it to web/index.html."""
+    """The desktop app's first page, shown until the server answers, with a Retry button when the server fails to
+    start. It loads before any server document, so its colours come from the Claude palette at write time:
+    `render.py --splash` writes it to web/index.html."""
     claude = PALETTES["claude"]
-    return fill(SPLASH, TEXT=claude["text_secondary"], BG=claude["bg_canvas"])
+    return fill(
+        SPLASH,
+        BG=claude["bg_canvas"],
+        HOVER=claude["bg_hover"],
+        TEXT=claude["text"],
+        TEXT_SECONDARY=claude["text_secondary"],
+        BORDER=claude["border"],
+    )
 
 
 # The icon of each pull request status, as the inner paths of a 24×24 stroked SVG, and the palette colour it takes.
