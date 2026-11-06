@@ -2,6 +2,7 @@
 
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -163,12 +164,14 @@ fn start_server(app: &AppHandle) -> std::io::Result<()> {
     let sidecar = app.state::<Sidecar>();
     let port = pick_port()?;
     let mut command = Command::new(&sidecar.python);
-    // A __pycache__ written next to the bundled scripts would break the app's code signature.
+    // A __pycache__ written next to the bundled scripts would break the app's code signature. The server gets a
+    // process group of its own, so that `end_server` can end it with whatever it started in its group.
     command
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .arg(&sidecar.script)
         .arg(port.to_string())
         .arg("--exit-with-parent")
+        .process_group(0)
         .stdout(Stdio::piped());
     if let Some(path) = server_log() {
         command.arg("--log").arg(path);
@@ -329,10 +332,31 @@ fn main() {
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 if let Some(mut child) = app.state::<Sidecar>().child.lock().unwrap().take() {
-                    let _ = child.kill();
+                    end_server(&mut child);
                 }
             }
         });
+}
+
+// Ends the server: SIGTERM to its process group, which the server answers by ending the Claude sessions it runs and
+// exiting, then SIGKILL to whatever is left after ten seconds. Each session has a process group of its own, so only
+// the server ends the sessions, and it gets the time its signals to them take: three for the hangup, two for
+// SIGTERM and two for SIGKILL.
+fn end_server(child: &mut Child) {
+    let group = child.id() as libc::pid_t;
+    unsafe {
+        libc::killpg(group, libc::SIGTERM);
+    }
+    for _ in 0..100 {
+        if !matches!(child.try_wait(), Ok(None)) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    unsafe {
+        libc::killpg(group, libc::SIGKILL);
+    }
+    let _ = child.wait();
 }
 
 #[cfg(test)]

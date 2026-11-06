@@ -724,6 +724,7 @@ name = "differ"
 version = "0.1.0"
 dependencies = [
  "fix-path-env",
+ "libc",
  "rfd",
  "serde",
  "tauri",

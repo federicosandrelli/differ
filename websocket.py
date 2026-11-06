@@ -1,5 +1,5 @@
-"""The part of the WebSocket protocol (RFC 6455) that a server needs to push text to one client: the handshake's
-accept key, the frames the server sends, and the frames the client sends, read one at a time."""
+"""The part of the WebSocket protocol (RFC 6455) that a server needs to exchange text and bytes with one client: the
+handshake's accept key, the frames the server sends, and the frames the client sends, read one at a time."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import struct
 from io import BufferedIOBase
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-TEXT, CLOSE, PING, PONG = 0x1, 0x8, 0x9, 0xA
+TEXT, BINARY, CLOSE, PING, PONG = 0x1, 0x2, 0x8, 0x9, 0xA
 # The largest frame read from a client. A control frame holds at most 125 bytes.
 MAX_READ = 1 << 16
 

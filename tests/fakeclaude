@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""A stand-in for `claude` that behaves as the session's process does, as far as the tests need.
+
+`fakeclaude --version` prints a version: FAKE_CLAUDE_VERSION, else 2.1.316. Started with `--session-id <id>` or
+`--resume <id>` and a prompt, it prints a banner, connects to the listen WebSocket the prompt names, and answers each
+`comment` or `follow_up` frame by calling the `reply_in_thread` tool of the MCP server that `--mcp-config` names, with
+"Fake reply to: <the reader's last message>". Meanwhile it echoes what it reads from its terminal back to it, in
+upper case, so a test can see bytes go both ways. With FAKE_CLAUDE_FAIL set to `resume`, a `--resume` start prints
+"No conversation found with session ID" and exits 1; set to `in-use`, a `--session-id` start prints "Session ID is
+already in use" and exits 1; set to `old`, `--version` prints 2.1.200. With FAKE_CLAUDE_DEAF set, it never reads its
+terminal, as a process busy elsewhere. FAKE_CLAUDE_LOG names a file that gets one JSON line per start, with the arguments, the working folder and the environment variables that start with CLAUDE."""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import re
+import socket
+import struct
+import sys
+import threading
+import tty
+import urllib.request
+from pathlib import Path
+
+
+def log(record: dict) -> None:
+    if path := os.environ.get("FAKE_CLAUDE_LOG"):
+        with Path(path).open("a") as f:
+            f.write(json.dumps(record) + "\n")
+
+
+def frame(opcode: int, payload: bytes) -> bytes:
+    """One masked frame, as a client sends it."""
+    n = len(payload)
+    head = struct.pack(">BB", 0x80 | opcode, 0x80 | n) if n < 126 else struct.pack(">BBH", 0x80 | opcode, 0x80 | 126, n)
+    mask = b"\x00\x00\x00\x00"
+    return head + mask + payload
+
+
+def read_frame(sock: socket.socket) -> tuple[int, bytes]:
+    def exactly(n: int) -> bytes:
+        data = b""
+        while len(data) < n:
+            chunk = sock.recv(n - len(data))
+            if not chunk:
+                raise EOFError
+            data += chunk
+        return data
+
+    first, second = exactly(2)
+    n = second & 0x7F
+    if n == 126:
+        n = struct.unpack(">H", exactly(2))[0]
+    elif n == 127:
+        n = struct.unpack(">Q", exactly(8))[0]
+    return first & 0x0F, exactly(n)
+
+
+def listen(url: str, mcp_url: str, token: str) -> None:
+    """Hold the listen WebSocket open and reply to each thread through the MCP server."""
+    m = re.match(r"ws://([^:/]+):(\d+)(/.*)", url)
+    assert m, url
+    sock = socket.create_connection((m[1], int(m[2])))
+    key = base64.b64encode(os.urandom(16)).decode()
+    sock.sendall(
+        f"GET {m[3]} HTTP/1.1\r\nHost: {m[1]}:{m[2]}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode()
+    )
+    head = b""
+    while b"\r\n\r\n" not in head:
+        head += sock.recv(1)
+    print("Listening for differ comments.\r", flush=True)
+    while True:
+        try:
+            opcode, payload = read_frame(sock)
+        except (EOFError, OSError):
+            return
+        if opcode == 0x9:
+            sock.sendall(frame(0xA, payload))
+        elif opcode == 0x8:
+            return
+        elif opcode == 0x1:
+            event = json.loads(payload)
+            if event.get("event") in ("comment", "follow_up"):
+                reader = [m["body"] for m in event["messages"] if m["author"] == "reader"][-1]
+                call(mcp_url, token, "reply_in_thread", {"id": event["id"], "body": f"Fake reply to: {reader}"})
+
+
+def call(mcp_url: str, token: str, name: str, arguments: dict) -> dict:
+    """One tools/call on the MCP server; the JSON-RPC answer."""
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    request = urllib.request.Request(
+        mcp_url,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(request) as answer:
+        result = json.loads(answer.read())
+    print(f"called {name}: {json.dumps(result)}", flush=True)
+    return result
+
+
+def echo() -> None:
+    """Send what the terminal types back to it in upper case, until the terminal hangs up."""
+    while True:
+        try:
+            data = os.read(0, 1024)
+        except OSError:
+            return
+        if not data:
+            return
+        os.write(1, data.upper())
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    fail = os.environ.get("FAKE_CLAUDE_FAIL", "")
+    if args == ["--version"]:
+        version = "2.1.200" if fail == "old" else os.environ.get("FAKE_CLAUDE_VERSION", "2.1.316")
+        print(f"{version} (Claude Code)")
+        return
+    env = {k: v for k, v in os.environ.items() if k.startswith("CLAUDE") or k in ("TERM", "COLORTERM")}
+    log({"args": args, "cwd": os.getcwd(), "env": env, "pid": os.getpid()})
+    if "--resume" in args and fail == "resume":
+        print("No conversation found with session ID", flush=True)
+        sys.exit(1)
+    if "--session-id" in args and fail == "in-use":
+        print("Session ID is already in use", flush=True)
+        sys.exit(1)
+    prompt = args[-1]
+    config = json.loads(args[args.index("--mcp-config") + 1])["mcpServers"]["differ"]
+    token = config["headers"]["Authorization"].removeprefix("Bearer ")
+    # The terminal goes to raw mode, as Claude Code's does, so that every byte arrives at once, nothing is echoed
+    # twice, and what nobody reads waits in the terminal's queue. It goes first, since the switch drops what was
+    # typed before it, and a test types as soon as it sees the banner.
+    if os.isatty(0):
+        tty.setraw(0)
+    print(f"fake claude {' '.join(args[:2])} in {os.getcwd()}\r", flush=True)
+    found = re.search(r"ws://\S+/listen", prompt)
+    if found:
+        threading.Thread(target=listen, args=(found[0], config["url"], token), daemon=True).start()
+    if os.environ.get("FAKE_CLAUDE_DEAF"):
+        threading.Event().wait()
+    echo()
+
+
+if __name__ == "__main__":
+    main()

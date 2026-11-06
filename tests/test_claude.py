@@ -498,3 +498,47 @@ def test_install_skill_reports_a_folder_it_cannot_write(skills: Path, capsys: py
     skills.parent.write_text("a file where the folder should be")
     claude.install_skill()
     assert "Could not install the differ-comments skill" in capsys.readouterr().err
+
+
+def test_a_reply_without_seen_counts_the_messages_the_thread_had_when_it_was_sent() -> None:
+    frames: list[str] = []
+    send = frames.append
+    claude.attach(REF, send)
+    (c,) = add()["comments"]
+    assert claude.fetch(REF, "abc")["comments"][0]["sent_count"] == 1
+    claude.reply(REF, c["id"], "Done.")
+    assert states() == ["answered"]
+    claude.detach(REF, send)
+    claude.follow_up(REF, c["id"], "And this?", "abc")
+    assert states() == ["waiting"]
+    claude.reply(REF, c["id"], "A late answer to the first message.")
+    assert states() == ["waiting"]
+    claude.attach(REF, send)
+    assert states() == ["sent"] and claude.fetch(REF, "abc")["comments"][0]["sent_count"] == 4
+    claude.reply(REF, c["id"], "Yes.")
+    assert states() == ["answered"]
+
+
+def test_kept_lists_the_pull_requests_with_a_comments_file() -> None:
+    add()
+    other = PullRef("acme", "widgets", 2)
+    claude.write(other, [])
+    (claude.path_of(other).parent / "notes.json").write_text("{}")
+    assert claude.kept() == [REF, other]
+
+
+def test_a_sweep_expires_with_the_function_given_among_the_pull_requests_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    add()
+    other = PullRef("acme", "widgets", 2)
+    asked: list[list[PullRef]] = []
+
+    def standings(refs: list[PullRef]) -> dict[PullRef, github.Standing]:
+        asked.append(refs)
+        return {ref: github.Standing("merged", "me") for ref in refs}
+
+    monkeypatch.setattr(github, "pr_standings", standings)
+    expired: list[PullRef] = []
+    claude.sweep(expired.append)
+    assert expired == [REF] and ids() != []
+    claude.sweep(expired.append, [other])
+    assert asked == [[REF], [other]] and expired == [REF, other]

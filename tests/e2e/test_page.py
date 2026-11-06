@@ -9,10 +9,10 @@ from urllib.parse import quote
 import pytest
 from playwright.sync_api import APIResponse, Dialog, Locator, Page, Position, Response, Route, expect
 
-from e2e.conftest import TITLE
+from e2e.conftest import NEW, OLD, TITLE
 from helpers import Files
 
-AddPr = Callable[[Files, Files], str]
+AddPr = Callable[..., str]
 PushPr = Callable[[str, Files], str]
 
 PR = "/acme/widgets/pull/1"
@@ -1161,8 +1161,8 @@ def test_posting_a_single_comment_sends_it_and_shows_the_thread(page: Page, serv
 
 def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    session = page.locator("#side .foot [data-claude-menu]")
-    expect(session).to_have_attribute("title", "No Claude session")
+    session = page.locator("#side .foot [data-term-toggle]")
+    expect(session).to_have_attribute("title", "No Claude session · show the terminal")
     bubble = page.locator("#side .leaf[data-path='src/app.py'] .bubble")
     count = bubble.text_content()
     section = page.locator(APP)
@@ -1171,11 +1171,7 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
     page.click("button[data-compose-send='claude']")
     thread = section.locator("div.thread[data-thread^='claude:']", has_text="Use a logger here")
     expect(thread.locator(".tag.claude")).to_have_count(1)
-    expect(session).to_have_attribute("title", "No Claude session · 1 comment waiting")
-    session.click()
-    expect(page.locator("#side .foot .menu")).to_contain_text("1 comment will go to it when it connects.")
-    page.keyboard.press("Escape")
-    expect(page.locator("#side .foot .menu")).to_have_count(0)
+    expect(session).to_have_attribute("title", "No Claude session · 1 comment waiting · show the terminal")
     expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
     assert bubble.text_content() == count
     sent = page.evaluate("CL.comments.at(-1)")
@@ -1203,15 +1199,79 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
         ("claude", "Logged it."),
         ("reader", "Make it debug"),
     ]
-    expect(session).to_have_attribute("title", "No Claude session · 1 comment waiting")
+    expect(session).to_have_attribute("title", "No Claude session · 1 comment waiting · show the terminal")
 
     thread.locator("[data-reply]").click()
     thread.locator("textarea[data-reply-text]").fill("Never mind")
     assert page.evaluate("hasDraft()")
     thread.locator("[data-claude-delete]").click()
     expect(section.locator("div.thread[data-thread^='claude:']")).to_have_count(0)
-    expect(session).to_have_attribute("title", "No Claude session")
+    expect(session).to_have_attribute("title", "No Claude session · show the terminal")
     assert not page.evaluate("hasDraft()")
+
+
+# The text on the terminal's screen, every line of its buffer with a wrapped line joined to the one before it, for
+# a check of what the session printed.
+TERM_TEXT = """() => {
+  const b = TERM.term.buffer.active;
+  let text = '';
+  for (let i = 0; i < b.length; i++) {
+    const line = b.getLine(i);
+    text += (line.isWrapped ? '' : '\\n') + line.translateToString(true);
+  }
+  return text;
+}"""
+
+
+def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
+    page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
+) -> None:
+    pr = add_pr(OLD, NEW, branch="terminal")
+    number = pr.rsplit("/", 1)[1]
+    worktree = cache_dir / "worktrees" / "acme" / "widgets" / number
+    open_pr(page, server_url, pr)
+    try:
+        page.click("#side .foot [data-term-toggle]")
+        expect(page.locator("#termslot .term .xterm")).to_be_visible()
+        expect(page.locator(".term .thead .state")).to_have_text(
+            re.compile("listening on acme/widgets#"), timeout=60000
+        )
+        expect(page.locator("#side .foot .dot")).to_have_class(re.compile(r"\bon\b"))
+        page.wait_for_function(f"({TERM_TEXT})().includes({json.dumps(str(worktree))})")
+        assert (worktree / "src" / "app.py").read_text() == NEW["src/app.py"]
+
+        # The fake claude echoes what the terminal types in upper case.
+        page.click("#termslot .term .xterm-screen")
+        page.keyboard.type("hi there")
+        page.wait_for_function(f"({TERM_TEXT})().includes('HI THERE')")
+
+        section = page.locator(APP)
+        section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+        page.click("button[data-compose-mention]")
+        page.wait_for_function(f"({TERM_TEXT})().includes('@SRC/APP.PY#L11 ')")
+        assert page.evaluate("!!document.activeElement.closest('.xterm')")
+
+        # A render of the sidebar keeps the focus in the terminal.
+        page.evaluate("renderSide()")
+        assert page.evaluate("!!document.activeElement.closest('.xterm')")
+
+        page.click("#side .foot [data-term-dock]")
+        expect(page.locator("#termcol .term .xterm")).to_be_visible()
+        expect(page.locator("#termslot")).to_have_count(0)
+        page.click("#side .foot [data-term-dock]")
+        expect(page.locator("#termslot .term .xterm")).to_be_visible()
+
+        # The terminal comes back on its own pull request only.
+        open_pr(page, server_url, PR)
+        expect(page.locator(".term")).to_have_count(0)
+        open_pr(page, server_url, pr)
+        expect(page.locator("#termslot .term .xterm")).to_be_visible()
+        page.wait_for_function(f"({TERM_TEXT})().includes('HI THERE')")
+    finally:
+        closed = page.request.post(
+            f"{server_url}/api/acme/widgets/{number}/claude_close", data={}, headers={"Origin": server_url}
+        )
+    assert closed.ok and not worktree.exists()
 
 
 @contextmanager

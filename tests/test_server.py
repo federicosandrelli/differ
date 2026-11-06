@@ -505,10 +505,38 @@ def test_a_comments_load_expires_the_comments_for_claude_of_an_ended_pull_reques
 ) -> None:
     gone: list[PullRef] = []
     monkeypatch.setattr(server.comments, "fetch", lambda ref: {"status": status})
-    monkeypatch.setattr(server.claude, "expire", gone.append)
+    monkeypatch.setattr(server.session, "expire", gone.append)
     h = request("GET", "/api/o/r/1/comments")
     h.do_GET()
     assert response(h)[0] == 200 and gone == expired
+
+
+@pytest.mark.parametrize(
+    ("action", "body", "function", "expected"),
+    [
+        ("claude_open", {"cols": 100, "rows": 30}, "start", (PullRef("o", "r", 1), 8765, 100, 30)),
+        ("claude_close", {}, "close", (PullRef("o", "r", 1),)),
+        ("claude_paste", {"text": "@a.py#L1 "}, "paste", (PullRef("o", "r", 1), "@a.py#L1 ")),
+    ],
+)
+def test_the_session_actions_reach_the_session_from_this_servers_pages_only(
+    action: str, body: dict, function: str, expected: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple] = []
+    monkeypatch.setattr(server.session, function, lambda *args: calls.append(args) or {"starting": True})
+    h = request("POST", f"/api/o/r/1/{action}", json.dumps(body).encode())
+    h.headers["Origin"] = "https://evil.example"
+    h.do_POST()
+    assert response(h)[0] == 403 and calls == []
+    h = request("POST", f"/api/o/r/1/{action}", json.dumps(body).encode())
+    h.do_POST()
+    assert response(h)[0] == 200 and calls == [expected]
+
+
+def test_a_vendored_file_is_served_and_any_other_name_under_vendor_is_not() -> None:
+    status, body = get("/vendor/xterm.css")
+    assert status == 200 and b".xterm" in body
+    assert get("/vendor/server.py")[0] == 404 and get("/vendor/../server.py")[0] == 404
 
 
 def test_the_comments_for_claude_are_placed_on_the_head_the_page_names(monkeypatch: pytest.MonkeyPatch) -> None:

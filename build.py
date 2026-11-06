@@ -299,6 +299,12 @@ def read_diff(repo_dir: Path, base: str, head: str, log: Log) -> classify.Diff:
     return classify.Diff(patch, old, new, generated)
 
 
+def base_of(repo_dir: Path, pr: github.PullRequest) -> str:
+    """The commit the pull request's branch left its base branch at, in the repository, which must hold both ends:
+    what the page and the tools diff the head against, as GitHub does."""
+    return git(repo_dir, "merge-base", pr.base, pr.head).decode().strip()
+
+
 def build(ref: PullRef, log: Log = print) -> Path:
     log(f"Reading {ref} from GitHub")
     pr = github.pull_request(ref)
@@ -309,7 +315,7 @@ def build(ref: PullRef, log: Log = print) -> Path:
 
     repo_dir = ensure_repo(ref, log)
     fetch(repo_dir, ref.number, pr.base, pr.head, log)
-    merge_base = git(repo_dir, "merge-base", pr.base, pr.head).decode().strip()
+    merge_base = base_of(repo_dir, pr)
     diff = read_diff(repo_dir, merge_base, pr.head, log)
 
     # The page diffs the head against the merge base, as GitHub does, so that is the base it names.

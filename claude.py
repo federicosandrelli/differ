@@ -182,7 +182,8 @@ def frame(ref: PullRef, c: dict, replay: bool) -> str:
 
 def deliver(ref: PullRef, comments: list[dict], replay: bool) -> None:
     """Send the comments to the session that listens on the pull request, if one does, and mark each one it took
-    sent. A session that has gone stops listening. Call it with the lock held."""
+    sent, with `sent_count`, the number of messages the thread had, so that `reply` can tell whether the reader wrote
+    again before Claude answered. A session that has gone stops listening. Call it with the lock held."""
     for c in comments:
         if not (send := listeners.get(ref)):
             return
@@ -191,6 +192,7 @@ def deliver(ref: PullRef, comments: list[dict], replay: bool) -> None:
         except OSError:
             del listeners[ref]
             return
+        c["sent_count"] = len(c["messages"])
         if c["state"] == "waiting":
             c["state"] = "sent"
 
@@ -237,12 +239,15 @@ def find(comments: list[dict], comment_id: str) -> dict:
 
 def reply(ref: PullRef, comment_id: str, body: str, seen: int | None = None) -> dict:
     """Add Claude's reply to the end of a comment's thread. `seen` is the number of the thread's messages that
-    Claude read before it replied, all of them when None. The state becomes `answered` unless the reader wrote after
-    those messages. Answers the comment as kept."""
+    Claude read before it replied; when None, the number the thread had when `deliver` last sent it, or all of them
+    for a thread never sent. The state becomes `answered` unless the reader wrote after those messages. Answers the
+    comment as kept."""
     with lock:
         comments = read(ref)
         c = find(comments, comment_id)
-        unread = c["messages"][len(c["messages"]) if seen is None else seen :]
+        if seen is None:
+            seen = c.get("sent_count", len(c["messages"]))
+        unread = c["messages"][seen:]
         c["messages"].append(message("claude", body, now()))
         if not any(m["author"] == "reader" for m in unread):
             c["state"] = "answered"
@@ -301,12 +306,16 @@ def install_skill() -> None:
         sys.stderr.write(f"Could not install the differ-comments skill in {path.parent}: {e}\n")
 
 
-def sweep() -> None:
-    """Delete the comments of every pull request that GitHub reports merged or closed. A pull request GitHub can't
-    return keeps them."""
-    files = (build.CACHE / "claude").glob("*/*/*.json")
-    refs = [PullRef(f.parent.parent.name, f.parent.name, int(f.stem)) for f in files if f.stem.isdigit()]
-    for ref, standing in github.pr_standings(refs).items():
+def kept() -> list[PullRef]:
+    """The pull requests with a comments file in the cache."""
+    files = sorted((build.CACHE / "claude").glob("*/*/*.json"))
+    return [PullRef(f.parent.parent.name, f.parent.name, int(f.stem)) for f in files if f.stem.isdigit()]
+
+
+def sweep(expire: Callable[[PullRef], None] = expire, refs: list[PullRef] | None = None) -> None:
+    """Expire every pull request among `refs`, by default those with a comments file, that GitHub reports merged or
+    closed, with `expire`, which deletes its comments by default. A pull request GitHub can't return keeps them."""
+    for ref, standing in github.pr_standings(kept() if refs is None else refs).items():
         if standing.status in ENDED:
             expire(ref)
 

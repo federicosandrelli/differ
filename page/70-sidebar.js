@@ -132,18 +132,21 @@ function renderSide() {
     ${sectionHtml('search', `<div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>`)}
-    <div class="list" tabindex="0">${renderList()}</div></div>${claudeFootHtml()}<div class="grip"></div>`;
+    <div class="list" tabindex="0">${renderList()}</div></div>${termSlotHtml()}${claudeFootHtml()}<div class="grip"></div>`;
   const prev = document.querySelector('#side .scroll');
   const scroll = prev ? prev.scrollTop : 0;
   const ae = document.activeElement;
   const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : null);
   const selection = focused && focused !== '.list' ? [ae.selectionStart, ae.selectionEnd, ae.selectionDirection] : null;
   const side = document.getElementById('side'), typing = focused ? null : focusedBox(side);
+  const inTerminal = !!TERM.el && TERM.el.contains(ae);
   keepBoxHeights(side);
   const sections = sectionsOf(side);
   side.innerHTML = h;
   animateSections(side, sections);
   fillBoxes(side);
+  mountTerminal();
+  if (inTerminal && TERM.term) TERM.term.focus();
   if (SHELL) SHELL.draft(hasDraft());
   side.querySelector('.scroll').scrollTop = scroll;
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });

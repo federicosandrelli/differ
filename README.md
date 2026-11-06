@@ -51,15 +51,33 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
   file on github.com.
 - Cmd+, opens the settings: the theme and the repositories you follow.
 
-## Comments for Claude
+## Claude in the page
 
-"Send to Claude" in a comment box sends the comment to the Claude Code session
-that works on the pull request, instead of GitHub. Paste the prompt from "Copy
-connect prompt", in the bot menu in the sidebar footer, into the session. The
-bot's dot is green while a session listens.
+Every pull request gets a Claude Code session of its own. The bot button in the
+sidebar footer opens a terminal under the file tree, and the arrow next to it
+moves the terminal to a column of its own between the tree and the code. differ
+starts `claude` in a worktree of the repository, on the pull request's branch,
+kept in `~/.cache/differ/worktrees`. The session needs Claude Code 2.1.316 or
+later, and runs on your own login.
 
-Each time the server starts, it writes the skill the session follows to
-`~/.claude/skills/differ-comments/SKILL.md`.
+- "Send to Claude" in a comment box sends the comment to the session instead of
+  GitHub. The session listens for these comments, and its reply shows in the
+  thread. The bot's dot is lit while it listens.
+- "Mention in terminal" in a comment box puts the lines into the session's
+  prompt, so you can ask about them there.
+- The session runs with permissions bypassed: it reads, edits, commits and
+  pushes without asking. The repository's own `CLAUDE.md`, hooks and settings
+  load, on anyone's pull request. If you also push to the branch from your own
+  clone, the two can race, and the later push has to rebase.
+- The first time a worktree opens, Claude Code asks in the terminal whether
+  you trust the folder. Answer there; the session listens once it starts.
+- Closing the tab ends the session and removes the worktree. The next open
+  resumes the conversation.
+
+The server still writes the skill a session you start by hand follows to
+`~/.claude/skills/differ-comments/SKILL.md`. Such a session listens with the URL
+`ws://127.0.0.1:<port>/api/<owner>/<repo>/<number>/listen` while differ's own
+session for the pull request does not.
 
 ## Develop
 

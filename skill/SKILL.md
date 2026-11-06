@@ -1,6 +1,6 @@
 ---
 name: differ-comments
-description: Receive the line comments a reader sends from differ, a pull request viewer, to this session, and answer them in their threads. Use when the user asks to "listen for differ comments" (the prompt that differ's Copy connect prompt button copies), when a differ comment or follow-up arrives on the monitor (a JSON frame with "event": "comment" or "follow_up"), or when the user asks to re-arm or check the differ listener.
+description: Receive the line comments a reader sends from differ, a pull request viewer, to this session, and answer them in their threads. Use when the user asks to "listen for differ comments", when a differ comment or follow-up arrives on the monitor (a JSON frame with "event": "comment" or "follow_up"), or when the user asks to re-arm or check the differ listener.
 ---
 
 # differ comments
@@ -13,11 +13,13 @@ the code when the reader asks for a change.
 
 ## Connect
 
-1. Find the WebSocket URL. The connect prompt names it:
-   `ws://127.0.0.1:<port>/api/<owner>/<repo>/<number>/listen`. Use its port everywhere below. Without a URL, read the
-   pull request of the current branch with `gh pr view --json url` (`https://github.com/<owner>/<repo>/pull/<number>`),
-   and try port 8766, where the differ desktop app serves, then 8765, where `server.py` serves by default. The desktop
-   app takes another port when 8766 is taken; then ask the user for the connect prompt.
+1. Find the WebSocket URL, `ws://127.0.0.1:<port>/api/<owner>/<repo>/<number>/listen`, in the user's request, and
+   use its port everywhere below. Without a URL, read the pull request of the current branch with
+   `gh pr view --json url` (`https://github.com/<owner>/<repo>/pull/<number>`), and try port 8766, where the differ
+   desktop app serves, then 8765, where `server.py` serves by default. The desktop app takes another port when 8766
+   is taken; then ask the user for the port. differ's own session for the pull request listens while its terminal
+   has started it; differ then refuses this session with a close frame, and the user closes that terminal's tab or
+   asks this session to listen instead.
 2. Arm the monitor:
 
    ```

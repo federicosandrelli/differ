@@ -38,15 +38,22 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /api/<owner>/<repo>/<number>/merge      GET: the merge state: the checks, the review decision, whether GitHub can
                                      merge, the auto-merge request and the merge methods allowed
   /api/<owner>/<repo>/<number>/claude     GET: the comments for Claude, each placed on the head commit ?head= names,
-                                     and whether a Claude Code session listens
+                                     whether a Claude Code session listens, and where the embedded session stands
   /api/<owner>/<repo>/<number>/listen     a WebSocket: a Claude Code session listens for the comments for Claude,
                                      one session per pull request (refused from another origin)
+  /api/<owner>/<repo>/<number>/terminal   a WebSocket: the page's terminal, relayed to the embedded session's
+                                     pseudoterminal as binary frames; a text frame sets its size
+  /api/<owner>/<repo>/<number>/mcp        POST: the differ MCP server for the embedded session, JSON-RPC with the
+                                     pull request's token in the Authorization header
+  /vendor/<name>                     a vendored file a page loads on demand: xterm.js and its stylesheet and addon
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
                                      conversation, viewed (marks a file viewed or not viewed while the head is
                                      the page's), open (opens a file in an editor, on the pull request's branch),
                                      merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed
                                      jobs), claude, claude_follow_up, claude_reply, claude_delete (a comment for
-                                     Claude, the reader's reply in its thread, Claude's reply, its removal)
+                                     Claude, the reader's reply in its thread, Claude's reply, its removal),
+                                     claude_open, claude_close, claude_paste (the embedded session: start it with
+                                     the terminal's cols and rows, end it, paste text into its prompt)
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -60,11 +67,13 @@ import html
 import json
 import os
 import re
+import signal
 import socket
 import sys
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -80,9 +89,11 @@ import editors
 import file_types
 import followed
 import github
+import mcp
 import merge
 import recent
 import render
+import session
 import settings
 import websocket
 from github import SLUG, PullRef
@@ -90,6 +101,9 @@ from github import SLUG, PullRef
 PAGE = re.compile(rf"^/{SLUG}/pull/(?P<number>\d+)/?$")
 STATUS = re.compile(rf"^/status/{SLUG}/(?P<number>\d+)$")
 API = re.compile(rf"^/api/{SLUG}/(?P<number>\d+)/(?P<action>\w+)$")
+VENDOR = re.compile(r"^/vendor/(?P<name>[\w.-]+)$")
+# The vendored files a page loads on demand, with their media types; everything else a page needs is inlined in it.
+VENDOR_FILES = {"xterm.js": "text/javascript", "xterm.css": "text/css", "xterm-addon-fit.js": "text/javascript"}
 FOLLOWED = "/api/followed"
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 # An SVG file can hold scripts, and the reader may open an image's address on its own.
@@ -218,9 +232,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, tabs_page())
             if url.path == "/home":
                 return self.send(200, start_page())
+            if m := VENDOR.match(url.path):
+                if not (ctype := VENDOR_FILES.get(m["name"])):
+                    return self.send(404, error_page(f"No file at {url.path}"))
+                return self.send(200, (render.VENDOR_DIR / m["name"]).read_bytes(), f"{ctype}; charset=utf-8")
             if url.path == "/board":
                 if "cached" not in query:
-                    threading.Thread(target=claude.sweep, daemon=True).start()
+                    threading.Thread(target=session.sweep, daemon=True).start()
                     statuses = threading.Thread(target=recent.refresh)
                     statuses.start()
                     answered = board.refresh(force="force" in query)
@@ -266,16 +284,25 @@ class Handler(BaseHTTPRequestHandler):
                 ref = PullRef.from_match(m)
                 data = comments.fetch(ref)
                 if data["status"] in claude.ENDED:
-                    claude.expire(ref)
+                    session.expire(ref)
                 return self.send_json(data)
             if (m := API.match(url.path)) and m["action"] == "viewed":
                 return self.send_json({"viewed": comments.viewed(PullRef.from_match(m))})
             if (m := API.match(url.path)) and m["action"] == "merge":
                 return self.send_json(merge.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "claude":
-                return self.send_json(claude.fetch(PullRef.from_match(m), (query.get("head") or [""])[0]))
+                ref = PullRef.from_match(m)
+                data = claude.fetch(ref, (query.get("head") or [""])[0])
+                return self.send_json({**data, "session": session.status(ref)})
             if (m := API.match(url.path)) and m["action"] == "listen":
                 return self.listen(PullRef.from_match(m))
+            if (m := API.match(url.path)) and m["action"] == "terminal":
+                return self.terminal(PullRef.from_match(m))
+            if (m := API.match(url.path)) and m["action"] == "mcp":
+                self.send_response(405)
+                self.send_header("Allow", "POST")
+                self.send_header("Content-Length", "0")
+                return self.end_headers()
             if (m := API.match(url.path)) and m["action"] == "editors":
                 return self.send_json(
                     {
@@ -324,20 +351,22 @@ class Handler(BaseHTTPRequestHandler):
         """The origins of the pages this server serves."""
         return {f"http://{host}:{self.port()}" for host in LOOPBACK_HOSTS}
 
-    def listen(self, ref: PullRef) -> None:
-        """Answer the WebSocket handshake of a Claude Code session that listens for the comments for Claude on the
-        pull request, then hold the connection until either side closes it: claude sends each comment as a text
-        frame, and this answers pings. A second session gets a close frame with the reason while one listens.
+    def upgrade(self, from_page: bool) -> Callable[[bytes], None] | None:
+        """Answer a WebSocket handshake and give the function that sends one frame to the client, or answer why the
+        request is refused and give None.
 
         A browser sends an Origin header with every handshake, so a page from another origin is refused, as it is
-        for a POST. A session's client sends none.
+        for a POST. A handshake `from_page` must carry this server's Origin, as a POST must; one from a session's
+        client, which sends none, may leave it out.
         """
         origin = self.headers.get("Origin")
-        if origin is not None and origin not in self.origins():
-            return self.send_json({"error": f"Forbidden: Origin {origin} is not this server"}, 403)
+        if (origin is not None or from_page) and origin not in self.origins():
+            self.send_json({"error": f"Forbidden: Origin {origin or '(missing)'} is not this server"}, 403)
+            return None
         key = self.headers.get("Sec-WebSocket-Key")
         if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
-            return self.send_json({"error": "Bad request: not a WebSocket handshake"}, 400)
+            self.send_json({"error": "Bad request: not a WebSocket handshake"}, 400)
+            return None
         # WebSocket clients expect an HTTP/1.1 status line, and the handler answers HTTP/1.0 by default.
         self.protocol_version = "HTTP/1.1"
         self.send_response(101, "Switching Protocols")
@@ -352,6 +381,15 @@ class Handler(BaseHTTPRequestHandler):
             with out:
                 self.wfile.write(data)
                 self.wfile.flush()
+
+        return send
+
+    def listen(self, ref: PullRef) -> None:
+        """Answer the WebSocket handshake of a Claude Code session that listens for the comments for Claude on the
+        pull request, then hold the connection until either side closes it: claude sends each comment as a text
+        frame, and this answers pings. A second session gets a close frame with the reason while one listens."""
+        if not (send := self.upgrade(from_page=False)):
+            return
 
         def send_text(text: str) -> None:
             send(websocket.frame(websocket.TEXT, text.encode()))
@@ -373,6 +411,49 @@ class Handler(BaseHTTPRequestHandler):
             pass
         finally:
             claude.detach(ref, send_text)
+
+    def terminal(self, ref: PullRef) -> None:
+        """Answer the WebSocket handshake of the page's terminal, then relay the pull request's session until either
+        side closes the connection: what the session prints goes to the page as binary frames, what the reader types
+        comes back the same way, and a text frame `{"cols": n, "rows": n}` sets the terminal's size. Only a page of
+        this server may connect: the session runs with permissions bypassed, so typing into it runs code."""
+        if not (send := self.upgrade(from_page=True)):
+            return
+
+        def send_bytes(data: bytes) -> None:
+            send(websocket.frame(websocket.BINARY, data))
+
+        session.attach(ref, send_bytes)
+        try:
+            while True:
+                opcode, payload = websocket.read_frame(self.rfile)
+                if opcode == websocket.CLOSE:
+                    send(websocket.frame(websocket.CLOSE, payload[:2]))
+                    return
+                if opcode == websocket.PING:
+                    send(websocket.frame(websocket.PONG, payload))
+                elif opcode == websocket.BINARY:
+                    session.write(ref, payload)
+                elif opcode == websocket.TEXT:
+                    size = json.loads(payload)
+                    session.resize(ref, int(size["cols"]), int(size["rows"]))
+        except (EOFError, OSError, ValueError, KeyError, TypeError):
+            pass
+        finally:
+            session.detach(ref, send_bytes)
+
+    def post_mcp(self, ref: PullRef) -> None:
+        """Answer one JSON-RPC request of the pull request's session, which must carry the pull request's token."""
+        if not mcp.authorized(ref, self.headers.get("Authorization")):
+            return self.send_json({"error": "Forbidden: not this pull request's token"}, 403)
+        try:
+            request = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        except ValueError as exc:
+            return self.send_json({"error": f"Bad request: {exc}"}, 400)
+        code, body = mcp.handle(ref, request)
+        if body is None:
+            return self.send(code, b"", "application/json")
+        return self.send_json(body, code)
 
     def refused(self) -> str | None:
         """Why this POST is refused, or None: a page from another origin must not act with the user's gh identity.
@@ -398,12 +479,24 @@ class Handler(BaseHTTPRequestHandler):
         m = API.match(path)
         if not m:
             return self.send(404, error_page(f"No page at {self.path}"))
+        if m["action"] == "mcp":
+            return self.post_mcp(PullRef.from_match(m))
         if why := self.refused():
             return self.send_json({"error": f"Forbidden: {why}"}, 403)
         try:
             body = self.json_body()
             ref, action = PullRef.from_match(m), m["action"]
-            if action == "comment":
+            if action == "claude_open":
+                result = session.start(
+                    ref, self.port() or 0, count_of(body.get("cols", 80)), count_of(body.get("rows", 24))
+                )
+            elif action == "claude_close":
+                session.close(ref)
+                result = {}
+            elif action == "claude_paste":
+                session.paste(ref, text_of(body["text"]))
+                result = {}
+            elif action == "comment":
                 start_side = body.get("start_side")
                 result = comments.add_thread(
                     ref,
@@ -588,10 +681,17 @@ def port_taken(port: int) -> str | None:
 
 
 def exit_with_parent() -> None:
-    """Exit once the parent process is gone, checked once a second."""
+    """Exit once the parent process is gone, checked once a second, after ending the Claude sessions."""
     parent = os.getppid()
     while os.getppid() == parent:
         time.sleep(1)
+    session.stop_all()
+    os._exit(0)
+
+
+def exit_on_signal(_signum: int, _frame: object) -> None:
+    """End the Claude sessions and exit: the desktop app, or the user, ended the server."""
+    session.stop_all()
     os._exit(0)
 
 
@@ -626,9 +726,12 @@ def main() -> None:
         sys.exit(f"Port {port} is already in use on {taken}. Stop that process or pass another port: server.py <port>")
     if args.exit_with_parent:
         threading.Thread(target=exit_with_parent, daemon=True).start()
+    signal.signal(signal.SIGTERM, exit_on_signal)
+    signal.signal(signal.SIGINT, exit_on_signal)
     build.prune_all()
     claude.install_skill()
-    threading.Thread(target=claude.sweep, daemon=True).start()
+    session.reap_orphans()
+    threading.Thread(target=session.sweep, daemon=True).start()
     if problem := gh_problem():
         sys.stderr.write(f"{problem} Run `gh auth login`; the start page checks again once a minute.\n")
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
