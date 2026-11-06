@@ -249,12 +249,10 @@ async function termClick(t) {
 })();
 // The theme changed in the shell's settings, which share this page's storage.
 window.addEventListener('storage', (e) => { if (e.key === 'dr:theme' && TERM.term) TERM.term.options.theme = termTheme(); });
-// With Auto start on, the session starts with the page, whether or not the terminal shows. A terminal the reader left
-// open on this pull request comes back with the page. Both wait until the page has drawn and the scripts after this
-// one have run.
-setTimeout(() => {
-  if (!termAvailable()) return;
-  const start = lsGet(CLAUDE_START_KEY) !== 'off';
-  if (TERM.open) openTerminal(start);
-  else if (start) startSession();
-}, 0);
+// A terminal the reader left open on this pull request comes back with the page, once the page has drawn and the
+// scripts after this one have run. It starts nothing: Auto start does.
+setTimeout(() => { if (termAvailable() && TERM.open) openTerminal(false); }, 0);
+// With Auto start on, start the session, whether or not the terminal shows, unless the pull request has ended.
+function autoStart() {
+  if (termAvailable() && lsGet(CLAUDE_START_KEY) !== 'off') startSession();
+}

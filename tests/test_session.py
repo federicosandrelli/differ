@@ -444,6 +444,14 @@ def test_the_relay_carries_bytes_both_ways_and_a_text_frame_sets_the_size(fake: 
     sock.close()
 
 
+def replace_file(path: Path, data: dict) -> None:
+    """Write the file as Claude Code does, as a new file that takes the old one's place, so it gets a new inode
+    whatever the clock's resolution."""
+    new = path.with_name(path.name + ".new")
+    new.write_text(json.dumps(data))
+    os.replace(new, path)
+
+
 def test_trust_adds_the_mirror_to_the_config_and_keeps_the_rest(tmp_path: Path) -> None:
     config = session.config_path()
     config.parent.mkdir()
@@ -472,9 +480,10 @@ def test_trust_keeps_the_rest_of_an_entry_and_leaves_a_trusted_one_alone(tmp_pat
     assert json.loads(config.read_text())["projects"] == {
         key: {"allowedTools": ["Bash"], "hasTrustDialogAccepted": True}
     }
-    before = config.stat().st_mtime_ns
+    before = config.stat()
     session.trust(mirror)
-    assert config.stat().st_mtime_ns == before
+    after = config.stat()
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
 
 
 def test_trust_writes_nothing_when_there_is_no_config(tmp_path: Path) -> None:
@@ -541,15 +550,15 @@ def test_trust_keeps_a_change_another_process_made_while_it_wrote(
     config = session.config_path()
     config.parent.mkdir()
     config.write_text(json.dumps({"numStartups": 1}))
-    read = session.read_config
+    read = session._read_config
 
     def read_then_change(path: Path) -> dict:
         data = read(path)
         if json.loads(config.read_text())["numStartups"] == 1:
-            config.write_text(json.dumps({"numStartups": 2, "theme": "light"}))
+            replace_file(config, {"numStartups": 2, "theme": "light"})
         return data
 
-    monkeypatch.setattr(session, "read_config", read_then_change)
+    monkeypatch.setattr(session, "_read_config", read_then_change)
     mirror = tmp_path / "repos" / "acme" / "widgets.git"
     session.trust(mirror)
     assert json.loads(config.read_text()) == {
@@ -563,14 +572,14 @@ def test_trust_gives_up_on_a_config_that_keeps_changing(tmp_path: Path, monkeypa
     config = session.config_path()
     config.parent.mkdir()
     config.write_text(json.dumps({"numStartups": 0}))
-    read = session.read_config
+    read = session._read_config
 
     def read_then_change(path: Path) -> dict:
         data = read(path)
-        config.write_text(json.dumps({"numStartups": data["numStartups"] + 1}))
+        replace_file(config, {"numStartups": data["numStartups"] + 1})
         return data
 
-    monkeypatch.setattr(session, "read_config", read_then_change)
+    monkeypatch.setattr(session, "_read_config", read_then_change)
     with pytest.raises(OSError, match="kept changing"):
         session.trust(tmp_path / "repos" / "acme" / "widgets.git")
     assert json.loads(config.read_text()) == {"numStartups": session.TRUST_TRIES}

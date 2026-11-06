@@ -72,9 +72,10 @@ The session needs Claude Code 2.1.316 or later, and runs on your own login.
   load, on anyone's pull request, as soon as its page opens while Auto start is
   on. If you also push to the branch from your own clone, the two can race, and
   the later push has to rebase.
-- differ records the repository's mirror as trusted in `~/.claude.json` before
-  the first session, the entry Claude Code's docs name for trusting a folder by
-  hand, so Claude Code does not ask whether you trust the folder. Other first-run
+- Before each start, differ records the repository's mirror as trusted in
+  `~/.claude.json` when that file exists, the entry Claude Code's docs name for
+  trusting a folder by hand, so Claude Code does not ask whether you trust the
+  folder. Other first-run
   questions, such as accepting bypassed permissions, still show in the terminal.
 - Closing the tab ends the session and removes the worktree. The next
   start resumes the conversation.

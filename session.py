@@ -191,7 +191,7 @@ def trust(folder: Path) -> None:
             before = _stat(path)
             if before is None:
                 return
-            data = read_config(path)
+            data = _read_config(path)
             projects = data.get("projects", {})
             if not isinstance(projects, dict):
                 raise ValueError(f"{path} is not the config file Claude Code writes.")
@@ -216,7 +216,7 @@ def trust(folder: Path) -> None:
         raise OSError(f"{config_path()} kept changing while differ wrote it.")
 
 
-def read_config(path: Path) -> dict:
+def _read_config(path: Path) -> dict:
     """The config file's JSON object. Raises ValueError when the file holds anything else."""
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):

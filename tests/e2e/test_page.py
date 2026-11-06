@@ -1303,6 +1303,49 @@ def test_auto_start_starts_nothing_while_comments_for_claude_are_off(page: Page,
     assert opens == []
 
 
+@pytest.mark.auto_start
+def test_auto_start_skips_a_pull_request_that_github_reports_merged_since_its_page_was_built(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    path = add_pr(OLD, NEW)
+    page.goto(server_url + "/home")
+    page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
+    open_pr(page, server_url, path)
+    pr = gh_state / f"pr{path.rsplit('/', 1)[1]}.json"
+    pr.write_text(json.dumps(json.loads(pr.read_text()) | {"state": "MERGED"}))
+    page.evaluate("localStorage.removeItem('dr:claudeStart')")
+    opens: list[str] = []
+    page.on("request", lambda r: opens.append(r.url) if r.url.endswith("/claude_open") else None)
+    open_pr(page, server_url, path)
+    assert page.evaluate("PR_STATUS") == "open"
+    page.wait_for_function("C.status === 'merged'")
+    page.wait_for_function("CL.loaded")
+    assert opens == []
+
+
+@pytest.mark.auto_start
+def test_auto_start_with_a_terminal_left_open_starts_the_session_once(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    pr = add_pr(OLD, NEW, branch="auto-start-open")
+    number = pr.rsplit("/", 1)[1]
+    open_pr(page, server_url, pr)
+    page.evaluate("localStorage.setItem(TERM_OPEN_KEY, 'open')")
+    opens: list[str] = []
+    page.on("request", lambda r: opens.append(r.url) if r.url.endswith("/claude_open") else None)
+    try:
+        open_pr(page, server_url, pr)
+        expect(page.locator(".term .thead .state")).to_have_text(
+            re.compile("listening on acme/widgets#"), timeout=60000
+        )
+        assert len(opens) == 1
+    finally:
+        page.evaluate("localStorage.removeItem(TERM_OPEN_KEY)")
+        page.request.post(
+            f"{server_url}/api/acme/widgets/{number}/claude_close", data={}, headers={"Origin": server_url}
+        )
+
+
 def test_a_terminal_left_open_with_auto_start_off_comes_back_without_starting_the_session(
     page: Page, server_url: str
 ) -> None:
