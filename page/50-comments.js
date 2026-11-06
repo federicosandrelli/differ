@@ -143,6 +143,24 @@ function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filte
 const excerpt = (s) => { const t = s.replace(/```[\s\S]*?```/g, '').replace(/\s+/g, ' ').trim(); return t.length > 90 ? t.slice(0, 90) + '…' : t; };
 const lineRange = (a, b) => a && a !== b ? `${a}–${b}` : `${b}`;
 const btn = (attrs, label, primary, off) => `<button ${attrs} class="${primary ? 'primary' : ''}" ${state.busy || off ? 'disabled' : ''}>${label}</button>`;
+// A button for an action that is hard to undo asks first: the first click makes it name the action to confirm for
+// CONFIRM_MS, and a second click in that time runs it. The second click of a double-click confirms nothing.
+const CONFIRM_MS = 4000;
+const CONFIRMING = { action: '', timer: 0 };
+const confirming = (action) => CONFIRMING.action === action;
+// Whether the click e on the button for action confirms it.
+function confirmed(action, e) {
+  if (confirming(action)) {
+    if (e.detail > 1) return false;
+    disarm();
+    return true;
+  }
+  clearTimeout(CONFIRMING.timer);
+  Object.assign(CONFIRMING, { action, timer: setTimeout(() => { CONFIRMING.action = ''; renderSide(); }, CONFIRM_MS) });
+  renderSide();
+  return false;
+}
+function disarm() { clearTimeout(CONFIRMING.timer); CONFIRMING.action = ''; }
 
 // ---------- HTML
 // GitHub's own rendering of a body, when it has one, except for suggestions: the page draws those against the file.
@@ -226,18 +244,13 @@ function commentsStatus() {
 const hasNewCommits = () => !!C.head && !PR.head.startsWith(C.head) && !C.head.startsWith(PR.head);
 
 // A rebuild of the page, which Cmd+R or the link in the rebuild notice starts while the reader keeps reading:
-// `phase` is building while the server builds the page for the head commit, ready once that page waits for a reload
-// the reader put off, current for a moment when the page is already the one for the head commit, and error when the
-// build failed, with the reason in `error`.
+// `phase` is building while the server builds the page for the head commit, current for a moment when the page is
+// already the one for the head commit, and error when the build failed, with the reason in `error`.
 const REBUILD = { phase: '', error: '', log: '', shown: 0 };
 const CURRENT_MS = 3000;
 const STATUS_URL = `/status/${PR.repo}/${PR.number}`;
 async function rebuild() {
   if (!API || REBUILD.phase === 'building') return;
-  if (REBUILD.phase === 'ready') {
-    if (!hasDraft() || confirm('Rebuilding the page discards your unsent text. Rebuild anyway?')) location.reload();
-    return;
-  }
   setRebuild('building');
   let d;
   try { d = await api('rebuild', { head: PR.head }); } catch (e) { setRebuild('error', e.message); return; }
@@ -269,18 +282,60 @@ async function followBuild() {
   if (log !== REBUILD.log) { REBUILD.log = log; renderSide(); }
   setTimeout(followBuild, 700);
 }
-// Load the rebuilt page once it is ready. The address keeps its hash, which names the file in view, so the rebuilt
-// page opens at that file. Unsent text would go with the old page, so then the page waits for the reader's next
-// Cmd+R, which asks first.
+// Load the rebuilt page, with the unsent text, once no action or comments load waits on GitHub: an action clears its
+// text only after the comments load that follows it. The address keeps its hash, which names the file in view, so the
+// rebuilt page opens at that file.
 function reloadRebuilt() {
-  if (hasDraft()) setRebuild('ready'); else location.reload();
+  if (state.busy || LOADS.started > LOADS.applied) { setTimeout(reloadRebuilt, 300); return; }
+  keepUnsent();
+  location.reload();
+}
+// Save the unsent text, the open panels and threads, and the text box with focus to sessionStorage, for takeUnsent.
+const UNSENT_KEY = `dr:unsent:${PR.repo}/${PR.number}`;
+function keepUnsent() {
+  const unsent = { compose: state.compose, drafts: [...state.drafts], replies: [...state.replyOpen], reviewText: state.reviewText,
+    convText: state.convText, mergeText: state.mergeText, reviewPanel: state.reviewPanel, mergePanel: state.mergePanel,
+    openThreads: [...state.openThreads], showOutdated: [...state.showOutdated], focus: focusedBox(document.body) };
+  try { sessionStorage.setItem(UNSENT_KEY, JSON.stringify(unsent)); } catch {}
+}
+// The text box that had focus when keepUnsent ran, until it has focus again or the reader clicks or types first.
+let unsentFocus = null;
+// Take back what keepUnsent saved, and remove it from sessionStorage. A comment box or draft keeps its line number.
+// One without a row on that line goes into the conversation box with its file and line, so its text stays in view.
+function takeUnsent() {
+  let u = null;
+  try { u = JSON.parse(sessionStorage.getItem(UNSENT_KEY)); sessionStorage.removeItem(UNSENT_KEY); } catch {}
+  if (!u) return;
+  Object.assign(state, {
+    replyOpen: new Map(u.replies), reviewText: u.reviewText, convText: u.convText, mergeText: u.mergeText,
+    reviewPanel: u.reviewPanel, mergePanel: u.mergePanel, openThreads: new Set(u.openThreads), showOutdated: new Set(u.showOutdated),
+  });
+  const lost = [];
+  for (const c of [u.compose, ...u.drafts.map(([, d]) => d)].filter(Boolean)) {
+    if (!hasRow(c)) lost.push(`On line ${c.line} of ${c.path}:\n${c.text.trim()}`);
+    else if (c === u.compose) state.compose = c;
+    else state.drafts.set(draftKey(c.path, c.side, c.line), c);
+  }
+  if (lost.length) state.convText = [state.convText.trim(), ...lost].filter(Boolean).join('\n\n');
+  unsentFocus = u.focus;
+  if (unsentFocus) for (const type of ['pointerdown', 'keydown']) document.addEventListener(type, () => { unsentFocus = null; }, { once: true, capture: true });
+}
+// Whether the file of comment box c has a row for its line on its side.
+function hasRow(c) {
+  const f = BY_PATH[c.path];
+  return !!f && buildRows(f).some(r => (c.side === 'RIGHT' ? r.type !== 'del' && r.newNo : r.type === 'del' && r.oldNo) === c.line);
+}
+function refocusUnsent() {
+  if (!unsentFocus) return;
+  refocusBox(document.body, unsentFocus);
+  const box = focusedBox(document.body);
+  if (box && box.key === unsentFocus.key) unsentFocus = null;
 }
 // The notice of the rebuild section, between hairlines under the sidebar's head; empty closes the section.
 function rebuildNotice() {
   if (!API) return '';
   const { phase, error, log } = REBUILD;
   if (phase === 'building') return Notice.busy('Rebuilding the page…', log);
-  if (phase === 'ready') return '<div class="notice">The rebuilt page is ready · <a href="#" data-rebuild>load it</a> (⌘R)</div>';
   if (phase === 'current') return '<div class="notice">No new commits · the page is up to date</div>';
   if (phase === 'error') return Notice.failed('Rebuild', error, 'data-rebuild');
   return hasNewCommits() ? '<div class="notice err">The pull request has new commits · <a href="#" data-rebuild>rebuild the page</a> (⌘R)</div>' : '';
@@ -289,7 +344,7 @@ function reviewPanelHtml() {
   const n = pendingCount();
   return `<div class="form card review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
     <div class="actions">${submitBtn('APPROVE', 'Approve')}${submitBtn('REQUEST_CHANGES', 'Request changes')}${btn('data-submit="COMMENT"', 'Comment')}
-    <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
+    <span class="spacer"></span>${C.pending ? btn('data-discard', confirming('discard') ? 'Confirm discard' : 'Discard') : ''}</div>
     <div class="hint">${n ? `${plural(n, 'pending comment')} ${n === 1 ? 'goes' : 'go'} out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
 }
 const REVIEW_VERB = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', COMMENTED: 'commented', DISMISSED: 'review dismissed' };
@@ -462,15 +517,14 @@ async function commentClick(t, e) {
   if (d.threadClose !== undefined) { state.openThreads.delete(d.threadClose); render(); return true; }
   if (d.threadGo !== undefined) { e.preventDefault(); const th = C.threads.find(x => x.id === d.threadGo); if (th) goThread(th); return true; }
   if (d.outdated !== undefined) { e.preventDefault(); state.showOutdated.has(d.outdated) ? state.showOutdated.delete(d.outdated) : state.showOutdated.add(d.outdated); render(); return true; }
-  if (d.reviewPanel !== undefined) { e.preventDefault(); state.reviewPanel = !state.reviewPanel; if (state.reviewPanel) state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
+  if (d.reviewPanel !== undefined) { e.preventDefault(); disarm(); state.reviewPanel = !state.reviewPanel; if (state.reviewPanel) state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
   if (d.submit !== undefined) {
     if (!hasReviewSummary() && (d.submit === 'REQUEST_CHANGES' || (d.submit === 'COMMENT' && !pendingCount() && !C.pending))) { state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
     if (await post('submit', { event: d.submit, body: state.reviewText })) { state.reviewText = ''; state.reviewPanel = false; renderSide(); }
     return true;
   }
   if (d.discard !== undefined) {
-    const n = pendingCount();
-    if (confirm(n ? `Discard the pending review and its ${plural(n, 'comment')}?` : 'Discard the pending review?')) await post('discard', {});
+    if (confirmed('discard', e)) await post('discard', {});
     return true;
   }
   if (d.convSend !== undefined) {

@@ -52,7 +52,7 @@ document.addEventListener('click', (e) => {
   if (state.mergeMenu && !e.target.closest('.merge-pick')) { state.mergeMenu = false; renderSide(); }
   if (CL.menu && !e.target.closest('.claude-pick')) { CL.menu = false; renderSide(); }
   const merge = e.target.closest(MERGE_ATTRS);
-  if (merge) { e.preventDefault(); mergeClick(merge); return; }
+  if (merge) { e.preventDefault(); mergeClick(merge, e); return; }
   const claude = e.target.closest(CLAUDE_ATTRS);
   if (claude) { e.preventDefault(); claudeClick(claude); return; }
   if (e.target.closest('textarea, .form, .thread .cbody')) { const b = e.target.closest(COMMENT_ATTRS); if (b) commentClick(b, e); return; }
@@ -245,6 +245,7 @@ window.addEventListener('hashchange', () => {
   state.showGenerated = lsGet('dr:generated') === '1';
   if (!FILES.some(kindVisible)) state.filter = 'all';
   document.body.classList.toggle('commentable', !!API);
+  takeUnsent();
   render();
   // A hash without a line puts the reader back on its file and leaves a reviewed file closed.
   const t = hashTarget();

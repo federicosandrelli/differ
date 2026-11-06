@@ -42,6 +42,8 @@ const base = {
     "no-redeclare": ["error", { builtinGlobals: true }],
     "no-empty": ["error", { allowEmptyCatch: true }],
     "no-unused-vars": ["error", { vars: "local" }],
+    // The desktop app's webview answers alert, confirm and prompt at once without showing a dialog.
+    "no-alert": "error",
   },
 };
 
