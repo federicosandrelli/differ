@@ -232,7 +232,7 @@ def test_a_thread_reaches_the_session_which_replies_through_the_mcp_server(fake:
         ("reader", "Use a logger"),
         ("claude", "Fake reply to: Use a logger"),
     ]
-    assert "called reply_in_thread" in output()
+    wait_for(lambda: "called reply_in_thread" in output())
 
 
 def test_a_resume_of_a_lost_conversation_starts_again_with_a_new_id(
