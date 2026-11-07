@@ -65,6 +65,16 @@ def test_the_overview_links_the_author_and_the_commits_to_github(page: Page, ser
     assert 'href="https://github.com/apps/dependabot"' in page.evaluate("PR.author = 'app/dependabot', overviewHtml()")
 
 
+def test_the_copy_button_beside_github_copies_the_pull_request_link(page: Page, server_url: str) -> None:
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    open_pr(page, server_url)
+    page.evaluate("document.documentElement.style.setProperty('--side', '600px')")
+    page.locator("#side .gh").hover()
+    page.get_by_role("button", name="Copy link").click()
+    expect(page.locator("#side .copy.tone-ok")).to_be_visible()
+    assert page.evaluate("navigator.clipboard.readText()") == "https://github.com/acme/widgets/pull/1"
+
+
 def test_the_page_highlights_code_without_the_network(page: Page, server_url: str) -> None:
     requests: list[str] = []
     page.on("request", lambda request: requests.append(request.url))

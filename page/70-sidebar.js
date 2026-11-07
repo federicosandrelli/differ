@@ -10,10 +10,12 @@ function guides(depth) {
   for (let k = 0; k < depth; k++) { img.push('linear-gradient(var(--border), var(--border))'); pos.push(`${17 + k * 19}px 0`); size.push('1px 100%'); }
   return `background-image:${img.join(',')};background-position:${pos.join(',')};background-size:${size.join(',')}`;
 }
-// Outline folder and speech-bubble icons drawn inline, so the page needs no icon font.
+// Outline folder, speech-bubble, copy and tick icons drawn inline, so the page needs no icon font.
 const FOLDER_CLOSED = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BUBBLE = '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FOLDER_OPEN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 19l2.757-7.351A1 1 0 0 1 8.693 11H21a1 1 0 0 1 .986 1.164l-.996 5.211A2 2 0 0 1 19.026 19H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const COPY = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 15a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const TICK = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="m5 12 5 5 9-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function leafHtml(f, depth) {
   const k = changeKind(f);
@@ -124,8 +126,9 @@ function renderSide() {
     const extra = filter === 'all' ? '' : `<span class="count" title="${plural(files.length, 'file')}">${fmt(files.length)}</span>${split}`;
     return `<button data-filter="${filter}" class="${state.filter === filter ? 'on' : ''}">${label}${extra}</button>`;
   };
-  const h = `<div class="head"><h1 data-go="overview">#${PR.number} ${esc(PR.title)}</h1>
-    <div class="meta">${statusChip()}<span>${plural(FILES.length, 'file')} · ${reviewed} reviewed · <a href="${PR.url}" target="_blank">GitHub</a></span>${API ? headButtons() : ''}</div></div>
+  const title = `#${PR.number} ${esc(PR.title)}`;
+  const h = `<div class="head"><h1 data-go="overview" title="${title}">${title}</h1>
+    <div class="meta">${statusChip()}<span class="links"><span class="file-counts">${plural(FILES.length, 'file')} · ${reviewed} reviewed</span><span class="gh"><a href="${PR.url}" target="_blank">GitHub</a><button class="ghost copy" data-copy-url aria-label="Copy link">${COPY}</button></span></span>${API ? headButtons() : ''}</div></div>
     ${sectionHtml('rebuild', rebuildNotice())}
     ${commentNotices()}${mergeNotice()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}${state.mergePanel && isOwn() ? mergePanelHtml() : ''}
     <div class="scroll">${sectionHtml('filters', `<div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>`)}
@@ -154,6 +157,25 @@ function renderSide() {
   refocusBox(side, typing);
   revealActive();
   updateSearchMeta();
+  fitMeta();
+}
+// The head's meta line keeps everything that fits on one line: it gives up the copy button first, then the counts,
+// and keeps the copy button once the counts are gone if it fits then. When the line wraps even without both, both stay
+// hidden.
+function fitMeta() {
+  const meta = document.querySelector('#side .head .meta'); if (!meta) return;
+  const mid = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+  const wraps = () => Math.abs(mid(meta.firstElementChild) - mid(meta.lastElementChild)) > 1;
+  const hide = (...classes) => { meta.classList.remove('no-copy', 'no-counts'); meta.classList.add(...classes); };
+  [[], ['no-copy'], ['no-counts'], ['no-copy', 'no-counts']].some((classes) => { hide(...classes); return !wraps(); });
+}
+// Copy the pull request's link, and show a tick on the button for a moment.
+function copyUrl() {
+  navigator.clipboard.writeText(PR.url).then(() => {
+    const button = document.querySelector('#side .copy'); if (!button) return;
+    button.innerHTML = TICK; button.classList.add('tone-ok');
+    setTimeout(() => { button.innerHTML = COPY; button.classList.remove('tone-ok'); }, 1500);
+  });
 }
 function revealActive() {
   const active = document.querySelector('#side .row.active');

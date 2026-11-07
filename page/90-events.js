@@ -61,7 +61,7 @@ document.addEventListener('click', (e) => {
   const cell = API && e.target.closest('table.diff td.n.key');
   const at = cell && rowAt(cell.parentElement.id);
   if (at) { e.preventDefault(); openCompose(at.file.path, at.side, at.line, e.shiftKey); return; }
-  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-noiseonly],[data-generated],[data-folder],[data-review],[data-fold],[data-open-editor],[data-editor-menu],[data-editor],[data-editor-dismiss],' + COMMENT_ATTRS);
+  const t = e.target.closest('[data-go],[data-path],[data-toggle],[data-filter],[data-noiseonly],[data-generated],[data-folder],[data-review],[data-fold],[data-open-editor],[data-editor-menu],[data-editor],[data-editor-dismiss],[data-copy-url],' + COMMENT_ATTRS);
   if (!t) return;
   if (t.matches(COMMENT_ATTRS)) { e.stopPropagation(); commentClick(t, e); return; }
   const d = t.dataset;
@@ -72,6 +72,7 @@ document.addEventListener('click', (e) => {
   // Choosing an editor in a file's menu keeps it as the choice for every file, and opens this file in it.
   if (d.editor !== undefined) { const f = BY_PATH[EDITOR.menu]; lsSet('dr:editor', d.editor); EDITOR.menu = null; render(); openInEditor(f); return; }
   if (d.editorDismiss !== undefined) { e.preventDefault(); EDITOR.error = ''; render(); return; }
+  if (d.copyUrl !== undefined) { copyUrl(); return; }
   if (d.go) { scrollToFile('overview'); return; }
   if (d.path) {
     e.preventDefault();
@@ -201,6 +202,7 @@ window.addEventListener('hashchange', () => {
   document.addEventListener('mousedown', (e) => { const g = e.target.closest('#side .grip'); if (!g) return; dragging = g; g.classList.add('dragging'); e.preventDefault(); });
   document.addEventListener('mousemove', (e) => { if (!dragging) return; const w = Math.max(260, Math.min(e.clientX, window.innerWidth * 0.7)); document.documentElement.style.setProperty('--side', w + 'px'); });
   document.addEventListener('mouseup', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; lsSet('dr:side-width', parseInt(getComputedStyle(document.getElementById('side')).width)); });
+  new ResizeObserver(fitMeta).observe(document.getElementById('side'));
 })();
 
 // Pressing a row's comment button and dragging to another row of the same file and side opens a comment on the
