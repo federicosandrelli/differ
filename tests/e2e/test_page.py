@@ -1322,6 +1322,19 @@ def test_auto_start_starts_the_session_of_a_shell_tab_and_leaves_the_terminal_hi
 
 
 @pytest.mark.auto_start
+def test_auto_start_off_starts_nothing_in_a_shell_tab(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
+    opens = claude_opens(page)
+    tab = open_in_shell(page, server_url, PR)
+    tab.wait_for_function("CL.loaded")
+    expect(tab.locator("#side .foot [data-term-toggle]")).to_have_attribute(
+        "title", "No Claude session · show the terminal"
+    )
+    assert opens == []
+
+
+@pytest.mark.auto_start
 def test_auto_start_starts_nothing_in_a_page_outside_the_shell(page: Page, server_url: str) -> None:
     opens = claude_opens(page)
     open_pr(page, server_url)

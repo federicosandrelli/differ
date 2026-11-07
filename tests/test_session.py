@@ -584,3 +584,17 @@ def test_trust_gives_up_on_a_config_that_keeps_changing(tmp_path: Path, monkeypa
         session.trust(tmp_path / "repos" / "acme" / "widgets.git")
     assert json.loads(config.read_text()) == {"numStartups": session.TRUST_TRIES}
     assert list(config.parent.iterdir()) == [config]
+
+
+def test_a_start_while_the_session_starts_keeps_the_size_the_terminal_set(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = threading.Event()
+    monkeypatch.setattr(github, "viewer_login", lambda: gate.wait(10) and "tester")
+    session.start(REF, fake.port, 80, 24)
+    session.resize(REF, 132, 40)
+    session.start(REF, fake.port, 80, 24)
+    gate.set()
+    wait_for(running)
+    with session.lock:
+        assert session.session_of(REF).size == (132, 40)

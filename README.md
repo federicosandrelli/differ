@@ -55,7 +55,7 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 ## Claude in the page
 
 Every pull request gets a Claude Code session of its own, started when its
-page opens. Turn Auto start off in the settings to start it from the terminal
+page opens in a tab of differ. Turn Auto start off in the settings to start it from the terminal
 instead. The bot button in the sidebar footer shows its terminal under the
 file tree, and the arrow next to it moves the terminal to a column of its own
 between the tree and the code. differ starts `claude` in a worktree of the
