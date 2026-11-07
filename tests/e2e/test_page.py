@@ -2444,6 +2444,25 @@ def test_a_declined_merge_sends_nothing(page: Page, server_url: str, add_pr: Add
     assert len(sent(gh_state, "mergePullRequest")) == before
 
 
+def test_a_page_in_a_shell_tab_asks_the_shell_to_confirm_a_merge(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    tab = open_in_shell(page, server_url, mine(add_pr, gh_state))
+    # The desktop app's webview answers window.confirm with false at once and shows no dialog.
+    tab.evaluate("window.confirm = () => false")
+    asked: list[str] = []
+
+    def accept(dialog: Dialog) -> None:
+        asked.append(dialog.message)
+        dialog.accept()
+
+    page.on("dialog", accept)
+    tab.click("#side button[data-merge-panel]")
+    tab.click("button[data-merge-do='merge']")
+    expect(tab.locator("#side .head .status")).to_have_text("Merged")
+    assert asked == [f"Squash and merge: #{tab.evaluate('PR.number')} into {tab.evaluate('M.base')}?"]
+
+
 def test_while_github_blocks_the_merge_auto_merge_turns_on_and_off(
     page: Page, server_url: str, add_pr: AddPr, gh_state: Path
 ) -> None:

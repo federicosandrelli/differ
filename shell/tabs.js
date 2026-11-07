@@ -127,6 +127,12 @@
     if (m.type === 'zoom') { if ([-1, 0, 1].includes(m.dir)) zoomStep(m.dir); return; }
     if (m.type === 'settings') { openSettings(m.section); return; }
     if (m.type === 'external') { if (APP) location.href = m.url; else window.open(m.url, '_blank', 'noopener'); return; }
+    if (m.type === 'ask') {
+      // The desktop app's webview answers window.confirm with false at once and shows no dialog, so the app asks.
+      const asked = invoke ? invoke('confirm', { message: String(m.message) }).catch(() => false) : Promise.resolve(confirm(m.message));
+      asked.then(ok => e.source.postMessage({ type: 'answer', id: m.id, ok }, location.origin));
+      return;
+    }
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
     if (m.type === 'badge') { tab.badge = m.n; draw(); save(); }

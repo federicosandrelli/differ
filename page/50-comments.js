@@ -235,7 +235,7 @@ const STATUS_URL = `/status/${PR.repo}/${PR.number}`;
 async function rebuild() {
   if (!API || REBUILD.phase === 'building') return;
   if (REBUILD.phase === 'ready') {
-    if (!hasDraft() || confirm('Rebuilding the page discards your unsent text. Rebuild anyway?')) location.reload();
+    if (!hasDraft() || await ask('Rebuilding the page discards your unsent text. Rebuild anyway?')) location.reload();
     return;
   }
   setRebuild('building');
@@ -471,7 +471,7 @@ async function commentClick(t, e) {
   }
   if (d.discard !== undefined) {
     const n = pendingCount();
-    if (confirm(n ? `Discard the pending review and its ${plural(n, 'comment')}?` : 'Discard the pending review?')) await post('discard', {});
+    if (await ask(n ? `Discard the pending review and its ${plural(n, 'comment')}?` : 'Discard the pending review?')) await post('discard', {});
     return true;
   }
   if (d.convSend !== undefined) {

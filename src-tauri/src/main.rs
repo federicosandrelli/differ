@@ -214,6 +214,20 @@ fn retry_server(app: AppHandle) -> Result<(), String> {
     start_server(&app).map_err(|err| err.to_string())
 }
 
+// The webview answers window.confirm with false at once and shows no dialog, so the shell asks the reader here.
+#[tauri::command]
+async fn confirm(window: tauri::WebviewWindow, message: String) -> bool {
+    rfd::AsyncMessageDialog::new()
+        .set_parent(&window)
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title("differ")
+        .set_description(message)
+        .set_buttons(rfd::MessageButtons::OkCancel)
+        .show()
+        .await
+        == rfd::MessageDialogResult::Ok
+}
+
 const CLOSE_TAB: &str = "close-tab";
 const CLOSE_WINDOW: &str = "close-window";
 const OPEN_SETTINGS: &str = "open-settings";
@@ -277,7 +291,8 @@ fn main() {
             update::update_check,
             update::update_run,
             server_failed,
-            retry_server
+            retry_server,
+            confirm
         ])
         .menu(app_menu)
         .on_menu_event(|app, event| {

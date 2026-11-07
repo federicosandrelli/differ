@@ -16,7 +16,23 @@ const SHELL = window.parent === window ? null : {
   page(url, title, status) { this.tell({ type: 'page', url, title, status }); },
   draft(on) { if (on !== this.drafting) { this.drafting = on; this.tell({ type: 'draft', on }); } },
   drafting: false,
+  ask(message) {
+    const id = ++this.asked;
+    return new Promise((resolve) => {
+      const answer = (e) => {
+        if (e.origin !== location.origin || !e.data || e.data.type !== 'answer' || e.data.id !== id) return;
+        window.removeEventListener('message', answer);
+        resolve(!!e.data.ok);
+      };
+      window.addEventListener('message', answer);
+      this.tell({ type: 'ask', id, message });
+    });
+  },
+  asked: 0,
 };
+// Asks the reader to confirm `message`, and resolves to true when they do. The desktop app's webview answers
+// window.confirm with false at once and shows no dialog, so a page inside the shell asks the shell.
+const ask = (message) => SHELL ? SHELL.ask(message) : Promise.resolve(confirm(message));
 
 if (SHELL) {
   document.documentElement.classList.add('framed');

@@ -205,7 +205,7 @@ async function mergeClick(t) {
   const method = mergeMethod();
   switch (d.mergeDo) {
     case 'merge':
-      if (!confirm(`${METHODS[method].label}: #${PR.number} into ${M.base}?`)) return;
+      if (!await ask(`${METHODS[method].label}: #${PR.number} into ${M.base}?`)) return;
       await mergeSend('merge', { method, head: PR.head, ...mergeMessage(method) });
       break;
     case 'autoon': await mergeSend('automerge', { on: true, method, head: PR.head, ...mergeMessage(method) }); break;
