@@ -173,8 +173,8 @@ function fitMeta() {
 function copyUrl() {
   navigator.clipboard.writeText(PR.url).then(() => {
     const button = document.querySelector('#side .copy'); if (!button) return;
-    button.innerHTML = TICK; button.classList.add('tone-ok');
-    setTimeout(() => { button.innerHTML = COPY; button.classList.remove('tone-ok'); }, 1500);
+    button.innerHTML = TICK; button.classList.add('copied');
+    setTimeout(() => { button.innerHTML = COPY; button.classList.remove('copied'); }, 1500);
   });
 }
 function revealActive() {

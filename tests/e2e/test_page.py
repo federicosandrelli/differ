@@ -71,7 +71,7 @@ def test_the_copy_button_beside_github_copies_the_pull_request_link(page: Page, 
     page.evaluate("document.documentElement.style.setProperty('--side', '600px')")
     page.locator("#side .gh").hover()
     page.get_by_role("button", name="Copy link").click()
-    expect(page.locator("#side .copy.tone-ok")).to_be_visible()
+    expect(page.locator("#side .copy.copied")).to_be_visible()
     assert page.evaluate("navigator.clipboard.readText()") == "https://github.com/acme/widgets/pull/1"
 
 

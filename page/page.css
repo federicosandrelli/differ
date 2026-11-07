@@ -25,8 +25,7 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 #side .head .links, #side .head .gh { display: inline-flex; align-items: center; white-space: nowrap; }
 #side .head .links { gap: 8px; }
 #side .head .copy { opacity: 0; background: none; color: inherit; }
-#side .head .gh:hover .copy, #side .head .copy:focus-visible, #side .head .copy.tone-ok { opacity: 1; }
-#side .head .copy.tone-ok { color: var(--add-fg); }
+#side .head .gh:hover .copy, #side .head .copy:focus-visible, #side .head .copy.copied { opacity: 1; }
 #side .head .meta.no-copy .copy, #side .head .meta.no-counts .file-counts { display: none; }
 #side .controls { padding: 8px 16px; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-secondary); flex-wrap: wrap; }
 #side .searchbar { padding: 8px 12px; display: grid; grid-template-columns: 1fr; gap: 4px; }
