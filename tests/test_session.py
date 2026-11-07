@@ -67,7 +67,10 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleName
 
 
 def starts(log: Path) -> list[dict]:
-    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+    """The starts the fake claude logged, leaving out a line it is still writing."""
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text().splitlines(keepends=True) if line.endswith("\n")]
 
 
 def wait_for(condition: Callable[[], bool], timeout: float = 15) -> None:
@@ -163,7 +166,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
 
 def test_a_second_open_while_the_session_runs_starts_nothing(fake: SimpleNamespace) -> None:
     session.start(REF, fake.port, 80, 24)
-    wait_for(running)
+    wait_for(lambda: len(starts(fake.log)) == 1)
     session.start(REF, fake.port, 80, 24)
     time.sleep(0.3)
     assert len(starts(fake.log)) == 1
@@ -232,7 +235,7 @@ def test_a_thread_reaches_the_session_which_replies_through_the_mcp_server(fake:
         ("reader", "Use a logger"),
         ("claude", "Fake reply to: Use a logger"),
     ]
-    assert "called reply_in_thread" in output()
+    wait_for(lambda: "called reply_in_thread" in output())
 
 
 def test_a_resume_of_a_lost_conversation_starts_again_with_a_new_id(
