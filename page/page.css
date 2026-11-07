@@ -41,12 +41,12 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 #side .list { flex: 1; padding-bottom: 24px; }
 /* While the search box has focus, it stays at the top of the scrolling part of the sidebar, over the tree. */
 #side .sect[data-sect="search"]:focus-within { position: sticky; top: 0; z-index: 1; background: var(--bg-panel); }
-#side .foot { flex: none; border-top: 1px solid var(--border); padding: 6px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; font-size: 12px; }
+#side .foot { flex: none; border-top: 1px solid var(--border); padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; }
 /* Inside the shell, its settings gear sits over the bottom left corner of the footer, so the footer starts to its right. */
 html.framed #side .foot { padding-left: 44px; }
 #side .foot .claude-pick { position: relative; display: inline-flex; gap: 2px; margin-left: auto; }
-/* Inside the shell, the Claude button mirrors the settings gear: as far from the right edge and as high. */
-html.framed #side .foot .claude-pick { margin: 4px -5px 0 auto; }
+/* Inside the shell, the Claude button mirrors the settings gear: as far from the right edge. */
+html.framed #side .foot .claude-pick { margin-right: -5px; }
 #side .foot .session .reason-icon { width: 16px; height: var(--control-line); }
 /* The dot next to the bot: lit while the session listens for the comments, dim while it does not. */
 .dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--text-muted); opacity: var(--dim); flex: none; }
