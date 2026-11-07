@@ -204,7 +204,7 @@ def trust(folder: Path) -> None:
             fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.differ-")
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(data, indent=2))
+                    f.write(json.dumps(data, indent=2, ensure_ascii=False))
                     f.flush()
                     os.fsync(f.fileno())
                 os.chmod(name, stat.S_IMODE(before.st_mode))
@@ -277,9 +277,9 @@ def start(ref: PullRef, port: int, cols: int, rows: int) -> dict:
     may clone and check out the repository. Answers `status`."""
     with lock:
         s = session_of(ref)
-        s.size = (max(20, cols), max(5, rows))
         if s.starting or (s.proc is not None and s.proc.poll() is None):
             return status(ref)
+        s.size = (max(20, cols), max(5, rows))
         s.starting, s.error = True, ""
         s.generation += 1
         generation = s.generation
@@ -299,10 +299,11 @@ def _start(ref: PullRef, port: int, generation: int) -> None:
             raise RuntimeError(f"The pull request is {pr.status}, so it gets no session.")
         viewer = github.viewer_login()
         folder = checkout.worktree(ref, pr.head)
+        mirror = build.mirror_of(ref)
         try:
-            trust(build.mirror_of(ref))
+            trust(mirror)
         except (OSError, ValueError) as exc:
-            sys.stderr.write(f"Could not record the trust of {build.mirror_of(ref)}: {exc}\n")
+            sys.stderr.write(f"Could not record the trust of {mirror}: {exc}\n")
         with lock:
             s = session_of(ref)
             if s.generation != generation:

@@ -252,7 +252,9 @@ window.addEventListener('storage', (e) => { if (e.key === 'dr:theme' && TERM.ter
 // A terminal the reader left open on this pull request comes back with the page, once the page has drawn and the
 // scripts after this one have run. It starts nothing: Auto start does.
 setTimeout(() => { if (termAvailable() && TERM.open) openTerminal(false); }, 0);
-// With Auto start on, start the session, whether or not the terminal shows, unless the pull request has ended.
+// With Auto start on, start the session, whether or not the terminal shows, while comments can go to Claude and the
+// pull request is open. Only a page in a tab of the shell starts one: closing the tab ends it, and the shell holds the
+// setting.
 function autoStart() {
-  if (termAvailable() && lsGet(CLAUDE_START_KEY) !== 'off') startSession();
+  if (SHELL && termAvailable() && lsGet(CLAUDE_START_KEY) !== 'off') startSession();
 }
