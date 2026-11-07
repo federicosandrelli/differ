@@ -11,6 +11,8 @@
 const TERM = { open: false, dock: 'side', height: 320, width: 520, el: null, term: null, fit: null, ws: null, lib: null };
 const PANE_KEY = 'dr:pane';
 const TERM_OPEN_KEY = `dr:term:${PR.repo}#${PR.number}`;
+// Auto start in the settings: 'off', or nothing for on.
+const CLAUDE_START_KEY = 'dr:claudeStart';
 // The most bytes one frame carries to the relay, which reads a frame of at most 64 KB.
 const TERM_FRAME_MAX = 16384;
 const TERM_FILES = { css: '/vendor/xterm.css', js: ['/vendor/xterm.js', '/vendor/xterm-addon-fit.js'] };
@@ -173,14 +175,14 @@ function connectTerm() {
 }
 
 // ---------- actions
-// Show the terminal, start the session unless it runs, and connect.
-async function openTerminal() {
+// Show the terminal and connect, and, unless `start` is false, start the session unless it runs.
+async function openTerminal(start = true) {
   TERM.open = true; savePane();
   renderSide();
   await createTerm();
   mountTerminal();
   connectTerm();
-  await startSession();
+  if (start) await startSession();
 }
 // Ask the server to start the session, with the terminal's size; the header shows how it goes.
 async function startSession() {
@@ -248,5 +250,11 @@ async function termClick(t) {
 // The theme changed in the shell's settings, which share this page's storage.
 window.addEventListener('storage', (e) => { if (e.key === 'dr:theme' && TERM.term) TERM.term.options.theme = termTheme(); });
 // A terminal the reader left open on this pull request comes back with the page, once the page has drawn and the
-// scripts after this one have run.
-setTimeout(() => { if (termAvailable() && TERM.open) openTerminal(); }, 0);
+// scripts after this one have run. It starts nothing: Auto start does.
+setTimeout(() => { if (termAvailable() && TERM.open) openTerminal(false); }, 0);
+// With Auto start on, start the session, whether or not the terminal shows, while comments can go to Claude and
+// GitHub reports the pull request open. Only a page in a tab of the shell starts one: closing the tab ends it, and
+// the shell holds the setting.
+function autoStart() {
+  if (SHELL && C.loaded && termAvailable() && lsGet(CLAUDE_START_KEY) !== 'off') startSession();
+}

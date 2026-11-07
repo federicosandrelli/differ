@@ -33,4 +33,7 @@ ignore = ["UP031"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["e2e: drives the served page in a browser"]
+markers = [
+    "e2e: drives the served page in a browser",
+    "auto_start: opens pages with Auto start on, as it is by default",
+]

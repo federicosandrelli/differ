@@ -14,6 +14,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import Page
 
 from helpers import Files, commit_tree, git, make_repo
 
@@ -193,6 +194,7 @@ def server_url(gh_state: Path, cache_dir: Path, tmp_path_factory: pytest.TempPat
         "FAKE_GH_STATE": str(gh_state),
         "DIFFER_CLAUDE": str(E2E.parent / "fakeclaude"),
         "FAKE_CLAUDE_LOG": str(cache_dir / "claude-starts.log"),
+        "CLAUDE_CONFIG_DIR": str(tmp_path_factory.mktemp("claude-config")),
     }
     log = tmp_path_factory.mktemp("server") / "server.log"
     with log.open("w") as out:
@@ -211,3 +213,11 @@ def server_url(gh_state: Path, cache_dir: Path, tmp_path_factory: pytest.TempPat
     yield url
     proc.terminate()
     proc.wait(timeout=5)
+
+
+@pytest.fixture(autouse=True)
+def without_auto_start(page: Page, request: pytest.FixtureRequest) -> None:
+    """Every page opens with Auto start off, so a session starts only in a test marked `auto_start` or one that opens
+    the terminal."""
+    if request.node.get_closest_marker("auto_start") is None:
+        page.add_init_script("localStorage.setItem('dr:claudeStart', 'off')")

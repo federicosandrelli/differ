@@ -7,6 +7,10 @@ A pull request's session file, sessions/<owner>/<repo>/<number>.json in the cach
 the last process and whether the id has a conversation to resume. The process's output is kept in a buffer of
 BUFFER_MAX bytes, replayed to a terminal that connects, so a reloaded page shows what the session showed.
 
+Before a start, `trust` records the repository's bare mirror as trusted in Claude Code's config file, so the process
+starts without the folder trust dialog: Claude Code keys the trust of a worktree on its repository, which for the
+pull request's worktree is the mirror.
+
 The module lock guards the sessions' state and is never held across a read or write of a pseudoterminal or a socket:
 a session's own `writes` and `sends` locks order those, so a paste the process does not read yet, or a terminal that
 stops reading, holds up that session alone."""
@@ -20,9 +24,11 @@ import re
 import select
 import shutil
 import signal
+import stat
 import struct
 import subprocess
 import sys
+import tempfile
 import termios
 import threading
 import time
@@ -46,9 +52,15 @@ MIN_VERSION = (2, 1, 316)
 BUFFER_MAX = 256 * 1024
 # A process that ends this soon after a start did not start: its output says why.
 QUICK_EXIT = 15
-# The variables a server started from a Claude Code session inherits, which would tie the child to that session or
-# put it in bare mode, without the user's login.
-DROPPED_VARIABLES = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SIMPLE", "CLAUDE_CODE_SSE_PORT")
+# The variables a server started from a Claude Code session inherits, which would tie the child to that session, put
+# it in bare mode, without the user's login, or turn its transcript off, so that nothing could resume it.
+DROPPED_VARIABLES = (
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SIMPLE",
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_CODE_CHILD_SESSION",
+)
 DROPPED_PREFIXES = ("CLAUDE_AGENT_SDK",)
 # Sends bytes of the process's output to one terminal. Raises OSError once the terminal has gone.
 Send = Callable[[bytes], None]
@@ -153,6 +165,79 @@ def environment() -> dict[str, str]:
     return env
 
 
+def config_path() -> Path:
+    """Claude Code's config file, `~/.claude.json`, which CLAUDE_CONFIG_DIR moves with the rest of `~/.claude`. Claude
+    Code may read the legacy `~/.claude/.config.json` instead; this path never names that file."""
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home()) / ".claude.json"
+
+
+# Held around every change to Claude Code's config file, so two threads never write it at once.
+config_lock = threading.Lock()
+# How many times `trust` tries to write the config file before it gives up.
+TRUST_TRIES = 5
+
+
+def trust(folder: Path) -> None:
+    """Record in Claude Code's config file that the user trusts the folder, the entry Claude Code's docs name as the
+    way to trust a folder by hand, unless the file has it already. Writes nothing when the config file is missing, so
+    Claude Code still finds it missing and offers its backup. A config file behind a symbolic link is written where
+    the link leads. The new file is written next to the old one, with its mode, and takes its place only while the old
+    one is as it was when read; otherwise the write starts again from the changed file. Raises ValueError when the file
+    is not a JSON object, and OSError when it cannot be read or written, or keeps changing."""
+    key = os.path.realpath(folder)
+    with config_lock:
+        for _ in range(TRUST_TRIES):
+            path = config_path().resolve()
+            before = _stat(path)
+            if before is None:
+                return
+            data = _read_config(path)
+            projects = data.get("projects", {})
+            if not isinstance(projects, dict):
+                raise ValueError(f"{path} is not the config file Claude Code writes.")
+            project = projects.get(key)
+            if not isinstance(project, dict):
+                project = {}
+            if project.get("hasTrustDialogAccepted") is True:
+                return
+            data["projects"] = {**projects, key: {**project, "hasTrustDialogAccepted": True}}
+            fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.differ-")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(data, indent=2, ensure_ascii=False))
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(name, stat.S_IMODE(before.st_mode))
+                if _same(_stat(path), before):
+                    os.replace(name, path)
+                    return
+            finally:
+                Path(name).unlink(missing_ok=True)
+        raise OSError(f"{config_path()} kept changing while differ wrote it.")
+
+
+def _read_config(path: Path) -> dict:
+    """The config file's JSON object. Raises ValueError when the file holds anything else."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} is not the config file Claude Code writes.")
+    return data
+
+
+def _stat(path: Path) -> os.stat_result | None:
+    try:
+        return path.stat()
+    except FileNotFoundError:
+        return None
+
+
+def _same(a: os.stat_result | None, b: os.stat_result) -> bool:
+    """Whether a second look at a file found it unchanged: the same file, with the same size and time."""
+    if a is None:
+        return False
+    return (a.st_ino, a.st_size, a.st_mtime_ns) == (b.st_ino, b.st_size, b.st_mtime_ns)
+
+
 def system_prompt(ref: PullRef, pr: github.PullRequest, viewer: str) -> str:
     """The shipped prompt with the pull request, its author and the reader filled in."""
     return (
@@ -192,9 +277,9 @@ def start(ref: PullRef, port: int, cols: int, rows: int) -> dict:
     may clone and check out the repository. Answers `status`."""
     with lock:
         s = session_of(ref)
-        s.size = (max(20, cols), max(5, rows))
         if s.starting or (s.proc is not None and s.proc.poll() is None):
             return status(ref)
+        s.size = (max(20, cols), max(5, rows))
         s.starting, s.error = True, ""
         s.generation += 1
         generation = s.generation
@@ -214,6 +299,11 @@ def _start(ref: PullRef, port: int, generation: int) -> None:
             raise RuntimeError(f"The pull request is {pr.status}, so it gets no session.")
         viewer = github.viewer_login()
         folder = checkout.worktree(ref, pr.head)
+        mirror = build.mirror_of(ref)
+        try:
+            trust(mirror)
+        except (OSError, ValueError) as exc:
+            sys.stderr.write(f"Could not record the trust of {mirror}: {exc}\n")
         with lock:
             s = session_of(ref)
             if s.generation != generation:

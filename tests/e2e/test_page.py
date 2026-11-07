@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from playwright.sync_api import APIResponse, Dialog, Locator, Page, Position, Response, Route, expect
+from playwright.sync_api import APIResponse, Dialog, Frame, Locator, Page, Position, Response, Route, expect
 
 from e2e.conftest import NEW, OLD, TITLE
 from helpers import Files
@@ -1274,6 +1274,140 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
     assert closed.ok and not worktree.exists()
 
 
+def open_in_shell(page: Page, server_url: str, pr: str) -> Frame:
+    """Open the pull request at the page path `pr` in a tab of the shell, and answer the tab's frame once its
+    comments have loaded."""
+    page.goto(server_url + "/")
+    home = page.frame_locator("#panes iframe.on")
+    home.locator("input[name=pr]").fill(f"acme/widgets#{pr.rsplit('/', 1)[1]}")
+    home.locator("input[name=pr]").press("Enter")
+    return shell_tab(page)
+
+
+def shell_tab(page: Page) -> Frame:
+    """The frame of the shell's active tab, once its comments have loaded."""
+    expect(page.frame_locator("#panes iframe.on").locator("#side .tree")).to_be_visible(timeout=30000)
+    handle = page.locator("#panes iframe.on").element_handle()
+    frame = handle.content_frame() if handle else None
+    assert frame
+    frame.wait_for_function("C.loaded")
+    return frame
+
+
+def claude_opens(page: Page) -> list[str]:
+    """The `claude_open` requests the page and its frames send from now on."""
+    opens: list[str] = []
+    page.on("request", lambda r: opens.append(r.url) if r.url.endswith("/claude_open") else None)
+    return opens
+
+
+def close_session(page: Page, server_url: str, pr: str) -> None:
+    number = pr.rsplit("/", 1)[1]
+    page.request.post(f"{server_url}/api/acme/widgets/{number}/claude_close", data={}, headers={"Origin": server_url})
+
+
+@pytest.mark.auto_start
+def test_auto_start_starts_the_session_of_a_shell_tab_and_leaves_the_terminal_hidden(
+    page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
+) -> None:
+    pr = add_pr(OLD, NEW, branch="auto-start")
+    try:
+        tab = open_in_shell(page, server_url, pr)
+        session = tab.locator("#side .foot [data-term-toggle]")
+        expect(session).to_have_attribute("title", "Claude is listening · show the terminal", timeout=60000)
+        expect(tab.locator(".term")).to_have_count(0)
+        assert (cache_dir / "worktrees" / "acme" / "widgets" / pr.rsplit("/", 1)[1] / "src" / "app.py").exists()
+    finally:
+        close_session(page, server_url, pr)
+
+
+@pytest.mark.auto_start
+def test_auto_start_off_starts_nothing_in_a_shell_tab(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
+    opens = claude_opens(page)
+    tab = open_in_shell(page, server_url, PR)
+    tab.wait_for_function("CL.loaded")
+    expect(tab.locator("#side .foot [data-term-toggle]")).to_have_attribute(
+        "title", "No Claude session · show the terminal"
+    )
+    assert opens == []
+
+
+@pytest.mark.auto_start
+def test_auto_start_starts_nothing_in_a_page_outside_the_shell(page: Page, server_url: str) -> None:
+    opens = claude_opens(page)
+    open_pr(page, server_url)
+    page.wait_for_function("CL.loaded")
+    assert opens == []
+
+
+@pytest.mark.auto_start
+def test_auto_start_starts_nothing_while_comments_for_claude_are_off(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.evaluate("localStorage.setItem('dr:claude', 'off')")
+    opens = claude_opens(page)
+    tab = open_in_shell(page, server_url, PR)
+    expect(tab.locator("#side .foot [data-term-toggle]")).to_have_count(0)
+    assert opens == []
+
+
+@pytest.mark.auto_start
+def test_auto_start_skips_a_pull_request_that_github_reports_merged_since_its_page_was_built(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    path = add_pr(OLD, NEW)
+    page.goto(server_url + "/")
+    page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
+    open_in_shell(page, server_url, path)
+    pr = gh_state / f"pr{path.rsplit('/', 1)[1]}.json"
+    pr.write_text(json.dumps(json.loads(pr.read_text()) | {"state": "MERGED"}))
+    page.evaluate("localStorage.removeItem('dr:claudeStart')")
+    opens = claude_opens(page)
+    page.reload()
+    tab = shell_tab(page)
+    assert tab.evaluate("PR_STATUS") == "open"
+    tab.wait_for_function("C.status === 'merged'")
+    tab.wait_for_function("CL.loaded")
+    assert opens == []
+
+
+@pytest.mark.auto_start
+def test_auto_start_with_a_terminal_left_open_starts_the_session_once(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    pr = add_pr(OLD, NEW, branch="auto-start-open")
+    page.goto(server_url + "/")
+    page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
+    tab = open_in_shell(page, server_url, pr)
+    tab.evaluate("localStorage.setItem(TERM_OPEN_KEY, 'open')")
+    page.evaluate("localStorage.removeItem('dr:claudeStart')")
+    opens = claude_opens(page)
+    try:
+        page.reload()
+        tab = shell_tab(page)
+        expect(tab.locator(".term .thead .state")).to_have_text(re.compile("listening on acme/widgets#"), timeout=60000)
+        assert len(opens) == 1
+    finally:
+        close_session(page, server_url, pr)
+
+
+def test_a_terminal_left_open_with_auto_start_off_comes_back_without_starting_the_session(
+    page: Page, server_url: str
+) -> None:
+    open_pr(page, server_url)
+    page.evaluate("localStorage.setItem(TERM_OPEN_KEY, 'open')")
+    opens: list[str] = []
+    page.on("request", lambda r: opens.append(r.url) if r.url.endswith("/claude_open") else None)
+    try:
+        open_pr(page, server_url)
+        expect(page.locator("#termslot .term .thead [data-term-start]")).to_be_visible()
+        page.wait_for_function("CL.loaded")
+        assert opens == []
+    finally:
+        page.evaluate("localStorage.removeItem(TERM_OPEN_KEY)")
+
+
 @contextmanager
 def kept_comments(gh_state: Path) -> Iterator[None]:
     """Put the fake gh's comments back as they were after the block."""
@@ -1726,6 +1860,18 @@ def test_the_start_pages_settings_button_opens_the_settings(page: Page, server_u
     page.goto(server_url + "/")
     page.frame_locator("#panes iframe.on").locator("footer.start [data-settings]").click()
     expect(page.locator("#settings")).to_be_visible()
+
+
+def test_auto_start_in_the_settings_saves_its_own_setting_only(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.click("#gear")
+    dialog = page.locator("#settings")
+    expect(dialog.locator("[data-claude-start='off']")).to_have_class(re.compile(r"\bon\b"))
+    dialog.locator("[data-claude-start='on']").click()
+    assert page.evaluate("[localStorage.getItem('dr:claudeStart'), localStorage.getItem('dr:claude')]") == [None, None]
+    dialog.locator("[data-claude-start='off']").click()
+    assert page.evaluate("[localStorage.getItem('dr:claudeStart'), localStorage.getItem('dr:claude')]") == ["off", None]
+    expect(dialog.locator("[data-claude-setting='on']")).to_have_class(re.compile(r"\bon\b"))
 
 
 def test_the_settings_save_the_followed_repositories_as_they_change(page: Page, server_url: str) -> None:
