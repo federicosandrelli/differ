@@ -78,6 +78,10 @@ class Hunk:
     new_start: int
     lines: list[HunkLine] = field(default_factory=list)
 
+    def removed(self) -> list[int]:
+        """The old file's lines the hunk removes, in order."""
+        return [old for tag, old, _, _ in self.lines if tag == "-" and old is not None]
+
 
 @dataclass
 class FileDiff:
@@ -438,14 +442,9 @@ def is_generated(path: str, source: str, marked: set[str]) -> bool:
     return any(GENERATED_MARKER.search(line) for line in source.splitlines()[:5])
 
 
-def is_binary(content: bytes) -> bool:
-    """Whether a file's content is binary, which the page shows no lines of: a NUL byte in its first 8 KB."""
-    return b"\0" in content[:8192]
-
-
 def decoded(content: bytes | None) -> str:
     """A file's content as text, or empty for a binary file or a file that is not there."""
-    if content is None or is_binary(content):
+    if content is None or b"\0" in content[:8192]:
         return ""
     return content.decode("utf-8", errors="replace")
 

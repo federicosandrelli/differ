@@ -4,11 +4,27 @@ what is wrong with it, which an action answers with 400 and a tool with an error
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, get_args
 
 
 class Invalid(ValueError):
     """A field that is missing, of another type, or out of its range."""
+
+
+def field[T](fields: dict, name: str, check: Callable[[object], T]) -> T:
+    """The value of the field with that name, as check gives it; else Invalid, which names the field."""
+    if name not in fields:
+        raise Invalid(f"{name} is missing")
+    try:
+        return check(fields[name])
+    except Invalid as exc:
+        raise Invalid(f"{name}: {exc}") from exc
+
+
+def optional[T, D](fields: dict, name: str, check: Callable[[object], T], default: D) -> T | D:
+    """The value of the field with that name, as check gives it, or default when it is missing or null."""
+    return default if fields.get(name) is None else field(fields, name, check)
 
 
 def one_of(value: object, kind: object) -> Any:

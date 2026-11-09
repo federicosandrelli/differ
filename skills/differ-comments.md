@@ -7,7 +7,8 @@ description: Receive the line comments a reader sends from differ, a pull reques
 
 differ shows a pull request on one page, and the reader comments on its lines. A comment can go to GitHub, or to
 this session with the **Send to Claude** button. Each comment starts a thread on its lines, and the reader can reply
-in the thread to carry on the conversation. Comments and replies reach this session through a WebSocket that the
+in the thread to carry on the conversation. Claude's session in differ can start a thread too, and the reader can
+reply in it the same way. Comments and replies reach this session through a WebSocket that the
 Monitor tool holds open. You answer each one with a reply, which differ adds to the end of the thread, and you change
 the code when the reader asks for a change.
 
@@ -65,7 +66,7 @@ curl -sS "http://127.0.0.1:<port>/api/<owner>/<repo>/<number>/claude_thread?id=5
 
 - `line` is the last line of the comment, and `start_line` the first when it covers several lines.
 - `side` is `RIGHT` for a line of the file at `commit`, and `LEFT` for a line of the old file, before the pull request.
-- `code` holds the lines the comment covers, as the reader saw them when they started the thread.
+- `code` holds the lines the comment covers, as they were when the thread started.
 - `messages` holds every message of the thread, oldest first, with `author` `reader` for the reader and `claude` for
   you.
 - `seen` is the number of messages in `messages`. Send it back with your reply.

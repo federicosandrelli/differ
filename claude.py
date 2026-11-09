@@ -25,6 +25,7 @@ from typing import Literal
 import build
 import classify
 import commands
+import fields
 import records
 from github import PullRef
 
@@ -51,7 +52,7 @@ class Busy(Exception):
     """Another session listens on the pull request."""
 
 
-class NoComment(ValueError):
+class NoComment(fields.Invalid):
     """The pull request has no Claude comment with that id."""
 
 
@@ -165,7 +166,7 @@ def moved(hunks: list[classify.Hunk], first: int, last: int) -> tuple[int, int] 
     lines; None when a hunk changes one of them or adds a line between two of them."""
     shift = 0
     for h in hunks:
-        removed = [old for tag, old, _, _ in h.lines if tag == "-" and old is not None]
+        removed = h.removed()
         added = sum(1 for line in h.lines if line[0] == "+")
         # A hunk that only adds lines puts them after its old_start.
         lo, hi = (removed[0], removed[-1]) if removed else (h.old_start + 1, h.old_start)

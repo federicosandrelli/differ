@@ -19,7 +19,7 @@ import build
 import classify
 import claude
 import github
-from fields import Invalid, count_of, line_number, one_of, string_of, text_of
+from fields import Invalid, count_of, field, line_number, one_of, optional, string_of, text_of
 from github import PullRef
 
 PROTOCOL = "2025-06-18"
@@ -163,25 +163,22 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
     """Run a tool. Answers its text and whether it failed; a failure's text says why, for Claude to tell the reader."""
     try:
         if name == "pull_request_diff":
-            path = arguments.get("path")
-            return diff(ref, path if isinstance(path, str) and path else None), False
+            return diff(ref, optional(arguments, "path", string_of, "") or None), False
         if name == "read_thread":
-            return json.dumps(claude.thread(ref, text_of(arguments.get("id")))), False
+            return json.dumps(claude.thread(ref, field(arguments, "id", text_of))), False
         if name == "reply_in_thread":
-            thread_id, body = text_of(arguments.get("id")), text_of(arguments.get("body"))
-            c = claude.reply(ref, thread_id, body, count_of(arguments.get("seen")))
+            thread_id, body = field(arguments, "id", text_of), field(arguments, "body", text_of)
+            c = claude.reply(ref, thread_id, body, field(arguments, "seen", count_of))
             return f"Replied in the thread on {c['path']}:{c['line']}.", False
         if name == "start_thread":
             return start_thread(ref, arguments), False
         if name == "describe_file":
-            path, body = text_of(arguments.get("path")), string_of(arguments.get("body"))
+            path, body = field(arguments, "path", text_of), field(arguments, "body", string_of)
             if body.strip() and path not in paths(*commits(ref)):
                 raise Invalid(f"{path} is not a file of this pull request's diff.")
             claude.describe(ref, path, body)
             return f"{'Described' if body.strip() else 'Removed the description of'} {path}.", False
         return f"No tool named {name}.", True
-    except claude.NoComment as exc:
-        return str(exc), True
     except Invalid as exc:
         return f"{name}: {exc}", True
     except Exception as exc:  # noqa: BLE001 - every failure must reach Claude as text
@@ -190,35 +187,34 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
 
 def start_thread(ref: PullRef, arguments: dict) -> str:
     """Start Claude's thread on the lines the arguments name, with the code they cover in the side's file, numbered
-    as the page numbers them. Raises Invalid for a file outside the diff, lines outside the file, and, on the LEFT
-    side, lines the pull request does not remove, which the page comments on from the RIGHT side. Answers the
-    thread's id, the commit the lines are numbered at, and the code, for Claude to check it named the lines it
-    meant."""
+    as the page numbers them. Raises Invalid for a file outside the diff, a file git's diff calls binary, which the
+    page shows no lines of, lines outside the file, and, on the LEFT side, lines the pull request does not remove,
+    which the page comments on from the RIGHT side. Answers the thread's id, the commit the lines are numbered at,
+    and the code, for Claude to check it named the lines it meant."""
     path, line, body = (
-        text_of(arguments.get("path")),
-        line_number(arguments.get("line")),
-        text_of(arguments.get("body")),
+        field(arguments, "path", text_of),
+        field(arguments, "line", line_number),
+        field(arguments, "body", text_of),
     )
-    side: claude.Side = one_of(arguments.get("side", "RIGHT"), claude.Side)
-    start_line = arguments.get("start_line")
-    first = line if start_line is None else line_number(start_line)
+    side: claude.Side = optional(arguments, "side", side_of, None) or "RIGHT"
+    first = optional(arguments, "start_line", line_number, line)
     if first > line:
         raise Invalid("start_line comes after line.")
     mirror, base, head = commits(ref)
     old = paths(mirror, base, head).get(path)
     if old is None:
         raise Invalid(f"{path} is not a file of this pull request's diff.")
+    (changed,) = classify.parse_patch(patch(mirror, base, head, path, old))
+    if changed.binary:
+        raise Invalid(f"{path} is binary: differ shows no lines of it.")
     commit, file = (head, path) if side == "RIGHT" else (base, old)
     if (content := build.read_files(mirror, commit, [file]).get(file)) is None:
         raise Invalid(f"{path} has no {'new' if side == 'RIGHT' else 'old'} side: use the other side.")
-    if classify.is_binary(content):
-        raise Invalid(f"{file} is binary: differ shows no lines of it.")
     lines = classify.text_lines(classify.decoded(content))
     if line > len(lines):
-        raise Invalid(
-            f"{file} has {len(lines)} lines {'at the head' if side == 'RIGHT' else 'before the pull request'}."
-        )
-    if side == "LEFT" and not set(range(first, line + 1)) <= removed(file_patch(mirror, base, head, path)):
+        where = "at the head" if side == "RIGHT" else "before the pull request"
+        raise Invalid(f"{file} has {len(lines)} lines {where}.")
+    if side == "LEFT" and not set(range(first, line + 1)) <= {n for h in changed.hunks for n in h.removed()}:
         raise Invalid("on the LEFT side, every line must be one the pull request removes: comment on the RIGHT side.")
     code = lines[first - 1 : line]
     start = None if first == line else first
@@ -227,14 +223,12 @@ def start_thread(ref: PullRef, arguments: dict) -> str:
     return f"Started thread {c['id']} on {path}:{line_range(first, line)} ({side}) at {commit[:12]}:{numbered}"
 
 
+def side_of(value: object) -> claude.Side:
+    return one_of(value, claude.Side)
+
+
 def line_range(first: int, last: int) -> str:
     return str(last) if first == last else f"{first}-{last}"
-
-
-def removed(patch: str) -> set[int]:
-    """The old file's lines that a patch of one file removes."""
-    hunks = [h for f in classify.parse_patch(patch) for h in f.hunks]
-    return {old for h in hunks for tag, old, _, _ in h.lines if tag == "-" and old is not None}
 
 
 def commits(ref: PullRef) -> tuple[Path, str, str]:
@@ -250,22 +244,22 @@ def diff(ref: PullRef, path: str | None) -> str:
     """The pull request's diff from the mirror, from the commit its branch left the base branch at, as the page's,
     headed by that commit and the head, cut at DIFF_MAX characters."""
     mirror, base, head_commit = commits(ref)
-    patch = file_patch(mirror, base, head_commit, path)
+    names = dict.fromkeys([path, paths(mirror, base, head_commit).get(path, path)]) if path else {}
+    text = patch(mirror, base, head_commit, *names)
     head = f"base {base}\nhead {head_commit}\n\n"
-    if not patch:
+    if not text:
         return head + (f"{path} is not changed by this pull request." if path else "The diff is empty.")
-    if len(patch) > DIFF_MAX:
-        patch = patch[:DIFF_MAX] + f"\n[cut after {DIFF_MAX} characters; ask for one file with `path`]\n"
-    return head + patch
+    if len(text) > DIFF_MAX:
+        text = text[:DIFF_MAX] + f"\n[cut after {DIFF_MAX} characters; ask for one file with `path`]\n"
+    return head + text
 
 
-def file_patch(mirror: Path, base: str, head: str, path: str | None) -> str:
-    """The patch from base to head, as the page's; with path, of that file alone, named as the page names it."""
+def patch(mirror: Path, base: str, head: str, *names: str) -> str:
+    """The patch from base to head, as the page's, of the files with those paths, or of every file without one. git
+    pairs a rename only when both of its paths are among the names."""
+    pathspec = ["--", *names] if names else []
     args = ["-c", "diff.suppressBlankEmpty=false", "--literal-pathspecs", "diff-tree", "-p", "-M", "-U3", base, head]
-    if path:
-        # git pairs a rename only when both of its paths are in the pathspec.
-        args += ["--", *dict.fromkeys([path, paths(mirror, base, head).get(path, path)])]
-    return build.git(mirror, *args).decode(errors="replace")
+    return build.git(mirror, *args, *pathspec).decode(errors="replace")
 
 
 def paths(mirror: Path, base: str, head: str) -> dict[str, str]:

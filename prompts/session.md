@@ -29,7 +29,7 @@ Read the thread with the `read_thread` tool of the differ MCP server. It gives:
 
 - `line`, the last line of the comment, and `start_line`, the first when it covers several lines.
 - `side`, `RIGHT` for a line of the file at `commit`, and `LEFT` for a line of the old file, before the pull request.
-- `code`, the lines the comment covers, as the reader saw them when they started the thread.
+- `code`, the lines the comment covers, as they were when the thread started.
 - `messages`, every message of the thread, oldest first, yours included.
 - `seen`, the number of those messages, to send back with your reply.
 

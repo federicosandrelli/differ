@@ -126,7 +126,7 @@ def test_a_reply_with_seen_leaves_a_thread_the_reader_wrote_in_since_waiting() -
 
 def test_a_tool_failure_comes_back_as_text_with_is_error() -> None:
     answer = result("tools/call", {"name": "reply_in_thread", "arguments": {"id": "nope", "body": "x", "seen": 1}})
-    assert answer == {"content": [{"type": "text", "text": "no Claude comment nope"}], "isError": True}
+    assert answer == {"content": [{"type": "text", "text": "reply_in_thread: no Claude comment nope"}], "isError": True}
     assert result("tools/call", {"name": "reply_in_thread", "arguments": {"id": "a"}})["isError"]
     assert result("tools/call", {"name": "reply_in_thread", "arguments": {"id": "a", "body": "x"}})["isError"]
     assert result("tools/call", {"name": "fly", "arguments": {}}) == {
@@ -260,7 +260,7 @@ def test_start_thread_refuses_lines_outside_the_file_and_files_outside_the_diff(
         "start_thread: a.py has 1 lines at the head.": start(path="a.py", line=2, body="x"),
         "start_thread: gone.py has no new side: use the other side.": start(path="gone.py", line=1, body="x"),
         "start_thread: start_line comes after line.": start(path="a.py", start_line=2, line=1, body="x"),
-        "start_thread: 0 is not a line number": start(path="a.py", line=0, body="x"),
+        "start_thread: line: 0 is not a line number": start(path="a.py", line=0, body="x"),
         "start_thread: img.bin is binary: differ shows no lines of it.": start(path="img.bin", line=1, body="x"),
     }
     for text, answer in refusals.items():
