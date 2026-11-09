@@ -33,7 +33,7 @@ async function loadComments() {
   } else C.error = error;
   threadsChanged();
   render();
-  if (SHELL) { SHELL.badge(C.threads.filter(t => !t.resolved).length); if (C.status) SHELL.status(C.status); }
+  if (SHELL && C.status) SHELL.status(C.status);
 }
 // Whether the page holds text the user typed that GitHub has yet to take. Closing the page's tab would lose it.
 function hasDraft() {

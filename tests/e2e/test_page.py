@@ -1386,6 +1386,9 @@ def test_auto_start_starts_the_session_of_a_shell_tab_and_leaves_the_terminal_hi
         session = tab.locator("#side .foot [data-term-toggle]")
         expect(session).to_have_attribute("title", "Claude is listening · show the terminal", timeout=60000)
         expect(tab.locator(".term")).to_have_count(0)
+        dot = page.locator("#tabs .tab.on .dot")
+        expect(dot).to_have_class(re.compile(r"\bon\b"))
+        expect(dot).to_have_attribute("title", "Claude is listening")
         assert (cache_dir / "worktrees" / "acme" / "widgets" / pr.rsplit("/", 1)[1] / "src" / "app.py").exists()
     finally:
         close_session(page, server_url, pr)
@@ -1865,7 +1868,7 @@ def test_escape_in_a_reply_box_keeps_the_reply(page: Page, server_url: str) -> N
     expect(box).not_to_be_focused()
 
 
-def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: str, gh_state: Path) -> None:
+def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: str) -> None:
     page.goto(server_url + "/")
     home = page.frame_locator("#panes iframe.on")
     home.locator("input[name=pr]").fill("acme/widgets#1")
@@ -1874,8 +1877,7 @@ def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: s
     expect(tab).to_have_count(1)
     expect(tab).to_have_class(re.compile(r"\bon\b"))
     expect(tab.locator(".label")).to_have_text(f"#1 {TITLE}", timeout=30000)
-    unresolved = sum(not t["isResolved"] for t in json.loads((gh_state / "comments.json").read_text())["threads"])
-    expect(tab.locator(".count")).to_have_text(str(unresolved))
+    expect(tab.locator(".dot")).to_have_count(0)
     expect(page.frame_locator("#panes iframe.on").locator("#side .tree")).to_be_visible()
 
     page.reload()

@@ -1,6 +1,6 @@
 // The page side of the tabbed shell. Inside the shell (the page at /) every page runs in an iframe and leaves
 // navigation to the shell: a link to another page opens or switches a tab, a link to GitHub opens outside, and
-// the shell learns the page's title, its pull request status and its number of unresolved threads. SHELL is null
+// the shell learns the page's title, its pull request status and where its Claude session stands. SHELL is null
 // when the page is the top-level document. PR_STATUS is the status a review page names in its head (a key of
 // PR_ICONS in render.py), or empty. The messages between the two sides are known only here and in tabs.js.
 const PR_STATUS = (document.querySelector('meta[name="pr-status"]') || {}).content || '';
@@ -11,7 +11,13 @@ const SHELL = window.parent === window ? null : {
   step(dir) { this.tell({ type: 'step', dir }); },
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
   settings(section) { this.tell({ type: 'settings', section }); },
-  badge(n) { this.tell({ type: 'badge', n }); },
+  claude(state, title) {
+    if (state === this.claudeState && title === this.claudeTitle) return;
+    this.claudeState = state; this.claudeTitle = title;
+    this.tell({ type: 'claude', state, title });
+  },
+  claudeState: '',
+  claudeTitle: '',
   status(status) { this.tell({ type: 'status', status }); },
   page(url, title, status) { this.tell({ type: 'page', url, title, status }); },
   draft(on) { if (on !== this.drafting) { this.drafting = on; this.tell({ type: 'draft', on }); } },

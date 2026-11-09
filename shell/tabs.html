@@ -12,8 +12,6 @@ html.app #tabs { height: 40px; padding-left: 84px; }
 .tab.home { flex: none; padding: 0 8px; min-width: 0; }
 .tab.home svg { display: block; }
 .tab .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
-/* The count sits on the inset of the open tab, so it takes the canvas. */
-.tab .count { flex: none; background: var(--bg-canvas); border: 1px solid var(--border); }
 .tab.warn .label { color: var(--del-fg); }
 .tab .close { flex: none; width: 16px; height: 16px; border: 0; border-radius: var(--radius-sm); padding: 0; background: none; color: var(--text-muted); font: 15px/16px var(--sans); visibility: hidden; }
 .tab:hover .close, .tab.on .close { visibility: visible; }

@@ -5,6 +5,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from http.server import ThreadingHTTPServer
@@ -168,6 +170,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
         "head": "c" * 40,
         "working": False,
         "task": "",
+        "asking": False,
     }
     trusted = json.loads(session.config_path().read_text())["projects"]
     assert trusted == {os.path.realpath(build.mirror_of(REF)): {"hasTrustDialogAccepted": True}}
@@ -271,6 +274,57 @@ def test_the_terminal_title_says_whether_claude_works_and_on_what_task(fake: Sim
 )
 def test_a_title_says_whether_claude_works_and_its_task(title: str, state: tuple[bool, str]) -> None:
     assert session.title_state(title) == state
+
+
+def post_hook(handler: dict, event: str, headers: dict | None = None) -> int:
+    """Post a hook of the question tool to a handler of the process's settings, as Claude Code does; the status."""
+    body = json.dumps({"hook_event_name": event, "tool_name": session.QUESTION_TOOL}).encode()
+    headers = handler["headers"] if headers is None else headers
+    request = urllib.request.Request(handler["url"], data=body, headers={"Content-Type": "application/json", **headers})
+    try:
+        with urllib.request.urlopen(request) as answer:
+            return answer.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+
+
+def asking() -> bool:
+    return session.status(REF)["asking"]
+
+
+def test_the_question_tools_hooks_say_whether_claude_asks_the_reader(fake: SimpleNamespace) -> None:
+    session.start(REF, fake.port, 80, 24)
+    wait_for(typing_ready)
+    args = starts(fake.log)[0]["args"]
+    hooks = json.loads(args[args.index("--settings") + 1])["hooks"]
+    (pre,) = hooks["PreToolUse"]
+    (post,) = hooks["PostToolUse"]
+    assert pre["matcher"] == post["matcher"] == session.QUESTION_TOOL
+    assert post_hook(pre["hooks"][0], "PreToolUse", headers={}) == 403
+    assert not asking()
+    assert post_hook(pre["hooks"][0], "PreToolUse") == 200
+    assert asking()
+    assert post_hook(post["hooks"][0], "PostToolUse") == 200
+    assert not asking()
+
+    # A reader who cancels the question gets no hook: Claude's next work ends the question.
+    session.write(REF, "\x1b]0;◐ pick a colour\x07".encode())
+    wait_for(lambda: session.status(REF)["working"])
+    post_hook(pre["hooks"][0], "PreToolUse")
+    session.write(REF, "\x1b]0;✳ pick a colour\x07".encode())
+    wait_for(lambda: not session.status(REF)["working"])
+    assert asking()
+    session.write(REF, "\x1b]0;◑ pick a colour\x07".encode())
+    wait_for(lambda: session.status(REF)["working"])
+    assert not asking()
+
+    # A question outlives neither its process nor the start of the next.
+    post_hook(pre["hooks"][0], "PreToolUse")
+    session.close(REF)
+    assert not asking()
+    session.start(REF, fake.port, 80, 24)
+    wait_for(running)
+    assert not asking()
 
 
 def test_a_terminal_that_connects_later_gets_what_the_session_printed(fake: SimpleNamespace) -> None:
@@ -436,6 +490,7 @@ def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypat
         "head": "",
         "working": False,
         "task": "",
+        "asking": False,
     }
     assert starts(fake.log) == [] and fake.removed == [REF]
 

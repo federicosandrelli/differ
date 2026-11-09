@@ -9,18 +9,18 @@
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   // A tab is keyed by its page's path; a page still being resolved (/open?pr=...) by its query until it reports.
   const keyOf = (url) => { const u = new URL(url, location.origin); const path = u.pathname.replace(/\/+$/, '').toLowerCase(); return path === '/open' ? path + u.search.toLowerCase() : path; };
-  const home = { key: 'home', url: '/home', title: 'Pull requests', badge: 0, frame: null };
+  const home = { key: 'home', url: '/home', title: 'Pull requests', frame: null };
   let tabs = [], active = home;
 
   const lsGet = () => { try { return JSON.parse(localStorage.getItem('dr:tabs')) || {}; } catch { return {}; } };
-  const save = () => { try { localStorage.setItem('dr:tabs', JSON.stringify({ active: active.key, tabs: tabs.map(t => ({ url: t.url, title: t.title, status: t.status, badge: t.badge })) })); } catch {} };
+  const save = () => { try { localStorage.setItem('dr:tabs', JSON.stringify({ active: active.key, tabs: tabs.map(t => ({ url: t.url, title: t.title, status: t.status })) })); } catch {} };
 
   function frameOf(tab) {
     if (!tab.frame) { tab.frame = document.createElement('iframe'); tab.frame.src = tab.url; panes.appendChild(tab.frame); }
     return tab.frame;
   }
   function draw() {
-    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}">${t.status && !t.warning ? `<span class="pr-icon st-${esc(t.status)}" aria-hidden="true"></span>` : ''}<span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.badge ? `<span class="count" title="${t.badge} unresolved">${t.badge}</span>` : ''}<button class="close" data-close="${esc(t.key)}" aria-label="Close tab">×</button></div>`;
+    const pill = (t) => `<div class="tab ${t === active ? 'on' : ''} ${t.warning ? 'warn' : ''}" data-key="${esc(t.key)}" title="${esc(t.title)}">${t.status && !t.warning ? `<span class="pr-icon st-${esc(t.status)}" aria-hidden="true"></span>` : ''}<span class="label">${t.warning ? 'Unsent text · close again to discard' : esc(t.title)}</span>${t.claude ? `<span class="dot ${esc(t.claude)}" title="${esc(t.claudeTitle)}"></span>` : ''}<button class="close" data-close="${esc(t.key)}" aria-label="Close tab">×</button></div>`;
     bar.innerHTML = `<div class="tab home ${active === home ? 'on' : ''}" data-key="home" title="Pull requests">${HOME_ICON}</div>` + tabs.map(pill).join('');
     document.title = active.title;
     drawUpdate();
@@ -36,7 +36,7 @@
     const key = keyOf(url);
     if (key === '' || key === '/home') return activate(home);
     let tab = tabs.find(t => t.key === key);
-    if (!tab) { tab = { key, url, title: '…', status: '', badge: 0, frame: null }; tabs.push(tab); }
+    if (!tab) { tab = { key, url, title: '…', status: '', claude: '', claudeTitle: '', frame: null }; tabs.push(tab); }
     activate(tab);
   }
   // A closed tab ends its pull request's Claude session, if one runs; the server keeps the session's id, so the next
@@ -133,11 +133,11 @@
     }
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
     if (!tab) return;
-    if (m.type === 'badge') { tab.badge = m.n; draw(); save(); }
+    if (m.type === 'claude') { tab.claude = m.state; tab.claudeTitle = m.title; draw(); }
     if (m.type === 'status') { tab.status = m.status; draw(); save(); }
     if (m.type === 'draft') { tab.draft = !!m.on; drawUpdate(); }
     if (m.type === 'page') {
-      tab.url = m.url; tab.title = m.title; tab.status = m.status || ''; tab.draft = false;
+      tab.url = m.url; tab.title = m.title; tab.status = m.status || ''; tab.draft = false; tab.claude = '';
       const key = keyOf(m.url), twin = tabs.find(t => t !== tab && t.key === key);
       if (twin) { close(tab); activate(twin); return; }
       tab.key = key; draw(); save();
@@ -360,7 +360,7 @@
   const savedZoom = (() => { try { return parseFloat(localStorage.getItem('dr:zoom')); } catch { return NaN; } })();
   if (savedZoom > 0 && savedZoom !== 1) setZoom(savedZoom);
   const saved = lsGet();
-  tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', status: t.status || '', badge: t.badge || 0, frame: null }));
+  tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', status: t.status || '', claude: '', claudeTitle: '', frame: null }));
   activate(byKey(saved.active) || home);
 
   // The desktop app holds the pull requests that differ:// links name, and sends 'links' when one arrives. Any app

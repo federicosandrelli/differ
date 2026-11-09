@@ -6,7 +6,8 @@ when the server exits.
 A pull request's session file, sessions/<owner>/<repo>/<number>.json in the cache, holds the session id, the pid of
 the last process and whether the id has a conversation to resume. The process's output is kept in a buffer of
 BUFFER_MAX bytes, replayed to a terminal that connects, so a reloaded page shows what the session showed. The last
-terminal title the process set says whether Claude works and on what task.
+terminal title the process set says whether Claude works and on what task. Claude Code's hooks, which the process
+posts to the pull request's `hook` endpoint, say whether Claude asks the reader a question.
 
 Before a start, `trust` records the repository's bare mirror as trusted in Claude Code's config file, so the process
 starts without the folder trust dialog: Claude Code keys the trust of a worktree on its repository, which for the
@@ -75,6 +76,11 @@ TITLE_MAX = 1024
 IDLE_MARK = "\u2733"
 NO_TASK = "Claude Code"
 IN_USE = "already in use"
+# The tool Claude Code shows the reader a question with. Its PreToolUse hook fires as the question shows and its
+# PostToolUse hook once the reader answers; neither fires when the reader cancels the question.
+QUESTION_TOOL = "AskUserQuestion"
+# The seconds Claude Code waits for the server to answer a hook before it goes on without it.
+HOOK_TIMEOUT = 5
 # The models a session can start with, as `--model` takes them.
 Model = Literal["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
 DEFAULT_MODEL: Model = "claude-opus-5-5"
@@ -84,10 +90,10 @@ DEFAULT_MODEL: Model = "claude-opus-5-5"
 class Session:
     """A pull request's session: its id, its process while one runs, what the process printed, and the terminals that
     show it. `starting` is set from a start until the process runs or the start fails; `error` says why the last start
-    failed or the last process ended, until the next start. `generation` counts the starts, so a start that finishes
-    after a close or a later start is dropped. `writes` is held around every write to the pseudoterminal and its
-    close, `sends` around every send to the terminals, and `pastes` around a paste and its Enter, so two pastes never
-    mix; all three outside the module lock."""
+    failed or the last process ended, until the next start. `asking` is set while Claude waits for the reader's
+    answer to a question. `generation` counts the starts, so a start that finishes after a close or a later start is
+    dropped. `writes` is held around every write to the pseudoterminal and its close, `sends` around every send to the
+    terminals, and `pastes` around a paste and its Enter, so two pastes never mix; all three outside the module lock."""
 
     ref: PullRef
     id: str = ""
@@ -101,6 +107,7 @@ class Session:
     generation: int = 0
     output: bytearray = field(default_factory=bytearray)
     title: str = ""
+    asking: bool = False
     clients: set[Send] = field(default_factory=set)
     size: tuple[int, int] = (80, 24)
     branch: str = ""
@@ -276,7 +283,8 @@ def listen_prompt(ref: PullRef, port: int, branch: str, head: str) -> str:
 
 def status(ref: PullRef) -> dict:
     """Where the pull request's session stands, for the page: `starting`, `running`, `error`, the branch and the head
-    the worktree is on, and from the terminal title, whether Claude is `working` and its `task`, empty without one."""
+    the worktree is on, from the terminal title, whether Claude is `working` and its `task`, empty without one, and
+    whether Claude is `asking` the reader a question."""
     with lock:
         s = session_of(ref)
         running = s.proc is not None and s.proc.poll() is None
@@ -289,7 +297,30 @@ def status(ref: PullRef) -> dict:
             "head": s.head,
             "working": working,
             "task": task,
+            "asking": running and s.asking,
         }
+
+
+def hook_settings(ref: PullRef, port: int) -> str:
+    """The `--settings` JSON that has the process post the hooks of QUESTION_TOOL to the pull request's endpoint."""
+    url = f"http://127.0.0.1:{port}/api/{ref.slug}/{ref.number}/hook"
+    handler = {
+        "type": "http",
+        "url": url,
+        "headers": {"Authorization": f"Bearer {mcp.token(ref)}"},
+        "timeout": HOOK_TIMEOUT,
+    }
+    matcher = [{"matcher": QUESTION_TOOL, "hooks": [handler]}]
+    return json.dumps({"hooks": {"PreToolUse": matcher, "PostToolUse": matcher}})
+
+
+def hook(ref: PullRef, event: object) -> None:
+    """Take a hook the pull request's process posted: Claude asks a question from QUESTION_TOOL's PreToolUse hook on,
+    until any other hook."""
+    if not isinstance(event, dict):
+        raise ValueError("a hook is a JSON object")
+    with lock:
+        session_of(ref).asking = event.get("hook_event_name") == "PreToolUse"
 
 
 def title_state(title: str) -> tuple[bool, str]:
@@ -370,6 +401,8 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
         "--strict-mcp-config",
         "--mcp-config",
         mcp.config(s.ref, port),
+        "--settings",
+        hook_settings(s.ref, port),
         "--system-prompt-snapshot",
         "off",
         "--append-system-prompt",
@@ -393,7 +426,7 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
         os.close(slave)
     s.proc, s.fd, s.started_at, s.starting = proc, master, time.time(), False
     s.output.clear()
-    s.title = ""
+    s.title, s.asking = "", False
     write_file(s.ref, {"id": s.id, "resume": s.resume, "pid": proc.pid})
     threading.Thread(target=_read, args=(s, proc, master, port, s.generation), daemon=True).start()
 
@@ -416,8 +449,12 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
             if len(s.output) > BUFFER_MAX:
                 del s.output[: len(s.output) - BUFFER_MAX]
             # A title can arrive split across two reads, so the search reaches back into what came before.
+            # Claude works again once the reader answers or cancels a question, and only a hook says it asks one.
             if titles := TITLE.findall(s.output, max(0, len(s.output) - len(data) - TITLE_MAX)):
-                s.title = titles[-1].decode(errors="replace")
+                title = titles[-1].decode(errors="replace")
+                if title_state(title)[0] and not title_state(s.title)[0]:
+                    s.asking = False
+                s.title = title
             clients = list(s.clients)
             if not s.resume and time.time() - s.started_at > QUICK_EXIT:
                 s.resume = True

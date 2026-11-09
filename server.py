@@ -51,6 +51,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      pseudoterminal as binary frames; a text frame sets its size
   /api/<owner>/<repo>/<number>/mcp        POST: the differ MCP server for the embedded session, JSON-RPC with the
                                      pull request's token in the Authorization header
+  /api/<owner>/<repo>/<number>/hook       POST: a Claude Code hook of the embedded session, which says whether
+                                     Claude asks the reader a question, with the token as the mcp endpoint
   /vendor/<name>                     a vendored file a page loads on demand: xterm.js and its stylesheet and addon
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
                                      conversation, request_review (adds the viewer to the requested reviewers),
@@ -493,6 +495,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(code, b"", "application/json")
         return self.send_json(body, code)
 
+    def post_hook(self, ref: PullRef) -> None:
+        """Take a hook of the pull request's session, which must carry the pull request's token, and answer with an
+        empty body, which Claude Code reads as a hook that lets the tool go on."""
+        if not mcp.authorized(ref, self.headers.get("Authorization")):
+            return self.send_json({"error": "Forbidden: not this pull request's token"}, 403)
+        try:
+            session.hook(ref, json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}"))
+        except ValueError as exc:
+            return self.send_json({"error": f"Bad request: {exc}"}, 400)
+        return self.send(200, b"", "application/json")
+
     def refused(self) -> str | None:
         """Why this POST is refused, or None: a page from another origin must not act with the user's gh identity.
 
@@ -519,6 +532,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, error_page(f"No page at {self.path}"))
         if m["action"] == "mcp":
             return self.post_mcp(PullRef.from_match(m))
+        if m["action"] == "hook":
+            return self.post_hook(PullRef.from_match(m))
         if why := self.refused():
             return self.send_json({"error": f"Forbidden: {why}"}, 403)
         try:

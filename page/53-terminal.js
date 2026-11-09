@@ -104,7 +104,8 @@ function termHeadHtml() {
   const s = termSession();
   let text, action = '', tone = '';
   if (s.error) { text = 'could not start'; action = '<button data-term-start>Retry</button>'; }
-  else if (s.working) { text = claudeWork(s); tone = ' tone-warn'; }
+  else if (s.asking) { text = 'waiting for your answer'; tone = ' tone-warn'; }
+  else if (s.working) { text = esc(claudeWork(s)); tone = ' tone-accent'; }
   else if (s.starting) text = 'starting…';
   else if (s.running && CL.listening) text = `listening on ${esc(PR.repo)}#${PR.number}`;
   else if (s.running) text = 'running, not listening yet';
