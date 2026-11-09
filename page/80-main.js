@@ -42,23 +42,27 @@ async function loadEditors() {
   render();
 }
 const chosenEditor = () => EDITOR.installed && (EDITOR.installed.find(e => e.id === lsGet('dr:editor')) || EDITOR.installed[0]);
-// The first changed line of the file on the new side: an added line, or the line after the lines removed.
-function firstChangedLine(f) {
-  for (const h of f.hunks) {
-    let next = h.new_start;
-    for (const [tag, , n] of h.lines) {
-      if (tag === '+') return n;
-      if (tag === '-') return Math.max(1, next);
-      next = n + 1;
-    }
+// The first line the reader selected in the file, as a line of the new file: of the text selected in its rows, else
+// of the comment being written on it. Null when neither is.
+function selectedLine(f) {
+  const s = window.getSelection();
+  if (s.rangeCount && !s.isCollapsed) {
+    const range = s.getRangeAt(0);
+    // A selection that starts at the end of a row's text holds none of that row.
+    const holds = (tr) => { const r = range.cloneRange(); r.setEndAfter(tr); return !!r.toString().trim(); };
+    const tr = [...sectionEl(f).querySelectorAll('table.diff tr[id]')].find(tr => range.intersectsNode(tr) && holds(tr));
+    const at = tr && rowAt(tr.id);
+    if (at) return newLineAt(f, at.side, at.line);
   }
-  return 1;
+  const c = state.compose;
+  return c && c.path === f.path ? newLineAt(f, c.side, c.startLine) : null;
 }
 async function openInEditor(f) {
   const editor = chosenEditor();
   if (!editor || EDITOR.opening.has(f.path)) return;
+  const line = selectedLine(f) ?? firstChangedLine(f);
   EDITOR.opening.add(f.path); EDITOR.error = ''; render();
-  try { await api('open', { editor: editor.id, path: f.path, line: firstChangedLine(f) }); } catch (e) { EDITOR.error = e.message; }
+  try { await api('open', { editor: editor.id, path: f.path, line }); } catch (e) { EDITOR.error = e.message; }
   EDITOR.opening.delete(f.path); render();
 }
 function editorButton(f) {

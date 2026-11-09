@@ -28,6 +28,31 @@ function oldToNew(f, o) {
   return o + delta;
 }
 
+// The line of the new file at a line of the old (LEFT) or new (RIGHT) file: a removed line stands at the line after
+// the lines removed, and an unchanged line at the line it became.
+function newLineAt(f, side, line) {
+  if (side === 'RIGHT') return line;
+  for (const h of f.hunks) {
+    let next = h.new_start;
+    for (const [tag, o, n] of h.lines) {
+      if (tag === '-' && o === line) return Math.max(1, next);
+      if (tag !== '-') next = n + 1;
+    }
+  }
+  return oldToNew(f, line);
+}
+
+// The first changed line of the file on the new side: an added line, or the line after the lines removed.
+function firstChangedLine(f) {
+  for (const h of f.hunks) {
+    for (const [tag, o, n] of h.lines) {
+      if (tag === '+') return n;
+      if (tag === '-') return newLineAt(f, 'LEFT', o);
+    }
+  }
+  return 1;
+}
+
 // The element id of a row, and the file, key, side and line an id names.
 const rowId = (f, key) => `r${f.index}-${key}`;
 const ROW_ID = /^r(\d+)-([OL])(\d+)$/;

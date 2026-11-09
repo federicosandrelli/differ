@@ -2376,6 +2376,48 @@ def test_choosing_an_editor_in_a_file_s_menu_opens_the_file_in_it_and_keeps_the_
     assert opened[-1] == {"editor": "pycharm", "path": "README.md", "line": 2}
 
 
+def test_the_editor_button_opens_the_file_at_the_first_selected_line(page: Page, server_url: str) -> None:
+    page.route(
+        "**/api/acme/widgets/1/editors",
+        lambda r: r.fulfill(json={"installed": [{"id": "vscode", "name": "VS Code", "local": True}], "known": []}),
+    )
+    opened: list[int] = []
+    page.route(
+        "**/api/acme/widgets/1/open",
+        lambda r: (opened.append((r.request.post_data_json or {})["line"]), r.fulfill(json={})),
+    )
+    open_pr(page, server_url)
+    page.wait_for_function("EDITOR.installed")
+
+    def open_in_editor() -> None:
+        page.click(f"{APP} [data-open-editor]")
+        page.wait_for_function("!EDITOR.opening.size")
+
+    def select_text(first: str, last: str, from_end: bool = False) -> None:
+        page.evaluate(
+            """([first, last, fromEnd]) => {
+              const start = document.querySelector(first + ' td.c'), range = document.createRange();
+              range.setStart(start, fromEnd ? start.childNodes.length : 0);
+              range.setEnd(document.querySelector(last + ' td.c'), 1);
+              getSelection().removeAllRanges(); getSelection().addRange(range);
+            }""",
+            [f"{APP} tr[id$='-{first}']", f"{APP} tr[id$='-{last}']", from_end],
+        )
+
+    select_text("L10", "L11")
+    open_in_editor()
+    select_text("O4", "L6")
+    open_in_editor()
+    select_text("L9", "L11", from_end=True)
+    open_in_editor()
+    page.click(f"{APP} tr[id$='-L11'] td.n.key")
+    page.click(f"{APP} tr[id$='-L9'] td.n.key", modifiers=["Shift"])
+    open_in_editor()
+    page.click(f"{APP} [data-compose-cancel]")
+    open_in_editor()
+    assert opened == [10, 5, 10, 9, 2]
+
+
 def test_the_start_pages_repository_toggles_filter_the_board_and_survive_a_reload(
     page: Page, server_url: str, gh_state: Path, cache_dir: Path
 ) -> None:
