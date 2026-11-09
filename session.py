@@ -37,6 +37,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import build
 import checkout
@@ -74,6 +75,9 @@ TITLE_MAX = 1024
 IDLE_MARK = "\u2733"
 NO_TASK = "Claude Code"
 IN_USE = "already in use"
+# The models a session can start with, as `--model` takes them.
+Model = Literal["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
+DEFAULT_MODEL: Model = "claude-opus-5-5"
 
 
 @dataclass
@@ -87,6 +91,7 @@ class Session:
     ref: PullRef
     id: str = ""
     resume: bool = False
+    model: Model = DEFAULT_MODEL
     proc: subprocess.Popen[bytes] | None = None
     fd: int | None = None
     started_at: float = 0.0
@@ -294,14 +299,15 @@ def title_state(title: str) -> tuple[bool, str]:
     return mark != IDLE_MARK, "" if task == NO_TASK else task
 
 
-def start(ref: PullRef, port: int, cols: int, rows: int) -> dict:
-    """Start the pull request's session unless it runs or starts, in a background thread, since the first start
-    may clone and check out the repository. Answers `status`."""
+def start(ref: PullRef, port: int, cols: int, rows: int, model: Model = DEFAULT_MODEL) -> dict:
+    """Start the pull request's session with the model unless it runs or starts, in a background thread, since the
+    first start may clone and check out the repository. Answers `status`."""
     with lock:
         s = session_of(ref)
         if s.starting or (s.proc is not None and s.proc.poll() is None):
             return status(ref)
         s.size = (max(20, cols), max(5, rows))
+        s.model = model
         s.starting, s.error = True, ""
         s.generation += 1
         generation = s.generation
@@ -353,6 +359,8 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
     args = [
         str(claude_bin),
         *session_flag,
+        "--model",
+        s.model,
         "--permission-mode",
         "bypassPermissions",
         "--setting-sources",

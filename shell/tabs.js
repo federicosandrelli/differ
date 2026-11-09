@@ -145,10 +145,10 @@
   });
 
   // The settings: a modal in the middle of the window, opened by the gear in the bottom left, by Cmd+, (a page
-  // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker and
-  // Auto start are the shell's own, and so is the Update section, since only the shell knows the app's version; the
-  // rest of the body comes from /settings on each open, so the editors, the cache and the commit are current. A page
-  // may name a section of that body, which the dialog scrolls to once the body has loaded.
+  // forwards the chord while focus is inside it) and by the desktop app's "Settings…" menu item. The theme picker,
+  // Auto start and Model are the shell's own, and so is the Update section, since only the shell knows the app's
+  // version; the rest of the body comes from /settings on each open, so the editors, the cache and the commit are
+  // current. A page may name a section of that body, which the dialog scrolls to once the body has loaded.
   const settings = document.getElementById('settings');
   function openSettings(section) {
     // A change made while the body loads is newer than the list the body holds, so the fields keep that change.
@@ -156,6 +156,7 @@
     const loading = settings.querySelector('.state .loading');
     if (loading) { loading.textContent = 'Loading…'; loading.classList.remove('err'); }
     drawOnOff();
+    drawModel();
     followed.saving.then(() => fetch('/settings')).then(r => r.ok ? r.text() : Promise.reject()).then((body) => {
       settings.querySelector('.state').innerHTML = body;
       const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
@@ -242,6 +243,27 @@
       for (const b of settings.querySelectorAll(`[${attr}]`)) b.classList.toggle('on', (b.getAttribute(attr) === 'on') === isOn(key));
     }
   }
+  // The model a session starts with: the saved one, or nothing for the server's default. A saved model the server no
+  // longer offers would refuse every start, so the shell forgets it.
+  const MODEL_KEY = 'dr:claudeModel';
+  const modelButtons = () => [...settings.querySelectorAll('[data-claude-model]')];
+  function drawModel() {
+    let saved = null;
+    try { saved = localStorage.getItem(MODEL_KEY); } catch {}
+    if (saved && !modelButtons().some(b => b.dataset.claudeModel === saved)) {
+      try { localStorage.removeItem(MODEL_KEY); } catch {}
+      saved = null;
+    }
+    const model = saved || settings.querySelector('[data-default-model]').dataset.defaultModel;
+    for (const b of modelButtons()) b.classList.toggle('on', b.dataset.claudeModel === model);
+  }
+  drawModel();
+  settings.addEventListener('click', (e) => {
+    const model = e.target.closest('[data-claude-model]');
+    if (!model) return;
+    try { localStorage.setItem(MODEL_KEY, model.dataset.claudeModel); } catch {}
+    drawModel();
+  });
   settings.addEventListener('click', (e) => {
     const attr = Object.keys(ON_OFF).find(a => e.target.closest(`[${a}]`));
     if (!attr) return;

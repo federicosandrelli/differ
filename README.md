@@ -49,8 +49,8 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 - The `</>` button in a file header opens the repository in your editor (VS
   Code, Cursor or a JetBrains IDE) on the pull request's branch, or opens the
   file on github.com.
-- Cmd+, opens the settings: the theme, Auto start for the Claude session, and
-  the repositories you follow.
+- Cmd+, opens the settings: the theme, Auto start and the model for the Claude
+  session, and the repositories you follow.
 - A `differ://open?pr=<pull request URL>` link opens the pull request in a tab
   of the desktop app. For a pull request from a fork or of a repository you
   don't follow, the app asks first, since a Claude session on the page runs the
@@ -65,6 +65,7 @@ file tree, and the arrow next to it moves the terminal to a column of its own
 between the tree and the code. differ starts `claude` in a worktree of the
 repository, on the pull request's branch, kept in `~/.cache/differ/worktrees`.
 The session needs Claude Code 2.1.316 or later, and runs on your own login.
+It starts with Opus 5.5 unless you pick another model in the settings.
 
 - "Send to Claude" in a comment box sends the comment to the session instead of
   GitHub. The session listens for these comments, and its reply shows in the

@@ -146,6 +146,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
     args = start["args"]
     session_id = args[args.index("--session-id") + 1]
     assert len(session_id) == 36 and start["cwd"] == str(fake.folder)
+    assert args[args.index("--model") + 1] == "claude-opus-5-5"
     assert args[args.index("--permission-mode") + 1] == "bypassPermissions"
     assert args[args.index("--setting-sources") + 1] == "user,project,local"
     assert "--strict-mcp-config" in args
@@ -312,12 +313,15 @@ def test_a_resume_of_a_lost_conversation_starts_again_with_a_new_id(
     assert json.loads(session.path_of(REF).read_text())["id"] == second[1]
 
 
-def test_a_start_whose_id_is_in_use_already_resumes_it(fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_start_with_its_id_in_use_resumes_it_with_the_same_model(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("FAKE_CLAUDE_FAIL", "in-use")
-    session.start(REF, fake.port, 80, 24)
+    session.start(REF, fake.port, 80, 24, "claude-sonnet-5-5")
     wait_for(lambda: len(starts(fake.log)) == 2 and running())
     first, second = [s["args"] for s in starts(fake.log)]
     assert first[0] == "--session-id" and second[:2] == ["--resume", first[1]]
+    assert first[first.index("--model") + 1] == second[second.index("--model") + 1] == "claude-sonnet-5-5"
 
 
 def test_the_next_start_resumes_once_the_first_process_lived_past_the_quick_exit(fake: SimpleNamespace) -> None:

@@ -1902,6 +1902,36 @@ def test_auto_start_in_the_settings_saves_its_own_setting_only(page: Page, serve
     expect(dialog.locator("[data-claude-setting='on']")).to_have_class(re.compile(r"\bon\b"))
 
 
+@pytest.mark.auto_start
+def test_the_model_in_the_settings_goes_with_the_start_of_a_session(page: Page, server_url: str, add_pr: AddPr) -> None:
+    pr = add_pr(OLD, NEW, branch="model")
+    page.goto(server_url + "/")
+    page.click("#gear")
+    dialog = page.locator("#settings")
+    expect(dialog.locator("[data-claude-model='claude-opus-5-5']")).to_have_class(re.compile(r"\bon\b"))
+    dialog.locator("[data-claude-model='claude-sonnet-5-5']").click()
+    expect(dialog.locator(".on[data-claude-model]")).to_have_attribute("data-claude-model", "claude-sonnet-5-5")
+    assert page.evaluate("localStorage.getItem('dr:claudeModel')") == "claude-sonnet-5-5"
+    bodies: list[dict | None] = []
+    page.on("request", lambda r: bodies.append(r.post_data_json) if r.url.endswith("/claude_open") else None)
+    try:
+        tab = open_in_shell(page, server_url, pr)
+        listening = tab.locator("#side .foot [data-term-toggle]")
+        expect(listening).to_have_attribute("title", "Claude is listening · show the terminal", timeout=60000)
+        assert len(bodies) == 1 and (bodies[0] or {}).get("model") == "claude-sonnet-5-5"
+    finally:
+        close_session(page, server_url, pr)
+
+
+def test_the_settings_forget_a_saved_model_the_server_no_longer_offers(page: Page, server_url: str) -> None:
+    page.goto(server_url + "/")
+    page.evaluate("localStorage.setItem('dr:claudeModel', 'claude-gone-1')")
+    page.reload()
+    page.click("#gear")
+    expect(page.locator("#settings .on[data-claude-model]")).to_have_attribute("data-claude-model", "claude-opus-5-5")
+    assert page.evaluate("localStorage.getItem('dr:claudeModel')") is None
+
+
 def test_the_settings_save_the_followed_repositories_as_they_change(page: Page, server_url: str) -> None:
     page.goto(server_url + "/")
     page.click("#gear")

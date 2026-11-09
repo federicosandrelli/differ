@@ -1,8 +1,9 @@
 import io
 import json
+import re
 import subprocess
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 from urllib.parse import quote
 
 import pytest
@@ -543,7 +544,13 @@ def test_a_comments_load_expires_the_comments_for_claude_of_an_ended_pull_reques
 @pytest.mark.parametrize(
     ("action", "body", "function", "expected"),
     [
-        ("claude_open", {"cols": 100, "rows": 30}, "start", (PullRef("o", "r", 1), 8765, 100, 30)),
+        ("claude_open", {"cols": 100, "rows": 30}, "start", (PullRef("o", "r", 1), 8765, 100, 30, "claude-opus-5-5")),
+        (
+            "claude_open",
+            {"cols": 100, "rows": 30, "model": "claude-haiku-5-5"},
+            "start",
+            (PullRef("o", "r", 1), 8765, 100, 30, "claude-haiku-5-5"),
+        ),
         ("claude_close", {}, "close", (PullRef("o", "r", 1),)),
         ("claude_paste", {"text": "@a.py#L1 "}, "paste", (PullRef("o", "r", 1), "@a.py#L1 ", False)),
         ("claude_paste", {"text": "Rebase it", "submit": True}, "paste", (PullRef("o", "r", 1), "Rebase it", True)),
@@ -561,6 +568,20 @@ def test_the_session_actions_reach_the_session_from_this_servers_pages_only(
     h = request("POST", f"/api/o/r/1/{action}", json.dumps(body).encode())
     h.do_POST()
     assert response(h)[0] == 200 and calls == [expected]
+
+
+def test_a_start_with_a_model_the_session_does_not_offer_answers_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple] = []
+    monkeypatch.setattr(server.session, "start", lambda *args: calls.append(args) or {})
+    h = request("POST", "/api/o/r/1/claude_open", json.dumps({"model": "gpt-4"}).encode())
+    h.do_POST()
+    assert response(h)[0] == 400 and calls == []
+
+
+def test_the_shell_offers_the_models_the_session_takes_with_the_sessions_default() -> None:
+    shell = server.tabs_page().decode()
+    assert re.findall(r'data-claude-model="([^"]+)"', shell) == list(get_args(server.session.Model))
+    assert f'data-default-model="{server.session.DEFAULT_MODEL}"' in shell
 
 
 def test_a_vendored_file_is_served_and_any_other_name_under_vendor_is_not() -> None:

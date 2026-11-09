@@ -15,6 +15,8 @@ const PANE_KEY = 'dr:pane';
 const TERM_OPEN_KEY = `dr:term:${PR.repo}#${PR.number}`;
 // Auto start in the settings: 'off', or nothing for on.
 const CLAUDE_START_KEY = 'dr:claudeStart';
+// Model in the settings: the model a session starts with, or nothing for the server's default.
+const CLAUDE_MODEL_KEY = 'dr:claudeModel';
 // The most bytes one frame carries to the relay, which reads a frame of at most 64 KB.
 const TERM_FRAME_MAX = 16384;
 const TERM_FILES = { css: '/vendor/xterm.css', js: ['/vendor/xterm.js', '/vendor/xterm-addon-fit.js'] };
@@ -202,12 +204,13 @@ async function openTerminal(start = true) {
   connectTerm();
   if (start) await startSession();
 }
-// Ask the server to start the session, with the terminal's size; the header shows how it goes.
+// Ask the server to start the session, with the terminal's size and the model; the header shows how it goes.
 async function startSession() {
   CL.error = '';
   const size = TERM.term ? { cols: TERM.term.cols, rows: TERM.term.rows } : { cols: 80, rows: 24 };
+  const model = lsGet(CLAUDE_MODEL_KEY);
   try {
-    const d = await api('claude_open', size);
+    const d = await api('claude_open', model ? { ...size, model } : size);
     CL.session = d; renderTermHead(); renderSide();
   } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); }
   loadClaude();
