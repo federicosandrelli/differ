@@ -344,7 +344,7 @@
   // The desktop app holds the pull requests that differ:// links name, and sends 'links' when one arrives. Any app
   // or site can send such a link, and a Claude session started from the page runs the hooks of the pull request's
   // head commit. So a pull request from a fork, or of a repository the reader does not follow, opens only once they
-  // agree. A null fork means GitHub did not say.
+  // agree. For a followed repository, a null fork means GitHub did not say.
   function openLink(pr) {
     fetch('/api/link?pr=' + encodeURIComponent(pr)).then(r => r.ok ? r.json() : null).then((link) => {
       if (!link) return;
