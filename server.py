@@ -25,6 +25,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
+  /api/link?pr=<url or owner/repo#n> the pull request's name, its repository, the path of its page and whether the
+                                     repository is followed; a 400 for text that names no pull request
                                      (the page, /open and /status refuse a request a browser marks
                                      Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
   /image?src=<link>                  the image a link to a file of a GitHub repository names, read with gh, since
@@ -105,6 +107,7 @@ VENDOR = re.compile(r"^/vendor/(?P<name>[\w.-]+)$")
 # The vendored files a page loads on demand, with their media types; everything else a page needs is inlined in it.
 VENDOR_FILES = {"xterm.js": "text/javascript", "xterm.css": "text/css", "xterm-addon-fit.js": "text/javascript"}
 FOLLOWED = "/api/followed"
+LINK = "/api/link"
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 # An SVG file can hold scripts, and the reader may open an image's address on its own.
 IMAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
@@ -256,6 +259,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.redirect(PullRef.parse((query.get("pr") or [""])[0]).path)
                 except ValueError as exc:
                     return self.send(400, error_page(str(exc)))
+            if url.path == LINK:
+                try:
+                    ref = PullRef.parse((query.get("pr") or [""])[0])
+                except ValueError as exc:
+                    return self.send_json({"error": str(exc)}, 400)
+                return self.send_json(
+                    {"name": str(ref), "repo": ref.slug, "path": ref.path, "followed": ref.slug in followed.load()}
+                )
             if url.path == "/image":
                 src = (query.get("src") or [""])[0]
                 if not (ctype := file_types.support_of(urlparse(src).path).image_type):

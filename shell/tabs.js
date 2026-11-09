@@ -339,4 +339,21 @@
   const saved = lsGet();
   tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', status: t.status || '', badge: t.badge || 0, frame: null }));
   activate(byKey(saved.active) || home);
+
+  // The desktop app holds the pull requests that differ:// links name, and sends 'links' when one arrives. Any app
+  // or site can send such a link, and opening a page can start a Claude session that runs the repository's hooks,
+  // so a pull request of a repository the reader does not follow opens only once they agree.
+  function openLink(pr) {
+    const query = 'pr=' + encodeURIComponent(pr);
+    fetch('/api/link?' + query).then((r) => {
+      if (r.status === 400) return open('/open?' + query);
+      if (!r.ok) return;
+      return r.json().then(link => (link.followed ? Promise.resolve(true) : invoke('confirm', { message: `A link asks to open ${link.name}. You don't follow ${link.repo}, and its page can start a Claude session that runs the repository's hooks. Open it?` }))
+        .then(ok => { if (ok) open(link.path); }));
+    }).catch(() => {});
+  }
+  function openLinks() {
+    invoke('take_links').then(prs => prs.forEach(openLink)).catch(() => {});
+  }
+  if (invoke) { window.addEventListener('links', openLinks); openLinks(); }
 })();

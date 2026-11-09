@@ -16,6 +16,7 @@ use tauri::{
     AppHandle, LogicalPosition, Manager, RunEvent, State, Theme, TitleBarStyle, Url, WebviewUrl,
     WebviewWindowBuilder, Wry,
 };
+use tauri_plugin_deep_link::DeepLinkExt;
 
 struct Sidecar {
     python: PathBuf,
@@ -23,6 +24,10 @@ struct Sidecar {
     port: AtomicU16,
     child: Mutex<Option<Child>>,
 }
+
+// The pull requests that differ:// links named, held until the shell takes them: a link that launches the app
+// arrives before the shell has loaded.
+struct Links(Mutex<Vec<String>>);
 
 // Marks the page as running in the app, so its CSS leaves room for the transparent title bar, and lays
 // a drag region over that strip: the webview covers the title bar, so the window only moves when Tauri's
@@ -228,6 +233,34 @@ async fn confirm(window: tauri::WebviewWindow, message: String) -> bool {
         == rfd::MessageDialogResult::Ok
 }
 
+#[tauri::command]
+fn take_links(links: State<Links>) -> Vec<String> {
+    std::mem::take(&mut *links.0.lock().unwrap())
+}
+
+// differ://open?pr=<a pull request URL or owner/repo#123> opens the pull request in a tab. The app keeps the pull
+// request and tells the shell, which takes it with take_links.
+fn open_links(app: &AppHandle, urls: &[Url]) {
+    let prs: Vec<String> = urls
+        .iter()
+        .filter(|url| url.scheme() == "differ" && url.host_str() == Some("open"))
+        .filter_map(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "pr")
+                .map(|(_, pr)| pr.into_owned())
+        })
+        .collect();
+    if prs.is_empty() {
+        return;
+    }
+    app.state::<Links>().0.lock().unwrap().extend(prs);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        let _ = window.eval("window.dispatchEvent(new Event('links'))");
+    }
+}
+
 const CLOSE_TAB: &str = "close-tab";
 const CLOSE_WINDOW: &str = "close-window";
 const OPEN_SETTINGS: &str = "open-settings";
@@ -287,12 +320,14 @@ fn main() {
     let _ = fix_path_env::fix();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
             update::update_check,
             update::update_run,
             server_failed,
             retry_server,
-            confirm
+            confirm,
+            take_links
         ])
         .menu(app_menu)
         .on_menu_event(|app, event| {
@@ -314,6 +349,14 @@ fn main() {
                 port: AtomicU16::new(0),
                 child: Mutex::new(None),
             });
+            app.manage(Links(Mutex::new(Vec::new())));
+            let linked = app.handle().clone();
+            app.deep_link()
+                .on_open_url(move |event| open_links(&linked, &event.urls()));
+            // macOS hands over the link that launches the app before setup runs, so no listener hears it.
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                open_links(app.handle(), &urls);
+            }
             let handle = app.handle().clone();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("differ")

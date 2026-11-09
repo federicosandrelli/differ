@@ -9,6 +9,7 @@ fn main() {
             "server_failed",
             "retry_server",
             "confirm",
+            "take_links",
         ]),
     ))
     .expect("failed to run tauri-build");

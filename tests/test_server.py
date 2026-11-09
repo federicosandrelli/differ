@@ -351,6 +351,25 @@ def test_a_reference_that_names_no_pull_request_answers_400() -> None:
     assert code == 400 and b"Not a pull request reference" in body
 
 
+def test_link_names_the_pull_request_and_whether_its_repository_is_followed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server.followed, "PATH", tmp_path / "followed.json")
+    server.followed.save(["acme/widgets"])
+    status, body = get("/api/link?pr=" + quote("https://github.com/Acme/Widgets/pull/7"))
+    assert status == 200
+    assert json.loads(body) == {
+        "name": "acme/widgets#7",
+        "repo": "acme/widgets",
+        "path": "/acme/widgets/pull/7",
+        "followed": True,
+    }
+    status, body = get("/api/link?pr=" + quote("acme/tools#3"))
+    assert status == 200 and json.loads(body)["followed"] is False
+    status, body = get("/api/link?pr=junk")
+    assert status == 400 and "Not a pull request reference" in json.loads(body)["error"]
+
+
 @pytest.mark.parametrize(
     ("action", "fields", "why"),
     [
