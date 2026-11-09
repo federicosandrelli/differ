@@ -81,11 +81,18 @@ function reviewButton() {
   const look = state.reviewPanel ? 'on' : cls && !n ? cls : 'primary';
   return `<button data-review-panel class="review ${look}">${label}${n ? `<span class="count">${n}</span>` : ''}</button>`;
 }
+// The button that adds the viewer to the requested reviewers of an open or draft pull request, until the viewer is a
+// reviewer.
+function requestReviewButton() {
+  if (C.is_reviewer || !['open', 'draft'].includes(prStatus())) return '';
+  return `<button data-request-review ${state.busy ? 'disabled' : ''}>${iconHtml('person-plus')}Add me as reviewer</button>`;
+}
 // The buttons at the end of the head, once the comments name the viewer: on the viewer's own pull request the merge
-// button, and the Review button only while a pending review waits to go out; on someone else's, the Review button.
+// button, and the Review button only while a pending review waits to go out; on someone else's, the button that adds
+// the viewer as a reviewer and the Review button.
 function headButtons() {
   if (!C.viewer) return '';
-  const own = isOwn(), buttons = (own ? mergeButton() : '') + (!own || C.pending ? reviewButton() : '');
+  const own = isOwn(), buttons = (own ? mergeButton() : requestReviewButton()) + (!own || C.pending ? reviewButton() : '');
   return buttons ? `<span class="acts">${buttons}</span>` : '';
 }
 // A section of the sidebar: a band under the head with a hairline below it, such as the rebuild notice, the kind

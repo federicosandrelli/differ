@@ -2225,6 +2225,37 @@ def test_an_approval_of_the_head_commit_names_itself_and_blocks_another(
         comments_file.write_text(saved)
 
 
+def test_the_viewer_adds_themself_as_a_reviewer_of_someone_elses_pull_request(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    comments_file = gh_state / "comments.json"
+    saved = comments_file.read_text()
+    before = len(sent(gh_state, "requestReviews"))
+    try:
+        open_pr(page, server_url)
+        page.click("#side button[data-request-review]")
+        expect(page.locator("#side button[data-request-review]")).to_have_count(0)
+        assert sent(gh_state, "requestReviews")[before:] == [{"pr": "PR_1", "user": "U_tester"}]
+    finally:
+        comments_file.write_text(saved)
+
+
+def test_a_reviewer_of_the_pull_request_is_not_offered_to_add_themself(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    comments_file = gh_state / "comments.json"
+    saved = comments_file.read_text()
+    state = json.loads(saved)
+    state["reviews"].append({**state["reviews"][0], "id": "R2", "author": {"login": "tester"}, "state": "COMMENTED"})
+    comments_file.write_text(json.dumps(state))
+    try:
+        open_pr(page, server_url)
+        expect(page.locator("#side button[data-review-panel]")).to_be_visible()
+        expect(page.locator("#side button[data-request-review]")).to_have_count(0)
+    finally:
+        comments_file.write_text(saved)
+
+
 def test_the_tree_cursor_stays_on_a_file_near_the_end_that_cannot_scroll_to_the_top(
     page: Page, server_url: str, config_pr: str
 ) -> None:
@@ -2428,6 +2459,7 @@ def test_someone_elses_pull_request_offers_review_and_the_viewers_own_offers_mer
     open_pr(page, server_url, mine(add_pr, gh_state))
     expect(page.locator("#side .head button[data-merge-panel]")).to_have_text("Ready to merge")
     expect(page.locator("#side .head button[data-review-panel]")).to_have_count(0)
+    expect(page.locator("#side .head button[data-request-review]")).to_have_count(0)
 
 
 def test_merging_sends_the_method_the_commit_message_and_the_pages_head_then_drops_the_button(

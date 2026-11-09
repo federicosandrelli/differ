@@ -57,6 +57,9 @@ VERDICTS = "verdicts: reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED, D
 # however many reviews the pull request has.
 PENDING = "pending: reviews(first: 10, states: [PENDING]) { nodes { id author { login } } }"
 
+# The users and teams GitHub asks for a review now. GitHub drops a user from the list once they review.
+REQUESTS = "reviewRequests(first: 100) { nodes { requestedReviewer { ... on User { login } } } }"
+
 # The pull request's lists that fetch reads in full, a page of up to 100 items at a time, from $after on.
 PAGE = "%s(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { %s } }"
 LISTS = {
@@ -74,9 +77,10 @@ query($owner: String!, $repo: String!, $number: Int!, $after: String) {
     %s
     %s
     %s
+    %s
   } }
 }
-""" % ("\n    ".join(LISTS.values()), PENDING, VERDICTS)
+""" % ("\n    ".join(LISTS.values()), PENDING, VERDICTS, REQUESTS)
 
 MORE = """
 query($owner: String!, $repo: String!, $number: Int!, $after: String) {
@@ -146,8 +150,8 @@ def _all(ref: PullRef, pr: dict, name: str) -> list[dict]:
 
 def fetch(ref: PullRef) -> dict:
     """Every review thread, review and conversation comment of the pull request, plus the viewer's pending review
-    and verdict, and the pull request's status now: a merge or a close does not move the head, so the page, built
-    per head, learns them here."""
+    and verdict, whether the viewer is a reviewer (GitHub asks them for a review, or they reviewed it), and the pull
+    request's status now: a merge or a close does not move the head, so the page, built per head, learns them here."""
     data = graphql(READ, **asdict(ref), after=None)
     pr = data["repository"]["pullRequest"]
     threads = _all(ref, pr, "reviewThreads")
@@ -155,6 +159,7 @@ def fetch(ref: PullRef) -> dict:
     comments = _all(ref, pr, "comments")
     viewer = data["viewer"]["login"]
     pending_id = _pending_id(pr, viewer)
+    requested = {(n.get("requestedReviewer") or {}).get("login") for n in pr["reviewRequests"]["nodes"]}
     reviews = [
         {
             "id": r["id"],
@@ -187,6 +192,7 @@ def fetch(ref: PullRef) -> dict:
         "status": github.status_of(pr["state"], pr["isDraft"]) or "",
         "pending": {"id": pending_id} if pending_id else None,
         "verdict": asdict(verdict) if (verdict := _verdict(pr["verdicts"]["nodes"], viewer)) else None,
+        "is_reviewer": viewer in requested or any(r["author"] == viewer for r in reviews),
         "threads": [th for t in threads if (th := _thread(t, pending_id))],
         "reviews": reviews,
         "comments": comments,
@@ -342,6 +348,28 @@ def add_conversation_comment(ref: PullRef, *, body: str) -> dict:
         body=body,
     )
     return {"posted": True}
+
+
+def request_review(ref: PullRef) -> dict:
+    """Add the viewer to the pull request's requested reviewers, beside the ones it has. GitHub refuses the
+    pull request's author, and a viewer who can't request reviews in the repository."""
+    data = graphql(
+        """
+query($owner: String!, $repo: String!, $number: Int!) {
+  viewer { id }
+  repository(owner: $owner, name: $repo) { pullRequest(number: $number) { id } }
+}""",
+        **asdict(ref),
+    )
+    graphql(
+        """
+mutation($pr: ID!, $user: ID!) {
+  requestReviews(input: {pullRequestId: $pr, userIds: [$user], union: true}) { pullRequest { id } }
+}""",
+        pr=data["repository"]["pullRequest"]["id"],
+        user=data["viewer"]["id"],
+    )
+    return {"requested": True}
 
 
 def viewed(ref: PullRef) -> list[str]:

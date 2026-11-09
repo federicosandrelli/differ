@@ -53,10 +53,11 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      pull request's token in the Authorization header
   /vendor/<name>                     a vendored file a page loads on demand: xterm.js and its stylesheet and addon
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
-                                     conversation, viewed (marks a file viewed or not viewed while the head is
-                                     the page's), open (opens a file in an editor, on the pull request's branch),
-                                     merge, automerge, rebase (GitHub rebases the branch onto its base branch),
-                                     close, reopen, ready, rerun (re-runs a workflow run's failed jobs), claude,
+                                     conversation, request_review (adds the viewer to the requested reviewers),
+                                     viewed (marks a file viewed or not viewed while the head is the page's),
+                                     open (opens a file in an editor, on the pull request's branch), merge,
+                                     automerge, rebase (GitHub rebases the branch onto its base branch), close,
+                                     reopen, ready, rerun (re-runs a workflow run's failed jobs), claude,
                                      claude_follow_up, claude_reply, claude_delete (a comment for Claude, the
                                      reader's reply in its thread, Claude's reply, its removal),
                                      claude_open, claude_close, claude_paste (the embedded session: start it with
@@ -560,6 +561,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = comments.discard(ref)
             elif action == "conversation":
                 result = comments.add_conversation_comment(ref, body=body["body"])
+            elif action == "request_review":
+                result = comments.request_review(ref)
             elif action == "viewed":
                 result = comments.mark_viewed(
                     ref, path=str(body["path"]), viewed=flag(body["viewed"]), head=str(body["head"])

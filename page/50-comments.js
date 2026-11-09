@@ -1,7 +1,7 @@
 // Review threads from GitHub, placed on the lines they refer to, and the forms that write back.
 
 // C.version counts the changes to the threads the page shows, so a file's rendered body knows when they changed.
-const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', status: '', pending: null, verdict: null, threads: [], reviews: [], comments: [] };
+const C = { loaded: false, loadedAt: 0, version: 0, error: '', viewer: '', head: '', status: '', pending: null, verdict: null, is_reviewer: false, threads: [], reviews: [], comments: [] };
 const THREADS = { byFile: new Map(), orphans: [] };
 // The number of comment loads started, and the number of the load the page shows. A load that answers after a later
 // one changes nothing.
@@ -420,7 +420,7 @@ function textareaKey(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') e.target.blur();
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
@@ -460,6 +460,7 @@ async function commentClick(t, e) {
   if (d.threadGo !== undefined) { e.preventDefault(); const th = C.threads.find(x => x.id === d.threadGo); if (th) goThread(th); return true; }
   if (d.outdated !== undefined) { e.preventDefault(); state.showOutdated.has(d.outdated) ? state.showOutdated.delete(d.outdated) : state.showOutdated.add(d.outdated); render(); return true; }
   if (d.reviewPanel !== undefined) { e.preventDefault(); state.reviewPanel = !state.reviewPanel; if (state.reviewPanel) state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
+  if (d.requestReview !== undefined) { await post('request_review', {}); return true; }
   if (d.submit !== undefined) {
     if (!hasReviewSummary() && (d.submit === 'REQUEST_CHANGES' || (d.submit === 'COMMENT' && !pendingCount() && !C.pending))) { state.focus = '[data-review-text]'; renderSide(); restoreFocus(); return true; }
     if (await post('submit', { event: d.submit, body: state.reviewText })) { state.reviewText = ''; state.reviewPanel = false; renderSide(); }

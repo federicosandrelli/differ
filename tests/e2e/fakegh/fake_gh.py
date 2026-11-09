@@ -20,7 +20,8 @@ appended to mutations.log. A review posted with threads and a reply add their co
 sees what it sent, and the answer holds the new comment's id. The `viewed` list of comments.json holds the files the
 viewer marked viewed. Marking a file viewed or not viewed leaves that list as it is, so no test leaves files viewed
 for the next. A merge, a reopen or a mark ready moves the status in pr<n>.json; turning auto-merge on or off, and a
-rebase of the branch, which leaves it up to date, change merge<n>.json.
+rebase of the branch, which leaves it up to date, change merge<n>.json. The `requested` list of comments.json holds
+the logins GitHub asks for a review, and a review request adds the viewer to it.
 `gh api -X POST <endpoint>` does nothing.
 `gh api user --jq .login` prints tester.
 """
@@ -236,6 +237,9 @@ def mutate(args: list[str], request: dict) -> None:
             comments_file.write_text(json.dumps(state))
             review = {"id": "R_new", "comments": {"nodes": [{"id": t["comments"]["nodes"][0]["id"]} for t in added]}}
             data = {"addPullRequestReview": {"pullRequestReview": review}}
+        if "requestReviews(" in query:
+            state["requested"] = [*state.get("requested", []), "tester"]
+            comments_file.write_text(json.dumps(state))
         if "addPullRequestReviewThreadReply(" in query:
             thread = next(t for t in state["threads"] if t["id"] == variables["thread"])
             node = comment_node(f"{thread['id']}-c{len(thread['comments']['nodes']) + 1}", variables["body"])
@@ -281,8 +285,9 @@ def graphql(args: list[str]) -> None:
             "pageInfo": {"hasNextPage": False, "endCursor": None},
             "nodes": [{"path": p, "viewerViewedState": "VIEWED"} for p in state.get("viewed", [])],
         },
+        "reviewRequests": {"nodes": [{"requestedReviewer": {"login": u}} for u in state.get("requested", [])]},
     }
-    print(json.dumps({"data": {"viewer": {"login": "tester"}, "repository": {"pullRequest": pr}}}))
+    print(json.dumps({"data": {"viewer": {"login": "tester", "id": "U_tester"}, "repository": {"pullRequest": pr}}}))
 
 
 def log_and_fail(args: list[str]) -> None:

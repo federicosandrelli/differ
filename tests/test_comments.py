@@ -110,6 +110,9 @@ def test_fetch_reads_every_page_and_shapes_reviews(monkeypatch: pytest.MonkeyPat
                             ],
                         },
                         "verdicts": {"nodes": [review("R1", "APPROVED", author="bob")]},
+                        "reviewRequests": {
+                            "nodes": [{"requestedReviewer": {}}, {"requestedReviewer": {"login": "ann"}}]
+                        },
                         "comments": {"pageInfo": {"hasNextPage": True, "endCursor": "K"}, "nodes": [comment("k1")]},
                     }
                 },
@@ -149,6 +152,7 @@ def test_fetch_reads_every_page_and_shapes_reviews(monkeypatch: pytest.MonkeyPat
         }
     ]
     assert result["verdict"] is None
+    assert result["is_reviewer"] is True
     assert [c["id"] for c in result["comments"]] == ["k1", "k2"]
 
 
@@ -238,6 +242,20 @@ def test_a_new_thread_without_a_comment_id_in_the_answer_still_succeeds(
     monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", None, None))
     monkeypatch.setattr(comments, "graphql", lambda query, **variables: answer)
     assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT") == {"comment": ""}
+
+
+def test_request_review_adds_the_viewer_beside_the_reviewers_already_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[tuple[str, dict]] = []
+
+    def fake_graphql(query: str, **variables: Any) -> dict:
+        sent.append((query, variables))
+        return {"viewer": {"id": "U_ann"}, "repository": {"pullRequest": {"id": "PR_1"}}}
+
+    monkeypatch.setattr(comments, "graphql", fake_graphql)
+    assert comments.request_review(REF) == {"requested": True}
+    query, variables = sent[-1]
+    assert "requestReviews(" in query and "union: true" in query
+    assert variables == {"pr": "PR_1", "user": "U_ann"}
 
 
 def test_a_reply_answers_its_comment_id(monkeypatch: pytest.MonkeyPatch) -> None:
