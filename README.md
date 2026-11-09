@@ -87,7 +87,9 @@ The session needs Claude Code 2.1.316 or later, and runs on your own login.
 The server still writes the skill a session you start by hand follows to
 `~/.claude/skills/differ-comments/SKILL.md`. Such a session listens with the URL
 `ws://127.0.0.1:<port>/api/<owner>/<repo>/<number>/listen` while differ's own
-session for the pull request does not.
+session for the pull request does not. It also writes
+`~/.claude/skills/differ-file-descriptions/SKILL.md`, which tells differ's own
+session how to describe what the pull request changes in each file.
 
 ## Develop
 

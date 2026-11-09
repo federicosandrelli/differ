@@ -51,6 +51,9 @@ them: it holds every message of the others.
   differ shows it, or of one file with `path`. The worktree holds the head only, so read the diff before you talk
   about the change or the old side of a file.
 - `reply_in_thread` answers a thread, with its `id` and `seen`.
+- `describe_file` sets the description of what the pull request changes in one file, which differ shows as Markdown
+  in a box under the file's header, in place of the one before; an empty body removes it. Describe files when the
+  reader asks you to, and follow the `differ-file-descriptions` skill to write each description.
 
 ## What the reader wants
 

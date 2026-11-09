@@ -144,6 +144,8 @@ table.plain th { font-weight: 500; }
 .fhead .path { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fhead .path .dir { font: 11.5px var(--mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fhead .path b { font: 400 14.5px var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The description Claude gave a file: a comment between the header and the code, inside their side borders. */
+.filesec > .fdesc { padding: 10px 20px; border: 1px solid var(--border); border-top: 0; }
 /* A body far from the viewport is empty and keeps its height; containment keeps each body's layout its own.
    Code lines never wrap: the body scrolls sideways, and every chunk takes the width of the file's longest line
    (--cols, in the table's font) so all rows of the file line up and share one scroll. */

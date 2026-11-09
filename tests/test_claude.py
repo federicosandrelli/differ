@@ -470,33 +470,34 @@ def skills(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path / "skills" / "differ-comments" / "SKILL.md"
 
 
-def test_install_skill_writes_the_shipped_skill_with_its_marker(skills: Path) -> None:
-    claude.install_skill()
-    text = skills.read_text()
-    shipped = claude.SKILL.read_text()
-    assert text.startswith(shipped.rstrip())
-    assert text.endswith(f"\n\n{claude.skill_marker(shipped)}\n")
+def test_install_skills_writes_each_shipped_skill_under_its_name_with_its_marker(skills: Path) -> None:
+    claude.install_skills()
+    for name in ["differ-comments", "differ-file-descriptions"]:
+        text = (skills.parent.parent / name / "SKILL.md").read_text()
+        shipped = (claude.SHIPPED_SKILLS / f"{name}.md").read_text()
+        assert text.startswith(shipped.rstrip()) and f"\nname: {name}\n" in shipped
+        assert text.endswith(f"\n\n{claude.skill_marker(shipped)}\n")
 
 
-def test_install_skill_replaces_a_copy_from_another_version(skills: Path) -> None:
+def test_install_skills_replaces_a_copy_from_another_version(skills: Path) -> None:
     skills.parent.mkdir(parents=True)
     skills.write_text("---\nname: differ-comments\n---\nold words\n\n<!-- differ skill 0123456789ab -->\n")
-    claude.install_skill()
+    claude.install_skills()
     assert "old words" not in skills.read_text()
 
 
-def test_install_skill_keeps_an_edited_copy_of_the_current_version(skills: Path) -> None:
-    claude.install_skill()
+def test_install_skills_keeps_an_edited_copy_of_the_current_version(skills: Path) -> None:
+    claude.install_skills()
     edited = skills.read_text().replace("\n", "\nMy own first line.\n", 1)
     skills.write_text(edited)
-    claude.install_skill()
+    claude.install_skills()
     assert skills.read_text() == edited
 
 
-def test_install_skill_reports_a_folder_it_cannot_write(skills: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_install_skills_reports_a_folder_it_cannot_write(skills: Path, capsys: pytest.CaptureFixture[str]) -> None:
     skills.parent.parent.mkdir(parents=True)
     skills.parent.write_text("a file where the folder should be")
-    claude.install_skill()
+    claude.install_skills()
     assert "Could not install the differ-comments skill" in capsys.readouterr().err
 
 
@@ -525,6 +526,31 @@ def test_kept_lists_the_pull_requests_with_a_comments_file() -> None:
     claude.write(other, [])
     (claude.path_of(other).parent / "notes.json").write_text("{}")
     assert claude.kept() == [REF, other]
+
+
+def test_kept_lists_a_pull_request_with_file_descriptions_once() -> None:
+    add()
+    claude.describe(REF, "src/app.py", "The entry point.")
+    other = PullRef("acme", "widgets", 2)
+    claude.describe(other, "a.py", "A helper.")
+    assert claude.kept() == [REF, other]
+
+
+def test_a_description_replaces_the_one_before_and_a_blank_one_drops_it() -> None:
+    claude.describe(REF, "a.py", "One.")
+    claude.describe(REF, "b.py", "Two.")
+    claude.describe(REF, "a.py", "Three.")
+    assert claude.fetch(REF, "abc")["descriptions"] == {"a.py": "Three.", "b.py": "Two."}
+    claude.describe(REF, "a.py", "  ")
+    assert add()["descriptions"] == {"b.py": "Two."}
+
+
+def test_expire_deletes_the_file_descriptions_with_the_comments() -> None:
+    add()
+    claude.describe(REF, "a.py", "One.")
+    claude.expire(REF)
+    assert claude.fetch(REF, "abc") == {"listening": False, "comments": [], "descriptions": {}}
+    assert claude.kept() == []
 
 
 def test_a_sweep_expires_with_the_function_given_among_the_pull_requests_given(monkeypatch: pytest.MonkeyPatch) -> None:

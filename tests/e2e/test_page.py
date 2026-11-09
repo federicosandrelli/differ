@@ -2569,3 +2569,40 @@ def test_a_draft_offers_ready_for_review(page: Page, server_url: str, add_pr: Ad
     expect(page.locator("#side .head .status")).to_have_text("Open")
     expect(button).to_have_text("Ready to merge")
     assert len(sent(gh_state, "markPullRequestReadyForReview")) == before + 1
+
+
+def test_the_view_stays_still_while_descriptions_arrive_change_and_leave(
+    page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
+) -> None:
+    lines = "".join(f"value_{n} = {n}\n" for n in range(80))
+    path = add_pr({}, {"src/first.py": lines, "src/second.py": lines})
+    number = path.rsplit("/", 1)[1]
+    descriptions = cache_dir / "descriptions" / "acme" / "widgets" / f"{number}.json"
+    descriptions.parent.mkdir(parents=True, exist_ok=True)
+
+    def describe(found: dict[str, str]) -> None:
+        descriptions.write_text(json.dumps(found))
+        page.evaluate("loadClaude()")
+
+    open_pr(page, server_url, path)
+    first, second = (
+        page.locator("section[data-file='src/first.py']"),
+        page.locator("section[data-file='src/second.py']"),
+    )
+    describe({"src/first.py": "New values.", "src/second.py": "More new values."})
+    expect(page.locator(".filesec > .fdesc")).to_have_count(2)
+    expect(first.locator(".fdesc")).to_contain_text("New values.")
+    assert page.evaluate("main.scrollTop") == 0
+
+    row = second.locator("tr.add", has_text="value_40 = 40")
+    row.scroll_into_view_if_needed()
+    before = row.bounding_box()
+    describe({"src/first.py": "New values.\n\nA second paragraph.\n\nA third paragraph."})
+    expect(second.locator(".fdesc")).to_have_count(0)
+    expect(first.locator(".fdesc")).to_contain_text("A third paragraph.")
+    changed = row.bounding_box()
+    describe({})
+    expect(page.locator(".filesec > .fdesc")).to_have_count(0)
+    after = row.bounding_box()
+    assert before and changed and after
+    assert changed["y"] == pytest.approx(before["y"], abs=1) and after["y"] == pytest.approx(before["y"], abs=1)

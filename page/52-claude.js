@@ -2,10 +2,11 @@
 // threads they show as, and the sidebar footer's button that says whether the session listens for them and shows
 // its terminal (page/53-terminal.js).
 
-// CL holds the server's answer to /claude, with `session`, where the embedded session stands, and `error`, why the
-// reader's last action on it failed, until the next one. `started` and `applied` count the loads and the reader's
+// CL holds the server's answer to /claude, with `descriptions`, the descriptions Claude gave the files by path,
+// `session`, where the embedded session stands, and `error`, why the reader's last action on it failed, until the
+// next one. `started` and `applied` count the loads and the reader's
 // actions as LOADS does for the comments, so a load that answers after a later load or action changes nothing.
-const CL = { loaded: false, listening: false, comments: [], session: null, error: '', timer: 0, started: 0, applied: 0 };
+const CL = { loaded: false, listening: false, comments: [], descriptions: {}, session: null, error: '', timer: 0, started: 0, applied: 0 };
 const CLAUDE_POLL_MS = 5000;
 // The poll while the session starts or Claude works, so the dot and the terminal's header follow them.
 const CLAUDE_BUSY_POLL_MS = 1000;
@@ -35,15 +36,18 @@ function pollClaude() {
   const ms = CL.session && (CL.session.starting || CL.session.working) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
   CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
-// Show the server's answer: the threads when the comments changed, else the footer when the session came or went,
-// else the terminal's header when the session moved. A reply being written in a thread that is gone goes with it.
+// Show the server's answer: the threads when the comments changed, the files when their descriptions changed, else
+// the footer when the session came or went, else the terminal's header when the session moved. A reply being written
+// in a thread that is gone goes with it.
 function applyClaude(d) {
   const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
+  const descriptions = JSON.stringify(d.descriptions) !== JSON.stringify(CL.descriptions);
   const session = JSON.stringify(d.session) !== JSON.stringify(CL.session);
   const ids = new Set(d.comments.map(c => claudeKey(c.id)));
   for (const key of state.replyOpen.keys()) if (key.startsWith(claudeKey('')) && !ids.has(key)) state.replyOpen.delete(key);
   Object.assign(CL, d, { loaded: true });
-  if (threads) { threadsChanged(); render(); } else if (footer || session) renderSide();
+  if (threads) threadsChanged();
+  if (threads || descriptions) render(); else if (footer || session) renderSide();
 }
 // Show the server's answer to the load or action with that number, unless the answer to a later one shows already.
 function showClaude(load, d) {
@@ -113,6 +117,11 @@ function claudeThreadHtml(f, t) {
   const reply = state.replyOpen.has(t.id) ? replyHtml(t, btn(`data-claude-follow="${esc(c.id)}"`, 'Send to Claude', true))
     : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}</div>`;
   return `<div class="thread card" data-thread="${esc(t.id)}">${threadHead(t)}${messages}${reply}</div>`;
+}
+// The description Claude gave the file; empty when it has none, or while comments can't go to Claude.
+const claudeDescription = (f) => claudeOn() && Object.hasOwn(CL.descriptions, f.path) ? CL.descriptions[f.path] : '';
+function claudeDescriptionHtml(f, body) {
+  return `<div class="chead">${iconHtml('bot')}<b>Claude</b></div><div class="cbody">${renderMarkdown(body, { file: f })}</div>`;
 }
 // The comments for Claude on files this diff leaves out, for the overview, under the path each one is on.
 function claudeOrphansHtml() {

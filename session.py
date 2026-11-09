@@ -582,7 +582,8 @@ def expire(ref: PullRef) -> None:
 
 
 def sweep() -> None:
-    """Expire every pull request with a session file or comments that GitHub reports merged or closed."""
+    """Expire every pull request with a session file, comments or file descriptions that GitHub reports merged or
+    closed."""
     claude.sweep(expire, list(dict.fromkeys(claude.kept() + kept())))
 
 

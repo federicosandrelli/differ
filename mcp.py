@@ -12,6 +12,7 @@ from __future__ import annotations
 import hmac
 import json
 import secrets
+from pathlib import Path
 from typing import Any
 
 import build
@@ -52,6 +53,20 @@ TOOLS: list[dict] = [
             "type": "object",
             "properties": {"id": {"type": "string"}, "body": {"type": "string"}, "seen": {"type": "integer"}},
             "required": ["id", "body"],
+        },
+    },
+    {
+        "name": "describe_file",
+        "description": (
+            "Set the description of what this pull request changes in one file, in Markdown. differ shows it in a "
+            "box under the file's header, in place of the description before. An empty body removes it. `path` is "
+            "the file's path in the diff: its new path when the pull request renames it. Follow the "
+            "differ-file-descriptions skill to write the body."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}, "body": {"type": "string"}},
+            "required": ["path", "body"],
         },
     },
 ]
@@ -123,6 +138,14 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
                 ref, thread_id, body, seen if isinstance(seen, int) and not isinstance(seen, bool) else None
             )
             return f"Replied in the thread on {c['path']}:{c['line']}.", False
+        if name == "describe_file":
+            path, body = arguments.get("path"), arguments.get("body")
+            if not isinstance(path, str) or not isinstance(body, str):
+                return "describe_file needs a path and a body.", True
+            if body.strip() and path not in paths(*commits(ref)):
+                return f"{path} is not a file of this pull request's diff.", True
+            claude.describe(ref, path, body)
+            return f"{'Described' if body.strip() else 'Removed the description of'} {path}.", False
         return f"No tool named {name}.", True
     except claude.NoComment as exc:
         return str(exc), True
@@ -130,20 +153,41 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
         return f"{type(exc).__name__}: {exc}", True
 
 
-def diff(ref: PullRef, path: str | None) -> str:
-    """The pull request's diff from the mirror, from the commit its branch left the base branch at, as the page's,
-    headed by that commit and the head, cut at DIFF_MAX characters."""
+def commits(ref: PullRef) -> tuple[Path, str, str]:
+    """The mirror, fetched up to the pull request's head, the commit its branch left the base branch at, and the
+    head."""
     pr = github.pull_request(ref)
     mirror = build.ensure_repo(ref, lambda _: None)
     build.fetch(mirror, ref.number, pr.base, pr.head, lambda _: None)
-    base = build.base_of(mirror, pr)
-    args = ["-c", "diff.suppressBlankEmpty=false", "diff-tree", "-p", "-M", "-U3", base, pr.head]
+    return mirror, build.base_of(mirror, pr), pr.head
+
+
+def diff(ref: PullRef, path: str | None) -> str:
+    """The pull request's diff from the mirror, from the commit its branch left the base branch at, as the page's,
+    headed by that commit and the head, cut at DIFF_MAX characters."""
+    mirror, base, head_commit = commits(ref)
+    args = ["-c", "diff.suppressBlankEmpty=false", "--literal-pathspecs", "diff-tree", "-p", "-M", "-U3", base]
+    args.append(head_commit)
     if path:
-        args += ["--", path]
+        # git pairs a rename only when both of its paths are in the pathspec.
+        args += ["--", *dict.fromkeys([path, paths(mirror, base, head_commit).get(path, path)])]
     patch = build.git(mirror, *args).decode(errors="replace")
-    head = f"base {base}\nhead {pr.head}\n\n"
+    head = f"base {base}\nhead {head_commit}\n\n"
     if not patch:
         return head + (f"{path} is not changed by this pull request." if path else "The diff is empty.")
     if len(patch) > DIFF_MAX:
         patch = patch[:DIFF_MAX] + f"\n[cut after {DIFF_MAX} characters; ask for one file with `path`]\n"
     return head + patch
+
+
+def paths(mirror: Path, base: str, head: str) -> dict[str, str]:
+    """The paths of the files that change from base to head, as the page names them (a renamed file by its new path),
+    each with the file's path at base."""
+    fields = build.git(mirror, "diff-tree", "-r", "-M", "-z", "--name-status", base, head).decode(errors="replace")
+    words, found = iter(fields.split("\0")), {}
+    for status in words:
+        if not status:
+            continue
+        old = next(words)
+        found[next(words) if status[0] in "RC" else old] = old
+    return found

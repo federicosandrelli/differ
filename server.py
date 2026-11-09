@@ -749,7 +749,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, exit_on_signal)
     signal.signal(signal.SIGINT, exit_on_signal)
     build.prune_all()
-    claude.install_skill()
+    claude.install_skills()
     session.reap_orphans()
     threading.Thread(target=session.sweep, daemon=True).start()
     if problem := gh_problem():

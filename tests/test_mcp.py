@@ -51,7 +51,7 @@ def test_initialize_echoes_the_clients_protocol_version_and_offers_tools() -> No
 
 def test_tools_list_names_the_tools_with_their_schemas() -> None:
     tools = result("tools/list")["tools"]
-    assert [t["name"] for t in tools] == ["pull_request_diff", "reply_in_thread"]
+    assert [t["name"] for t in tools] == ["pull_request_diff", "reply_in_thread", "describe_file"]
     assert all("inputSchema" in t and t["description"] for t in tools)
 
 
@@ -120,13 +120,16 @@ def test_a_tool_failure_comes_back_as_text_with_is_error() -> None:
 
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A repository with two commits, served as the mirror of REF, whose pull request goes from the first to the second."""
+    """A repository with two commits, served as the mirror of REF, whose pull request goes from the first to the
+    second: it changes a.py, renames old.py to new.py with one more line, and deletes gone.py."""
+    long = "".join(f"line {n}\n" for n in range(20))
+    first = {"a.py": "print(1)\n", "b.py": "two\n", "old.py": long, "gone.py": "bye\n"}
     root, base, head = make_repo(
-        tmp_path / "repo", {"a.py": "print(1)\n", "b.py": "two\n"}, {"a.py": "print(2)\n", "b.py": "two\n"}
+        tmp_path / "repo", first, {"a.py": "print(2)\n", "b.py": "two\n", "new.py": long + "line 20\n"}
     )
     # The base branch moved on after the pull request's branch left it, as GitHub's base commit does.
     git(root, "checkout", "-q", base)
-    moved = commit_tree(root, {"a.py": "print(1)\n", "b.py": "two\n", "c.py": "later\n"}, "later on main")
+    moved = commit_tree(root, {**first, "c.py": "later\n"}, "later on main")
     pr = github.PullRequest("t", "u", "", "ann", moved, head, "main", "feature", 1, "OPEN", False)
     monkeypatch.setattr(github, "pull_request", lambda ref: pr)
     monkeypatch.setattr(build, "ensure_repo", lambda ref, log: root)
@@ -144,6 +147,41 @@ def test_pull_request_diff_gives_the_whole_diff_from_the_merge_base_or_one_files
     assert "+print(2)" in one
     none = result("tools/call", {"name": "pull_request_diff", "arguments": {"path": "b.py"}})["content"][0]["text"]
     assert none.endswith("b.py is not changed by this pull request.")
+
+
+def test_pull_request_diff_of_a_renamed_file_shows_the_rename(repo: Path) -> None:
+    text = result("tools/call", {"name": "pull_request_diff", "arguments": {"path": "new.py"}})["content"][0]["text"]
+    assert "rename from old.py\nrename to new.py" in text and "+line 20" in text and "+line 0" not in text
+
+
+def describe(path: str, body: str) -> dict:
+    return result("tools/call", {"name": "describe_file", "arguments": {"path": path, "body": body}})
+
+
+def test_describe_file_keeps_a_description_of_a_file_of_the_diff_only(repo: Path) -> None:
+    assert describe("a.py", "Prints two.") == {
+        "content": [{"type": "text", "text": "Described a.py."}],
+        "isError": False,
+    }
+    refused = describe("b.py", "Unchanged.")
+    assert refused["isError"] and refused["content"][0]["text"] == "b.py is not a file of this pull request's diff."
+    assert claude.descriptions(REF) == {"a.py": "Prints two."}
+    assert describe("a.py", "")["content"][0]["text"] == "Removed the description of a.py."
+    assert claude.descriptions(REF) == {}
+    assert result("tools/call", {"name": "describe_file", "arguments": {"path": "a.py"}})["isError"]
+
+
+def test_describe_file_names_a_renamed_file_by_its_new_path_and_a_deleted_one_by_its_old_path(repo: Path) -> None:
+    assert not describe("new.py", "Renamed.")["isError"] and not describe("gone.py", "Deleted.")["isError"]
+    assert describe("old.py", "Renamed.")["isError"]
+    assert describe("c.py", "Changed on main only.")["isError"]
+    assert claude.descriptions(REF) == {"new.py": "Renamed.", "gone.py": "Deleted."}
+
+
+def test_describe_file_removes_the_description_of_a_file_that_left_the_diff(repo: Path) -> None:
+    claude.describe(REF, "dropped.py", "Was in the diff once.")
+    assert not describe("dropped.py", "")["isError"]
+    assert claude.descriptions(REF) == {}
 
 
 def test_a_long_diff_is_cut_with_a_note(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:

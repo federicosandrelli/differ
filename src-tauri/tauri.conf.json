@@ -33,7 +33,7 @@
       "../page/vendor/*": "python/page/vendor/",
       "../prompts/*": "python/prompts/",
       "../shell/*": "python/shell/",
-      "../skill/*": "python/skill/"
+      "../skills/*": "python/skills/"
     }
   }
 }

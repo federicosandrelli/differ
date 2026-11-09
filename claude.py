@@ -1,11 +1,12 @@
 """The comments the reader sends to the Claude Code session that works on a pull request, instead of to GitHub, and
 the session that listens for them.
 
-A pull request's comments live in claude/<owner>/<repo>/<number>.json in the cache, oldest first, until the pull
-request is merged or closed. Each one is a thread
-on its lines: the reader's messages and Claude's replies, oldest first. A session listens over a WebSocket, one
-session per pull request. While one listens, a new comment, or the reader's reply in a thread, goes to it at once as a
-text frame, and when one connects, every thread without Claude's reply to the reader's last message goes to it."""
+A pull request's comments live in claude/<owner>/<repo>/<number>.json in the cache, oldest first, and the
+descriptions Claude gives its files in descriptions/<owner>/<repo>/<number>.json, until the pull request is merged or
+closed. Each comment is a thread on its lines: the reader's messages and Claude's replies, oldest first. A session
+listens over a WebSocket, one session per pull request. While one listens, a new comment, or the reader's reply in a
+thread, goes to it at once as a text frame, and when one connects, every thread without Claude's reply to the
+reader's last message goes to it."""
 
 from __future__ import annotations
 
@@ -38,9 +39,9 @@ Send = Callable[[str], None]
 # The statuses that end a pull request, and with it its comments.
 ENDED = ("merged", "closed")
 SHA = re.compile(r"[0-9a-f]{40}")
-# The skill that tells a session how to listen and reply, and the folder of the user's Claude Code skills, where
-# install_skill writes it as differ-comments/SKILL.md.
-SKILL = Path(__file__).parent / "skill" / "SKILL.md"
+# The skills differ ships, one Markdown file each, such as differ-comments.md, which tells a session how to listen and
+# reply, and the folder of the user's Claude Code skills, where install_skills writes each as <name>/SKILL.md.
+SHIPPED_SKILLS = Path(__file__).parent / "skills"
 SKILLS = Path(os.environ.get("DIFFER_SKILLS") or Path.home() / ".claude" / "skills")
 
 lock = threading.Lock()
@@ -81,13 +82,41 @@ def with_messages(c: dict) -> dict:
 
 
 def write(ref: PullRef, comments: list[dict]) -> None:
-    """Replace the pull request's file with the comments, through a temporary file, so a crash mid-write leaves the
-    old comments. Call it with the lock held."""
-    path = path_of(ref)
+    """Replace the pull request's file with the comments. Call it with the lock held."""
+    save(path_of(ref), comments)
+
+
+def save(path: Path, data: object) -> None:
+    """Replace the file with the data as JSON, through a temporary file, so a crash mid-write leaves the old data."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(comments))
+    tmp.write_text(json.dumps(data))
     os.replace(tmp, path)
+
+
+def descriptions_path(ref: PullRef) -> Path:
+    return build.CACHE / "descriptions" / ref.owner / ref.repo / f"{ref.number}.json"
+
+
+def descriptions(ref: PullRef) -> dict[str, str]:
+    """The descriptions Claude gave the pull request's files, by path; empty when it has none, or when the file is
+    broken."""
+    try:
+        data = json.loads(descriptions_path(ref).read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+
+
+def describe(ref: PullRef, path: str, body: str) -> None:
+    """Keep Claude's description of the file at path, in place of the one before. A blank body drops it."""
+    with lock:
+        described = descriptions(ref)
+        if body.strip():
+            described[path] = body
+        else:
+            described.pop(path, None)
+        save(descriptions_path(ref), described)
 
 
 def now() -> str:
@@ -99,9 +128,13 @@ def message(author: Author, body: str, at: str) -> dict:
 
 
 def answer(ref: PullRef, listening: bool, comments: list[dict], head: str) -> dict:
-    """Whether a session listens on the pull request, and its comments, each with the lines it sits on in the head
-    commit (`placed`)."""
-    return {"listening": listening, "comments": [{**c, "placed": place(ref, c, head)} for c in comments]}
+    """Whether a session listens on the pull request, its comments, each with the lines it sits on in the head
+    commit (`placed`), and the descriptions Claude gave its files."""
+    return {
+        "listening": listening,
+        "comments": [{**c, "placed": place(ref, c, head)} for c in comments],
+        "descriptions": descriptions(ref),
+    }
 
 
 def fetch(ref: PullRef, head: str) -> dict:
@@ -280,9 +313,10 @@ def delete(ref: PullRef, comment_id: str, head: str) -> dict:
 
 
 def expire(ref: PullRef) -> None:
-    """Delete all of the pull request's comments."""
+    """Delete all of the pull request's comments and file descriptions."""
     with lock:
         path_of(ref).unlink(missing_ok=True)
+        descriptions_path(ref).unlink(missing_ok=True)
 
 
 def skill_marker(text: str) -> str:
@@ -290,31 +324,35 @@ def skill_marker(text: str) -> str:
     return f"<!-- differ skill {hashlib.sha256(text.encode()).hexdigest()[:12]} -->"
 
 
-def install_skill() -> None:
-    """Write the skill into the user's Claude Code skills, unless the copy there was installed from the text that
-    ships now. A copy from an older or a newer differ is replaced; one the user edited stays until the shipped text
-    changes. A failure to write goes to stderr."""
-    text = SKILL.read_text()
-    marker = skill_marker(text)
-    path = SKILLS / "differ-comments" / "SKILL.md"
-    try:
-        if path.exists() and path.read_bytes().rstrip().endswith(marker.encode()):
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{text.rstrip()}\n\n{marker}\n")
-    except OSError as e:
-        sys.stderr.write(f"Could not install the differ-comments skill in {path.parent}: {e}\n")
+def install_skills() -> None:
+    """Write each shipped skill into the user's Claude Code skills, unless the copy there was installed from the text
+    that ships now. A copy from an older or a newer differ is replaced; one the user edited stays until the shipped
+    text changes. A failure to write goes to stderr."""
+    for shipped in sorted(SHIPPED_SKILLS.glob("*.md")):
+        text = shipped.read_text()
+        marker = skill_marker(text)
+        path = SKILLS / shipped.stem / "SKILL.md"
+        try:
+            if path.exists() and path.read_bytes().rstrip().endswith(marker.encode()):
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"{text.rstrip()}\n\n{marker}\n")
+        except OSError as e:
+            sys.stderr.write(f"Could not install the {shipped.stem} skill in {path.parent}: {e}\n")
 
 
 def kept() -> list[PullRef]:
-    """The pull requests with a comments file in the cache."""
-    files = sorted((build.CACHE / "claude").glob("*/*/*.json"))
-    return [PullRef(f.parent.parent.name, f.parent.name, int(f.stem)) for f in files if f.stem.isdigit()]
+    """The pull requests with a comments file or a descriptions file in the cache."""
+    folders = [build.CACHE / "claude", build.CACHE / "descriptions"]
+    files = sorted(f for folder in folders for f in folder.glob("*/*/*.json"))
+    refs = [PullRef(f.parent.parent.name, f.parent.name, int(f.stem)) for f in files if f.stem.isdigit()]
+    return list(dict.fromkeys(refs))
 
 
 def sweep(expire: Callable[[PullRef], None] = expire, refs: list[PullRef] | None = None) -> None:
-    """Expire every pull request among `refs`, by default those with a comments file, that GitHub reports merged or
-    closed, with `expire`, which deletes its comments by default. A pull request GitHub can't return keeps them."""
+    """Expire every pull request among `refs`, by default those with a comments file or a descriptions file, that
+    GitHub reports merged or closed, with `expire`, which deletes its comments and descriptions by default. A pull
+    request GitHub can't return keeps them."""
     for ref, standing in github.pr_standings(kept() if refs is None else refs).items():
         if standing.status in ENDED:
             expire(ref)

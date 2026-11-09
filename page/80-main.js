@@ -212,6 +212,24 @@ function updateSection(f, el) {
     el.append(body);
   } else if (!open && code) { keepBoxHeights(code); code.remove(); }
 }
+// Give an open file's section a box under its header with the description Claude gave the file, and take the box
+// from a closed file or one without a description, keeping what is on screen still when the box is above it.
+function patchDescription(f, el) {
+  const body = sectionOpen(f) ? claudeDescription(f) : '';
+  let box = el.querySelector(':scope > .fdesc');
+  if (box && box.dataset.body === body) return;
+  if (box && body) { replaceContent(box, claudeDescriptionHtml(f, body)); box.dataset.body = body; return; }
+  // The header sticks, so where it ends in the content is the section's top plus its height.
+  const head = el.querySelector(':scope > .fhead'), above = span(el)[0] + head.offsetHeight <= main.scrollTop + 1;
+  const before = box ? box.offsetHeight : 0;
+  if (box) box.remove();
+  if (body) {
+    head.insertAdjacentHTML('afterend', `<div class="fdesc comment">${claudeDescriptionHtml(f, body)}</div>`);
+    box = head.nextElementSibling;
+    box.dataset.body = body;
+  }
+  if (above) main.scrollTop += (body ? box.offsetHeight : 0) - before;
+}
 // One section per shown file, in order, reusing the sections already on the page.
 function patchSections(files) {
   const existing = new Map(sections.map(s => [s.f.path, s.el]));
@@ -224,6 +242,7 @@ function patchSections(files) {
       el.className = 'filesec'; el.id = `sec-${f.index}`; el.dataset.file = f.path;
     }
     updateSection(f, el);
+    patchDescription(f, el);
     const at = main.children[i + 1];
     if (at !== el) main.insertBefore(el, at || null);
     sections.push({ f, el });
