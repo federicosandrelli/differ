@@ -28,7 +28,6 @@ FOLLOWED_QUERY = "is:pr is:open archived:false draft:false -author:@me sort:upda
 MERGED_QUERY = "is:pr is:merged -author:@me sort:updated-desc"
 FAILED = ("FAILURE", "ERROR")
 RUNNING = ("PENDING", "EXPECTED")
-SHOWN = 5
 LINEAR_LINKBACK = "<!-- linear-linkback -->"
 LINEAR_ISSUE = re.compile(r"https://linear\.app/[\w-]+/issue/([A-Za-z0-9]+-\d+)")
 NONE_HTML = '<span class="hint none">None</span>'
@@ -508,7 +507,7 @@ def split_html(r: Row) -> str:
     )
 
 
-def card_html(r: Row, viewer: str, quiet: bool, hidden: bool, session: claude_desktop.Session | None) -> str:
+def card_html(r: Row, viewer: str, quiet: bool, session: claude_desktop.Session | None) -> str:
     """A pull request as a card of two lines: its title, a link that covers the card, with its age on the right; then
     its status icon and, for the viewer's own, `owner/repo#number`, or, for someone else's, the author's login and the
     repository's name, then its added and removed lines and its links, with the reasons on the right. A quiet card
@@ -519,7 +518,7 @@ def card_html(r: Row, viewer: str, quiet: bool, hidden: bool, session: claude_de
     else:
         who = f'<span class="by">{html.escape(r["author"] or "ghost")}</span><span class="ref">{html.escape(r["repo"])}</span>'
     return (
-        f'<div class="card{"" if quiet else " panel"} pr"{" hidden" if hidden else ""}>'
+        f'<div class="card{"" if quiet else " panel"} pr">'
         f'<span class="line"><a class="t cover" href="{html.escape(ref.path)}">{html.escape(r["title"])}</a>'
         f'<span class="age">{html.escape(ago(r["at"]))}</span></span>'
         f'<span class="line"><span class="m">{icon}{who}{split_html(r)}{links_html(r, session)}</span>'
@@ -530,11 +529,10 @@ def card_html(r: Row, viewer: str, quiet: bool, hidden: bool, session: claude_de
 def list_html(
     key: str, rows: list[Row], viewer: str, quiet: bool, sessions: dict[PullRef, claude_desktop.Session]
 ) -> str:
-    """A list of cards keyed by `key`, all but the first SHOWN hidden, and a "Show N more" button when some are
-    hidden, or None without rows. `sessions` gives the Claude Code session of a pull request."""
-    cards = "".join(card_html(r, viewer, quiet, i >= SHOWN, sessions.get(ref_of(r))) for i, r in enumerate(rows))
-    more = f'<button class="ghost more">Show {len(rows) - SHOWN} more</button>' if len(rows) > SHOWN else ""
-    return f'<section class="sub" data-key="{key}">{cards or NONE_HTML}{more}</section>'
+    """A list of cards keyed by `key`, or None without rows. `sessions` gives the Claude Code session of a pull
+    request."""
+    cards = "".join(card_html(r, viewer, quiet, sessions.get(ref_of(r))) for r in rows)
+    return f'<section class="sub" data-key="{key}">{cards or NONE_HTML}</section>'
 
 
 def footer_html(board: Board) -> str:

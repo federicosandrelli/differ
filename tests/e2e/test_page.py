@@ -2199,7 +2199,7 @@ def own_pr(number: int, draft: bool, ci: str, repo: str = "acme/widgets") -> dic
     }
 
 
-def test_the_start_page_lists_the_viewers_pull_requests_and_show_more_opens_the_rest(
+def test_the_start_page_lists_the_viewers_pull_requests_and_scrolls_a_long_list(
     page: Page, server_url: str, gh_state: Path, cache_dir: Path
 ) -> None:
     found = [own_pr(1, False, "FAILURE"), *(own_pr(n, True, "SUCCESS") for n in range(2, 9))]
@@ -2215,12 +2215,12 @@ def test_the_start_page_lists_the_viewers_pull_requests_and_show_more_opens_the_
         drafts = page.locator('#board .sub[data-key="draft"]')
         cards = drafts.locator(".card")
         expect(cards).to_have_count(7)
-        expect(cards.nth(4)).to_be_visible()
-        expect(cards.nth(5)).to_be_hidden()
-        drafts.get_by_role("button", name="Show 2 more").click()
-        expect(cards.nth(6)).to_be_visible()
         expect(cards.nth(6).locator(".t")).to_have_text(f"{TITLE} 2")
-        expect(drafts.get_by_role("button")).to_have_count(0)
+        page.set_viewport_size({"width": 1280, "height": 400})
+        assert drafts.evaluate("d => d.clientHeight <= innerHeight / 2 && d.scrollHeight > d.clientHeight")
+        drafts.evaluate("d => { d.scrollTop = 100; window.drawn = d; document.dispatchEvent(new Event('tab-shown')); }")
+        page.wait_for_function("!drawn.isConnected")
+        assert drafts.evaluate("d => d.scrollTop") == 100
     finally:
         (gh_state / "search.json").unlink()
         (cache_dir / "board.json").unlink(missing_ok=True)
