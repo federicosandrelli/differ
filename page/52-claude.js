@@ -66,6 +66,8 @@ async function postClaude(action, body) {
   showClaude(load, await api(action, { ...body, head: PR.head }));
 }
 // The setting changed in the settings of the shell, which share this page's storage.
+// A hidden window loads nothing, so a window that shows again loads at once, for the dot on the tab.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadClaude(); });
 window.addEventListener('storage', (e) => {
   if (e.key !== CLAUDE_KEY) return;
   loadClaude(); threadsChanged(); render(); tellShellClaude();
@@ -150,7 +152,7 @@ function tellShellClaude() {
 }
 // What Claude does, for the bot's tooltip and the terminal's header: "working on" its task, or "working" without one.
 const claudeWork = (s) => `working${s.task ? ` on ${s.task}` : ''}`;
-// Where the session stands, in words, for the bot's tooltip and the tab's dot.
+// Where the session stands, in words.
 function claudeStanding() {
   const s = CL.session || {}, waiting = CL.comments.filter(c => c.state === 'waiting').length;
   return s.asking ? 'Claude is waiting for your answer' : s.working ? `Claude is ${claudeWork(s)}` : CL.listening ? 'Claude is listening'

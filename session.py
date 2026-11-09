@@ -50,8 +50,9 @@ from github import PullRef
 
 ROOT = Path(__file__).resolve().parent
 PROMPT = ROOT / "prompts" / "session.md"
-# The oldest Claude Code the session runs on: the one the MCP transport and the start flags were checked with.
-MIN_VERSION = (2, 1, 316)
+# The oldest Claude Code the session runs on: the one the MCP transport, the start flags and the hooks were checked
+# with.
+MIN_VERSION = (2, 1, 319)
 BUFFER_MAX = 256 * 1024
 # A process that ends this soon after a start did not start: its output says why.
 QUICK_EXIT = 15
@@ -77,8 +78,10 @@ IDLE_MARK = "\u2733"
 NO_TASK = "Claude Code"
 IN_USE = "already in use"
 # The tool Claude Code shows the reader a question with. Its PreToolUse hook fires as the question shows and its
-# PostToolUse hook once the reader answers; neither fires when the reader cancels the question.
+# PostToolUse hook once the reader answers. No hook fires when the reader cancels the question with one of
+# CANCEL_KEYS, and Claude then waits at its prompt.
 QUESTION_TOOL = "AskUserQuestion"
+CANCEL_KEYS = (b"\x1b", b"\x03")
 # The seconds Claude Code waits for the server to answer a hook before it goes on without it.
 HOOK_TIMEOUT = 5
 # The models a session can start with, as `--model` takes them.
@@ -311,14 +314,12 @@ def hook_settings(ref: PullRef, port: int) -> str:
         "timeout": HOOK_TIMEOUT,
     }
     matcher = [{"matcher": QUESTION_TOOL, "hooks": [handler]}]
-    return json.dumps({"hooks": {"PreToolUse": matcher, "PostToolUse": matcher}})
+    return json.dumps({"hooks": {"PreToolUse": matcher, "PostToolUse": matcher, "PostToolUseFailure": matcher}})
 
 
-def hook(ref: PullRef, event: object) -> None:
+def hook(ref: PullRef, event: dict) -> None:
     """Take a hook the pull request's process posted: Claude asks a question from QUESTION_TOOL's PreToolUse hook on,
     until any other hook."""
-    if not isinstance(event, dict):
-        raise ValueError("a hook is a JSON object")
     with lock:
         session_of(ref).asking = event.get("hook_event_name") == "PreToolUse"
 
@@ -449,7 +450,9 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
             if len(s.output) > BUFFER_MAX:
                 del s.output[: len(s.output) - BUFFER_MAX]
             # A title can arrive split across two reads, so the search reaches back into what came before.
-            # Claude works again once the reader answers or cancels a question, and only a hook says it asks one.
+            # A title that turns from waiting to working ends a question, as a backstop for a way out of it that posts
+            # no hook. Only the turn counts, since the hook that starts a question can arrive before the last title of
+            # the work that led to it.
             if titles := TITLE.findall(s.output, max(0, len(s.output) - len(data) - TITLE_MAX)):
                 title = titles[-1].decode(errors="replace")
                 if title_state(title)[0] and not title_state(s.title)[0]:
@@ -532,10 +535,12 @@ WRITE_WAIT = 0.2
 
 
 def write(ref: PullRef, data: bytes) -> None:
-    """Type the bytes into the session, if a process runs. Waits while the process has not read what was typed before,
-    and stops once the process is gone."""
+    """Type the bytes into the session, if a process runs, and end a question when they are one of CANCEL_KEYS.
+    Waits while the process has not read what was typed before, and stops once the process is gone."""
     with lock:
         s = session_of(ref)
+        if data in CANCEL_KEYS:
+            s.asking = False
     left = memoryview(bytes(data))
     while left:
         with s.writes:

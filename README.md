@@ -64,7 +64,7 @@ instead. The bot button in the sidebar footer shows its terminal under the
 file tree, and the arrow next to it moves the terminal to a column of its own
 between the tree and the code. differ starts `claude` in a worktree of the
 repository, on the pull request's branch, kept in `~/.cache/differ/worktrees`.
-The session needs Claude Code 2.1.316 or later, and runs on your own login.
+The session needs Claude Code 2.1.319 or later, and runs on your own login.
 It starts with Opus 5.5 unless you pick another model in the settings.
 
 - "Send to Claude" in a comment box sends the comment to the session instead of

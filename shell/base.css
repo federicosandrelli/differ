@@ -126,9 +126,8 @@ button.primary .count { background: var(--text-on-fill); color: var(--accent); }
 .spinner { display: inline-block; flex: none; width: 12px; height: 12px; border: 1.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .tag.sending { animation: none; } .spinner { animation-duration: 2.4s; } }
-/* A dot says where a Claude session stands, in the state claudeState() in page/52-claude.js picks: lit while it listens,
-   pulsing while it starts, glowing in the accent while Claude works, in the modified colour while Claude waits for the
-   reader's answer, dim without a session. */
+/* A dot says where a Claude session stands: .on lit, .wait pulsing, .work glowing in the accent, .ask in the modified
+   colour; dim without a class. */
 .dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--text-muted); opacity: var(--dim); flex: none; }
 .dot.on, .dot.wait { background: var(--add-fg); opacity: 1; }
 .dot.wait { animation: fade 1.2s ease-in-out infinite; }

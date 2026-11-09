@@ -1877,6 +1877,7 @@ def test_shell_opens_a_tab_and_keeps_it_after_a_reload(page: Page, server_url: s
     expect(tab).to_have_count(1)
     expect(tab).to_have_class(re.compile(r"\bon\b"))
     expect(tab.locator(".label")).to_have_text(f"#1 {TITLE}", timeout=30000)
+    shell_tab(page).wait_for_function("CL.loaded")
     expect(tab.locator(".dot")).to_have_count(0)
     expect(page.frame_locator("#panes iframe.on").locator("#side .tree")).to_be_visible()
 

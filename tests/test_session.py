@@ -121,11 +121,11 @@ def test_the_binary_is_the_one_differ_claude_names_else_the_first_on_the_path(mo
 def test_the_version_is_read_from_claude_and_an_old_one_is_refused(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert session.version_of(FAKE) == (2, 1, 316) and session.too_old((2, 1, 316)) is None
+    assert session.version_of(FAKE) == (2, 1, 319) and session.too_old((2, 1, 319)) is None
     monkeypatch.setenv("FAKE_CLAUDE_FAIL", "old")
     assert session.version_of(FAKE) == (2, 1, 200)
-    assert session.too_old((2, 1, 200)) == "Claude Code 2.1.200 is too old. differ needs 2.1.316 or later."
-    assert session.too_old(()) == "Claude Code an unknown version is too old. differ needs 2.1.316 or later."
+    assert session.too_old((2, 1, 200)) == "Claude Code 2.1.200 is too old. differ needs 2.1.319 or later."
+    assert session.too_old(()) == "Claude Code an unknown version is too old. differ needs 2.1.319 or later."
 
 
 def test_a_too_old_claude_does_not_start_and_the_status_says_why(
@@ -299,15 +299,27 @@ def test_the_question_tools_hooks_say_whether_claude_asks_the_reader(fake: Simpl
     hooks = json.loads(args[args.index("--settings") + 1])["hooks"]
     (pre,) = hooks["PreToolUse"]
     (post,) = hooks["PostToolUse"]
-    assert pre["matcher"] == post["matcher"] == session.QUESTION_TOOL
+    (failure,) = hooks["PostToolUseFailure"]
+    assert pre["matcher"] == post["matcher"] == failure["matcher"] == session.QUESTION_TOOL
     assert post_hook(pre["hooks"][0], "PreToolUse", headers={}) == 403
     assert not asking()
     assert post_hook(pre["hooks"][0], "PreToolUse") == 200
     assert asking()
     assert post_hook(post["hooks"][0], "PostToolUse") == 200
     assert not asking()
+    post_hook(pre["hooks"][0], "PreToolUse")
+    assert post_hook(failure["hooks"][0], "PostToolUseFailure") == 200
+    assert not asking()
 
-    # A reader who cancels the question gets no hook: Claude's next work ends the question.
+    # A reader who cancels the question gets no hook: the Escape key ends the question, and an arrow key, which
+    # starts with the same byte, keeps it.
+    post_hook(pre["hooks"][0], "PreToolUse")
+    session.write(REF, b"\x1b[B")
+    assert asking()
+    session.write(REF, b"\x1b")
+    assert not asking()
+
+    # A way out of the question that posts no hook ends it once Claude works again.
     session.write(REF, "\x1b]0;◐ pick a colour\x07".encode())
     wait_for(lambda: session.status(REF)["working"])
     post_hook(pre["hooks"][0], "PreToolUse")

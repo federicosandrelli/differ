@@ -52,7 +52,7 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /api/<owner>/<repo>/<number>/mcp        POST: the differ MCP server for the embedded session, JSON-RPC with the
                                      pull request's token in the Authorization header
   /api/<owner>/<repo>/<number>/hook       POST: a Claude Code hook of the embedded session, which says whether
-                                     Claude asks the reader a question, with the token as the mcp endpoint
+                                     Claude asks the reader a question, with the same token as the mcp endpoint
   /vendor/<name>                     a vendored file a page loads on demand: xterm.js and its stylesheet and addon
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
                                      conversation, request_review (adds the viewer to the requested reviewers),
@@ -501,7 +501,7 @@ class Handler(BaseHTTPRequestHandler):
         if not mcp.authorized(ref, self.headers.get("Authorization")):
             return self.send_json({"error": "Forbidden: not this pull request's token"}, 403)
         try:
-            session.hook(ref, json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}"))
+            session.hook(ref, self.json_body())
         except ValueError as exc:
             return self.send_json({"error": f"Bad request: {exc}"}, 400)
         return self.send(200, b"", "application/json")

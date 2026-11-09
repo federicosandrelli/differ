@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A stand-in for `claude` that behaves as the session's process does, as far as the tests need.
 
-`fakeclaude --version` prints a version: FAKE_CLAUDE_VERSION, else 2.1.316. Started with `--session-id <id>` or
+`fakeclaude --version` prints a version: FAKE_CLAUDE_VERSION, else 2.1.319. Started with `--session-id <id>` or
 `--resume <id>` and a prompt, it prints a banner, connects to the listen WebSocket the prompt names, and answers each
 `comment` or `follow_up` frame by reading its thread with the `read_thread` tool of the MCP server that `--mcp-config`
 names, then calling its `reply_in_thread` tool with
@@ -124,7 +124,7 @@ def main() -> None:
     args = sys.argv[1:]
     fail = os.environ.get("FAKE_CLAUDE_FAIL", "")
     if args == ["--version"]:
-        version = "2.1.200" if fail == "old" else os.environ.get("FAKE_CLAUDE_VERSION", "2.1.316")
+        version = "2.1.200" if fail == "old" else os.environ.get("FAKE_CLAUDE_VERSION", "2.1.319")
         print(f"{version} (Claude Code)")
         return
     env = {k: v for k, v in os.environ.items() if k.startswith("CLAUDE") or k in ("TERM", "COLORTERM")}

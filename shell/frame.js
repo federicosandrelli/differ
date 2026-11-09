@@ -11,13 +11,8 @@ const SHELL = window.parent === window ? null : {
   step(dir) { this.tell({ type: 'step', dir }); },
   zoom(dir) { this.tell({ type: 'zoom', dir }); },
   settings(section) { this.tell({ type: 'settings', section }); },
-  claude(state, title) {
-    if (state === this.claudeState && title === this.claudeTitle) return;
-    this.claudeState = state; this.claudeTitle = title;
-    this.tell({ type: 'claude', state, title });
-  },
-  claudeState: '',
-  claudeTitle: '',
+  claude(state, title) { if (`${state}\n${title}` !== this.told) { this.told = `${state}\n${title}`; this.tell({ type: 'claude', state, title }); } },
+  told: '',
   status(status) { this.tell({ type: 'status', status }); },
   page(url, title, status) { this.tell({ type: 'page', url, title, status }); },
   draft(on) { if (on !== this.drafting) { this.drafting = on; this.tell({ type: 'draft', on }); } },
