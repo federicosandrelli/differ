@@ -24,12 +24,13 @@ lock = threading.Lock()
 
 class Session(NamedTuple):
     """A Code tab session: the link that opens it in the app, its title, when it was last active, in milliseconds
-    since the epoch, and whether the reader archived it."""
+    since the epoch, whether the reader archived it, and the folder it works in."""
 
     link: str
     title: str
     active: float
     archived: bool = False
+    folder: str = ""
 
 
 # Each session file read so far: its modification time and size when read, and the pull requests it ties its
@@ -55,7 +56,8 @@ def read(path: Path) -> list[tuple[PullRef, Session]]:
     link = "claude://code/continue?" + urllib.parse.urlencode({"session": meta["sessionId"]})
     active = meta.get("lastActivityAt")
     active = active if isinstance(active, int | float) else 0.0
-    session = Session(link, str(meta.get("title") or ""), active, meta.get("isArchived") is True)
+    archived, folder = meta.get("isArchived") is True, str(meta.get("cwd") or "")
+    session = Session(link, str(meta.get("title") or ""), active, archived, folder)
     prs = meta.get("prs")
     tied = []
     for pr in prs if isinstance(prs, list) else []:
@@ -70,8 +72,9 @@ def read(path: Path) -> list[tuple[PullRef, Session]]:
 
 def sessions() -> dict[PullRef, Session]:
     """The session tied to each pull request: when several are, the one active last among those the reader has not
-    archived, or among all of them when the reader archived every one. A file is read again only when its
-    modification time or size changes."""
+    archived, or among all of them when the reader archived every one. It leaves out a session without its folder,
+    since the app opens a blank chat for it; archiving a session can remove its worktree. A file is read again only
+    when its modification time or size changes."""
     try:
         paths = set(SESSIONS.glob("*/*/local_*.json"))
     except OSError:
@@ -89,6 +92,8 @@ def sessions() -> dict[PullRef, Session]:
             if path not in read_files or read_files[path][0] != stamp:
                 read_files[path] = (stamp, read(path))
             for ref, session in read_files[path][1]:
+                if not os.path.isdir(session.folder):
+                    continue
                 if ref not in found or (not session.archived, session.active) > (
                     not found[ref].archived,
                     found[ref].active,
