@@ -10,8 +10,9 @@
 // in, which moves between the docks and survives the sidebar's re-renders; the xterm.js terminal and its fit addon
 // once the library has loaded; the relay WebSocket; `lib`, the promise that loads the library once; whether the
 // menu of quick prompts is open; whether a quick prompt is on its way to the session; and `setup`, whether this page
-// has seen a start that needs Claude Code installed or updated, so the setup steps stay until the session listens.
-const TERM = { open: false, dock: 'side', height: 320, width: 520, el: null, term: null, fit: null, ws: null, lib: null, menu: false, pasting: false, setup: false };
+// has seen a start that needs Claude Code installed or updated, so the setup steps stay until the session listens;
+// and `tried`, whether the reader clicked Install or Update, after which the steps show why it failed.
+const TERM = { open: false, dock: 'side', height: 320, width: 520, el: null, term: null, fit: null, ws: null, lib: null, menu: false, pasting: false, setup: false, tried: false };
 const PANE_KEY = 'dr:pane';
 const TERM_OPEN_KEY = `dr:term:${PR.repo}#${PR.number}`;
 // Auto start in the settings: 'off', or nothing for on.
@@ -140,23 +141,27 @@ function quickMenuHtml() {
 // from the start that found Claude Code missing until the session listens.
 function setupHtml() {
   const s = termSession(), old = s.setup === 'old', command = old ? UPDATE_COMMAND : INSTALL_COMMAND;
-  const installed = !s.setup && !s.installing;
-  const mark = (done, n) => done ? `<span class="tone-ok">${TICK}</span>` : `<span class="count">${n}</span>`;
+  const installed = !s.setup && !s.installing, listening = CL.listening;
+  // The error of a start that found Claude Code missing says what the header says already; an install that failed,
+  // or the versions of one too old, say more.
+  const note = TERM.tried && s.error ? `<span class="err">${esc(s.error)}</span>` : old && s.error ? `<span class="hint">${esc(s.error)}</span>` : '';
   let first;
-  if (installed) first = '<span class="hint">Claude Code is ready.</span>';
-  else if (s.installing) first = `<span class="hint">${old ? 'Updating' : 'Installing'} in the terminal below. Answer it there if it asks anything.</span>`;
+  if (installed) first = '';
+  else if (s.installing) first = `<span class="hint">${old ? 'Updating' : 'Installing'} below. Answer it there if it asks anything.</span>`;
   else {
-    first = `${s.error ? `<span class="err">${esc(s.error)}</span>` : ''}
-      <span class="row"><button class="primary" data-term-install>${old ? 'Update' : 'Install'} Claude Code</button><button data-term-start>Check again</button></span>
-      <span class="hint">Or run it yourself in a terminal, then click Check again:</span>
-      <span class="row"><code>${esc(command)}</code><button class="ghost copy" data-term-copy="${esc(command)}" title="Copy the command">${COPY}</button></span>`;
+    first = `${note}
+      <span class="row"><button class="primary" data-term-install>${old ? 'Update' : 'Install'}</button><button data-term-start>Check again</button></span>
+      <span class="hint">Or run it yourself, then Check again:</span>
+      <span class="cmd"><code>${esc(command)}</code><button class="ghost copy" data-term-copy="${esc(command)}" title="Copy the command">${COPY}</button></span>`;
   }
-  const listening = CL.listening;
-  return `<ol class="setup">
-    <li>${mark(installed, 1)}<div><b>${old ? 'Update' : 'Install'} Claude Code</b>${first}</div></li>
-    <li>${mark(listening, 2)}<div><b>Sign in</b><span class="hint">The first time it starts, Claude Code asks you to sign in to your Claude account, in the terminal below.</span></div></li>
-    <li>${mark(listening, 3)}<div><b>Connect to differ</b><span class="hint">differ gives the session its MCP server for this pull request, with the tools that read and answer your comments and describe files. There is nothing to set up.</span></div></li>
-  </ol>`;
+  // Each step is done, the one to do now, or one for later, which shows dimmed.
+  const steps = [
+    { done: installed, title: `${old ? 'Update' : 'Install'} Claude Code`, body: first },
+    { done: listening, title: 'Sign in', body: '<span class="hint">Claude Code asks for it the first time, below.</span>' },
+    { done: listening, title: 'Connect to differ', body: '<span class="hint">differ does it for this pull request. Nothing to set up.</span>' },
+  ];
+  const now = steps.findIndex((step) => !step.done);
+  return `<ol class="setup">${steps.map((step, i) => `<li${i > now && now >= 0 ? ' class="later"' : ''}>${step.done ? `<span class="tone-ok">${TICK}</span>` : `<span class="count">${i + 1}</span>`}<div><b>${step.title}</b>${step.body}</div></li>`).join('')}</ol>`;
 }
 // Draw the header, and under it the setup steps while Claude Code needs them, or the note that says why the session
 // did not start, while it did not.
@@ -166,6 +171,7 @@ function renderTermHead() {
   const s = termSession();
   if (s.setup || s.installing) TERM.setup = true;
   else if (CL.listening) TERM.setup = false;
+  TERM.el.classList.toggle('setting-up', TERM.setup && !termSession().installing);
   TERM.el.querySelector('.tnote').innerHTML = TERM.setup ? setupHtml() : s.error ? `<div class="err">${esc(s.error)}</div>` : '';
 }
 
@@ -260,6 +266,7 @@ async function startSession() {
 }
 // Install Claude Code, or update it, in the session's terminal; the server starts the session once it succeeds.
 async function installClaude() {
+  TERM.tried = true;
   const size = TERM.term ? { cols: TERM.term.cols, rows: TERM.term.rows } : { cols: 80, rows: 24 };
   try {
     CL.session = await api('claude_install', size); renderTermHead(); renderSide();

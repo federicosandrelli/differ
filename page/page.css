@@ -83,12 +83,19 @@ html.framed #side .foot .claude-pick { margin-right: -4px; }
 .term .thead .hint { font-size: 11.5px; }
 .term .tnote:not(:empty) { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; user-select: text; }
 /* The setup steps, while Claude Code needs installing or updating: each a count, or a tick once done, beside its title,
-   its hint and its controls. They scroll on their own past half the terminal, so the screen keeps its room. */
+   its hint and its controls; the steps after the one to do now are dimmed. While they wait for the reader nothing
+   has run yet, so they take the terminal's whole height and the empty screen gives way; while the install runs they
+   scroll on their own past half of it, so the screen keeps its room. */
 .term .tnote:has(.setup) { max-height: 50%; overflow-y: auto; }
-.setup { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.term.setting-up .tnote { max-height: none; flex: 0 1 auto; }
+.setup { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .setup li { display: flex; gap: 8px; align-items: flex-start; }
+.setup li.later { opacity: var(--dim); }
+.setup li > :first-child { display: inline-flex; height: 18px; align-items: center; }
 .setup li > div { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .setup .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.setup .cmd { display: flex; align-items: flex-start; gap: 2px; max-width: 100%; }
+.setup .cmd code { min-width: 0; overflow-wrap: anywhere; }
 .term .screen { flex: 1; min-height: 0; background: var(--bg-canvas); }
 /* The padding goes on .xterm, not on .screen: xterm.js's fit addon subtracts the padding of .xterm from the height of
    its parent, so padding on the parent gives the terminal more rows than fit. */
