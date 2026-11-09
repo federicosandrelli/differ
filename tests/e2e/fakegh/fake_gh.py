@@ -19,7 +19,8 @@ status of pr<n>.json. A mutation waits while hold.txt exists, then fails when fa
 appended to mutations.log. A review posted with threads and a reply add their comments to comments.json, so the page
 sees what it sent, and the answer holds the new comment's id. The `viewed` list of comments.json holds the files the
 viewer marked viewed. Marking a file viewed or not viewed leaves that list as it is, so no test leaves files viewed
-for the next. A merge, a reopen or a mark ready moves the status in pr<n>.json, and turning auto-merge on or off changes merge<n>.json.
+for the next. A merge, a reopen or a mark ready moves the status in pr<n>.json; turning auto-merge on or off, and a
+rebase of the branch, which leaves it up to date, change merge<n>.json.
 `gh api -X POST <endpoint>` does nothing.
 `gh api user --jq .login` prints tester.
 """
@@ -71,6 +72,7 @@ def merge_state(number: object) -> dict:
         "headRepositoryOwner": {"login": "acme"},
         "mergeable": "UNKNOWN" if meta["state"] == "MERGED" else "MERGEABLE",
         "mergeStateStatus": "UNKNOWN" if meta["state"] == "MERGED" else "CLEAN",
+        "viewerCanUpdateBranch": False,
         "reviewDecision": None,
         "autoMergeRequest": None,
         "latestReviews": {"nodes": []},
@@ -95,12 +97,18 @@ MOVES = {
 
 
 def move(query: str, variables: dict) -> None:
-    """Move the pull request the mutation names to the status it asks for, and turn its auto-merge on or off."""
+    """Move the pull request the mutation names to the status it asks for, turn its auto-merge on or off, or bring its
+    branch up to date."""
     number = str(variables.get("pr", "")).removeprefix("PR_")
     for name, fields in MOVES.items():
         if name in query:
             path = pr_file(number)
             path.write_text(json.dumps(json.loads(path.read_text()) | fields))
+    if "updatePullRequestBranch(" in query:
+        path = state_dir() / f"merge{number}.json"
+        given = json.loads(path.read_text()) if path.exists() else {}
+        given.setdefault("pullRequest", {}).update(viewerCanUpdateBranch=False, mergeStateStatus="CLEAN")
+        path.write_text(json.dumps(given))
     if "PullRequestAutoMerge(" in query:
         path = state_dir() / f"merge{number}.json"
         given = json.loads(path.read_text()) if path.exists() else {}

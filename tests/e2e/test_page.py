@@ -2539,6 +2539,41 @@ def test_while_github_blocks_the_merge_auto_merge_turns_on_and_off(
     assert len(sent(gh_state, "disablePullRequestAutoMerge")) == off + 1
 
 
+def test_a_branch_behind_its_base_is_rebased_by_github_from_the_pages_head(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    behind = {"pullRequest": {"mergeStateStatus": "BEHIND", "viewerCanUpdateBranch": True}}
+    open_pr(page, server_url, mine(add_pr, gh_state, behind))
+    before = len(sent(gh_state, "updatePullRequestBranch"))
+    page.click("#side button[data-merge-panel]")
+    expect(page.locator("button[data-merge-do='merge']")).to_be_disabled()
+    asked: list[str] = []
+
+    def accept(dialog: Dialog) -> None:
+        asked.append(dialog.message)
+        dialog.accept()
+
+    page.on("dialog", accept)
+    page.click("button[data-merge-do='rebase']")
+    expect(page.locator("button[data-merge-do='rebase']")).to_have_count(0)
+    expect(page.locator("button[data-merge-do='merge']")).to_be_enabled()
+    assert asked == [f"Rebase #{page.evaluate('PR.number')} onto {page.evaluate('M.base')} on GitHub?"]
+    assert sent(gh_state, "updatePullRequestBranch")[before:] == [
+        {"pr": f"PR_{page.evaluate('PR.number')}", "head": page.evaluate("PR.head")}
+    ]
+
+
+def test_a_declined_rebase_sends_nothing(page: Page, server_url: str, add_pr: AddPr, gh_state: Path) -> None:
+    behind = {"pullRequest": {"mergeStateStatus": "BEHIND", "viewerCanUpdateBranch": True}}
+    open_pr(page, server_url, mine(add_pr, gh_state, behind))
+    before = len(sent(gh_state, "updatePullRequestBranch"))
+    page.click("#side button[data-merge-panel]")
+    page.on("dialog", lambda dialog: dialog.dismiss())
+    page.click("button[data-merge-do='rebase']")
+    expect(page.locator("button[data-merge-do='rebase']")).to_be_enabled()
+    assert len(sent(gh_state, "updatePullRequestBranch")) == before
+
+
 def test_a_running_check_github_does_not_wait_for_leaves_the_merge_to_go_out_now(
     page: Page, server_url: str, add_pr: AddPr, gh_state: Path
 ) -> None:

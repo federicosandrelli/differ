@@ -43,6 +43,7 @@ def answer(contexts: list[dict], **pr: Any) -> dict:
                 "headRepositoryOwner": {"login": "ann"},
                 "mergeable": "MERGEABLE",
                 "mergeStateStatus": "CLEAN",
+                "viewerCanUpdateBranch": True,
                 "reviewDecision": "APPROVED",
                 "autoMergeRequest": None,
                 "latestReviews": {
@@ -86,6 +87,7 @@ def test_fetch_reads_the_checks_reviews_and_merge_methods(monkeypatch: pytest.Mo
     assert m["methods"] == ["SQUASH", "REBASE"]
     assert m["approvers"] == ["bob"] and m["change_requesters"] == []
     assert (m["status"], m["base"], m["commits"], m["review"]) == ("open", "main", 3, "APPROVED")
+    assert m["can_update_branch"] is True
 
 
 @pytest.mark.parametrize("url", ["javascript:alert(1)", "http://ci.example.com/1", None])
@@ -189,6 +191,13 @@ def test_auto_merge_turns_on_with_the_method_and_off(monkeypatch: pytest.MonkeyP
     merge.auto_merge(REF, on=False)
     assert [name for name, _ in sent] == ["enablePullRequestAutoMerge", "disablePullRequestAutoMerge"]
     assert sent[0][1] == {"pr": "PR_7", "method": "MERGE", "head": "abc", "headline": "Merge #7", "body": ""}
+
+
+def test_rebase_has_github_rebase_the_branch_from_the_head_it_expects(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent = mutations(monkeypatch)
+    assert merge.rebase(REF, head="abc") == {"rebased": True}
+    assert len(sent) == 1 and sent[0][0].startswith("updatePullRequestBranch")
+    assert sent[0][1] == {"pr": "PR_7", "head": "abc"}
 
 
 @pytest.mark.parametrize(

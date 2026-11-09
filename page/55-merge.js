@@ -1,5 +1,6 @@
 // The merge state of the viewer's own pull request, the merge button that names where it stands, and the merge
-// panel: its checks, its review, and the actions that merge, turn auto-merge on or off, reopen or mark ready.
+// panel: its checks, its review, and the actions that merge, turn auto-merge on or off, rebase the branch, reopen or
+// mark ready.
 
 // M holds GitHub's answer to /merge once it has loaded; `error` holds why the last load or action failed. `started`
 // and `applied` count the loads as LOADS does for the comments, and `rerunAt` is when the reader last re-ran a check.
@@ -180,6 +181,12 @@ function mergeActions() {
   const hint = conflicts ? '' : block ? `<span class="err">${esc(block)}</span>` : `${METHODS[method].does(M.commits, base)}${M.delete_branch ? ' and deletes the branch' : ''}.`;
   return { buttons: `${methodPick(METHODS[method].label, 'merge', !mergesNow() || !!block)}`, hint };
 }
+// The button that has GitHub rebase the branch onto the latest base branch, while the branch is behind it and its
+// commits don't conflict with it.
+function rebaseButton() {
+  if (!M.can_update_branch || M.mergeable === 'CONFLICTING' || !['open', 'draft'].includes(prStatus())) return '';
+  return `<button data-merge-do="rebase" ${state.busy ? 'disabled' : ''}>Rebase onto ${esc(M.base)}</button>`;
+}
 function mergePanelHtml() {
   const status = prStatus();
   if (!M.loaded || status === 'merged') return '';
@@ -189,7 +196,7 @@ function mergePanelHtml() {
     : M.mergeable === 'CONFLICTING' && status === 'open' ? `<div class="banner">This branch conflicts with ${base}. Rebase it onto ${base} to merge.</div>` : '';
   const box = status === 'open' && !auto && method !== 'REBASE' ? `<textarea data-merge-text="${method}" placeholder="Commit message: empty for GitHub's default" spellcheck="false"></textarea>` : '';
   return `<div class="form card merge">${checksHtml()}${reviewLine()}${banner}${box}
-    <div class="actions">${buttons}</div>${hint ? `<div class="hint">${hint}</div>` : ''}${M.error ? `<div class="hint err">${esc(M.error)}</div>` : ''}</div>`;
+    <div class="actions">${buttons}${rebaseButton()}</div>${hint ? `<div class="hint">${hint}</div>` : ''}${M.error ? `<div class="hint err">${esc(M.error)}</div>` : ''}</div>`;
 }
 
 // ---------- actions
@@ -210,6 +217,10 @@ async function mergeClick(t) {
       break;
     case 'autoon': await mergeSend('automerge', { on: true, method, head: PR.head, ...mergeMessage(method) }); break;
     case 'autooff': await mergeSend('automerge', { on: false }); break;
+    case 'rebase':
+      if (!await ask(`Rebase #${PR.number} onto ${M.base} on GitHub?`)) return;
+      await mergeSend('rebase', { head: PR.head });
+      break;
     case 'reopen': case 'ready': await mergeSend(d.mergeDo, {}); break;
   }
 }

@@ -399,6 +399,7 @@ def test_link_names_the_pull_request_whether_its_repository_is_followed_and_whet
         ),
         ("automerge", {"method": "SQUASH"}, "'on'"),
         ("automerge", {"on": "false"}, "'false' is not true or false"),
+        ("rebase", {}, "'head'"),
         ("viewed", {"path": "a.py", "viewed": "true", "head": "abc"}, "'true' is not true or false"),
         ("viewed", {"viewed": True, "head": "abc"}, "'path'"),
         ("viewed", {"path": "a.py", "viewed": True}, "'head'"),

@@ -5,8 +5,8 @@ Usage: merge.py <owner>/<repo>#<number>   prints the merge state as JSON
 
 The merge state is what the author of a pull request needs to merge it: its checks on the head commit, the review
 decision, whether GitHub can merge it, its auto-merge request, and the merge methods the repository allows. The
-actions are merge, turning auto-merge on and off, reopen, mark ready for review, and re-run the failed jobs of
-a workflow run.
+actions are merge, turning auto-merge on and off, rebasing the branch onto its base branch, reopen, mark ready for
+review, and re-run the failed jobs of a workflow run.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed autoMergeAllowed deleteBranchOnMerge
     pullRequest(number: $number) {
-      state isDraft baseRefName
+      state isDraft baseRefName viewerCanUpdateBranch
       mergeable mergeStateStatus reviewDecision
       autoMergeRequest { mergeMethod enabledAt enabledBy { login } }
       latestReviews(first: 100) { nodes { author { login } state } }
@@ -138,6 +138,7 @@ def fetch(ref: PullRef) -> dict:
         "commits": commits["totalCount"],
         "mergeable": pr["mergeable"],
         "merge_state": pr["mergeStateStatus"],
+        "can_update_branch": pr["viewerCanUpdateBranch"],
         "review": pr["reviewDecision"] or "",
         "approvers": [_login(r) for r in reviews if r["state"] == "APPROVED"],
         "change_requesters": [_login(r) for r in reviews if r["state"] == "CHANGES_REQUESTED"],
@@ -211,6 +212,22 @@ mutation($pr: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID!, $headl
         **_message(method, headline, body),
     )
     return {"auto_merge": True}
+
+
+def rebase(ref: PullRef, *, head: str) -> dict:
+    """Have GitHub rebase the pull request's branch onto the latest base branch. GitHub refuses when the head is no
+    longer `head`, or when the commits conflict with the base branch."""
+    graphql(
+        """
+mutation($pr: ID!, $head: GitObjectID!) {
+  updatePullRequestBranch(input: {pullRequestId: $pr, expectedHeadOid: $head, updateMethod: REBASE}) {
+    pullRequest { id }
+  }
+}""",
+        pr=_pr_id(ref),
+        head=head,
+    )
+    return {"rebased": True}
 
 
 # The mutation that moves a pull request to each status the page can ask for.

@@ -53,9 +53,10 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
                                      conversation, viewed (marks a file viewed or not viewed while the head is
                                      the page's), open (opens a file in an editor, on the pull request's branch),
-                                     merge, automerge, close, reopen, ready, rerun (re-runs a workflow run's failed
-                                     jobs), claude, claude_follow_up, claude_reply, claude_delete (a comment for
-                                     Claude, the reader's reply in its thread, Claude's reply, its removal),
+                                     merge, automerge, rebase (GitHub rebases the branch onto its base branch),
+                                     close, reopen, ready, rerun (re-runs a workflow run's failed jobs), claude,
+                                     claude_follow_up, claude_reply, claude_delete (a comment for Claude, the
+                                     reader's reply in its thread, Claude's reply, its removal),
                                      claude_open, claude_close, claude_paste (the embedded session: start it with
                                      the terminal's cols and rows and the model, end it, paste text into
                                      its prompt and, with submit, send it)
@@ -572,6 +573,8 @@ class Handler(BaseHTTPRequestHandler):
                     headline=str(body.get("headline", "")),
                     body=str(body.get("body", "")),
                 )
+            elif action == "rebase":
+                result = merge.rebase(ref, head=str(body["head"]))
             elif action in merge.MOVES:
                 result = merge.move(ref, action)
             elif action == "rerun":
