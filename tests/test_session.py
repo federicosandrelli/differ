@@ -196,6 +196,24 @@ def test_a_paste_drops_the_escapes_that_would_end_it_early(monkeypatch: pytest.M
     assert calls == [b"\x1b[200~fix it[201~ now\x1b[201~"]
 
 
+def test_two_pastes_at_once_go_in_one_after_the_other_each_with_its_enter(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bytes] = []
+
+    def slow_write(ref: PullRef, data: bytes) -> None:
+        calls.append(data)
+        time.sleep(0.05)
+
+    monkeypatch.setattr(session, "write", slow_write)
+    monkeypatch.setattr(session, "SUBMIT_WAIT", 0.05)
+    pastes = [threading.Thread(target=session.paste, args=(REF, text, True)) for text in ("one", "two")]
+    for t in pastes:
+        t.start()
+    for t in pastes:
+        t.join()
+    assert calls[1] == calls[3] == b"\r"
+    assert sorted([calls[0], calls[2]]) == [b"\x1b[200~one\x1b[201~", b"\x1b[200~two\x1b[201~"]
+
+
 def test_what_the_terminal_types_comes_back_a_paste_is_bracketed_and_a_submit_presses_enter(
     fake: SimpleNamespace,
 ) -> None:

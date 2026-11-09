@@ -1334,7 +1334,7 @@ def test_address_with_claude_waits_for_a_session_that_listens_then_sends_the_thr
     pr = add_pr(OLD, NEW, branch="address")
     open_pr(page, server_url, pr)
     try:
-        button = page.locator("div.thread[data-thread='T1'] button[data-address]")
+        button = page.locator("div.thread[data-thread='T1'] button[data-address-thread]")
         expect(button).to_be_disabled()
         expect(button).to_have_attribute("title", re.compile("."))
 
@@ -1351,11 +1351,29 @@ def test_address_with_claude_waits_for_a_session_that_listens_then_sends_the_thr
         close_session(page, server_url, pr)
 
 
+def test_the_address_prompt_names_the_lines_of_the_thread(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    where = """(t) => addressPrompt({ path: 'a.py', comments: [], side: 'RIGHT', outdated: false, start_line: null,
+      line: null, original_start_line: null, original_line: null, ...t }).text.split(':')[0]"""
+    cases = {
+        "{ line: 4 }": "on `a.py`, line 4",
+        "{ start_line: 2, line: 4, side: 'LEFT' }": "on `a.py`, lines 2–4 of the old file",
+        "{ outdated: true, original_line: 7 }": "on `a.py`, line 7 (outdated",
+        "{}": "on `a.py`",
+    }
+    for thread, text in cases.items():
+        assert page.evaluate(f"({where})({thread})").endswith(text)
+    quoted = page.evaluate(
+        "addressPrompt({ path: 'a.py', comments: [{ author: 'bob', url: 'u', body: 'One\\r\\nTwo' }] }).text"
+    )
+    assert "> One\n> Two\n" in quoted
+
+
 def test_a_resolved_thread_has_no_address_with_claude(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.click("div.thread[data-thread-open='T2']")
     expect(page.locator("div.thread[data-thread='T2'] button[data-reply]")).to_be_visible()
-    expect(page.locator("div.thread[data-thread='T2'] button[data-address]")).to_have_count(0)
+    expect(page.locator("div.thread[data-thread='T2'] button[data-address-thread]")).to_have_count(0)
 
 
 @pytest.mark.auto_start

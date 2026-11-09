@@ -86,7 +86,8 @@ class Session:
     show it. `starting` is set from a start until the process runs or the start fails; `error` says why the last start
     failed or the last process ended, until the next start. `generation` counts the starts, so a start that finishes
     after a close or a later start is dropped. `writes` is held around every write to the pseudoterminal and its
-    close, `sends` around every send to the terminals, both outside the module lock."""
+    close, `sends` around every send to the terminals, and `pastes` around a paste and its Enter, so two pastes never
+    mix; all three outside the module lock."""
 
     ref: PullRef
     id: str = ""
@@ -106,6 +107,7 @@ class Session:
     head: str = ""
     writes: threading.Lock = field(default_factory=threading.Lock)
     sends: threading.Lock = field(default_factory=threading.Lock)
+    pastes: threading.Lock = field(default_factory=threading.Lock)
 
 
 lock = threading.RLock()
@@ -525,10 +527,13 @@ def paste(ref: PullRef, text: str, submit: bool = False) -> None:
     nothing in it counts as a key. The text loses its escape characters, so nothing in it can end the paste early.
     With `submit`, press Enter `SUBMIT_WAIT` seconds after it, which sends the prompt with whatever the prompt held
     before, and return after the Enter."""
-    write(ref, b"\x1b[200~" + text.replace("\x1b", "").encode() + b"\x1b[201~")
-    if submit:
-        time.sleep(SUBMIT_WAIT)
-        write(ref, b"\r")
+    with lock:
+        s = session_of(ref)
+    with s.pastes:
+        write(ref, b"\x1b[200~" + text.replace("\x1b", "").encode() + b"\x1b[201~")
+        if submit:
+            time.sleep(SUBMIT_WAIT)
+            write(ref, b"\r")
 
 
 def resize(ref: PullRef, cols: int, rows: int) -> None:

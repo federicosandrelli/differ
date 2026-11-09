@@ -141,6 +141,8 @@ function updateRequestChanges(b) {
 function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filter(c => c.pending).length, 0); }
 const excerpt = (s) => { const t = s.replace(/```[\s\S]*?```/g, '').replace(/\s+/g, ' ').trim(); return t.length > 90 ? t.slice(0, 90) + '…' : t; };
 const lineRange = (a, b) => a && a !== b ? `${a}–${b}` : `${b}`;
+// The lines from `start` to `line` on a side, in words: "line 4", or "lines 4–6 of the old file".
+const linesText = (start, line, side) => `line${start && start !== line ? 's' : ''} ${lineRange(start, line)}${side === 'LEFT' ? ' of the old file' : ''}`;
 const btn = (attrs, label, primary, off) => `<button ${attrs} class="${primary ? 'primary' : ''}" ${state.busy || off ? 'disabled' : ''}>${label}</button>`;
 
 // ---------- HTML
@@ -178,7 +180,14 @@ function threadHtml(f, t) {
 function addressButton(t) {
   if (t.resolved || !termAvailable()) return '';
   const block = quickBlock();
-  return btn(`data-address="${esc(t.id)}"${block ? ` title="${esc(block)}"` : ''}`, 'Address with Claude', false, block);
+  return btn(`data-address-thread="${esc(t.id)}"${block ? ` title="${esc(block)}"` : ''}`, 'Address with Claude', false, block);
+}
+// The prompt that has Claude address the GitHub review thread `t`: the thread's lines and every comment of it, quoted.
+function addressPrompt(t) {
+  const [start, line] = t.outdated ? [t.original_start_line, t.original_line] : [t.start_line, t.line];
+  const where = `\`${t.path}\`${line == null ? '' : `, ${linesText(start, line, t.side)}`}${t.outdated ? ' (outdated: the code changed since)' : ''}`;
+  const comments = t.comments.map(c => `${c.author} wrote (${c.url}):\n${c.body.split(/\r?\n/).map(l => `> ${l}`).join('\n')}`).join('\n\n');
+  return { label: 'Address with Claude', text: `Address this review thread of this pull request, on ${where}:\n\n${comments}\n\nThe branch may have moved since the thread started, so read the file and the pull request's diff to find the code it means. Make the change the thread asks for, then commit and push. When the thread asks a question, or you judge the change wrong, tell me here instead of changing the code. Don't reply on GitHub.` };
 }
 // The reply box of a thread, with the buttons that send it after Cancel.
 function replyHtml(t, send) {
@@ -187,7 +196,7 @@ function replyHtml(t, send) {
     ${send}</div></div>`;
 }
 function composeHtml(f, c) {
-  const where = `line${c.startLine !== c.line ? 's' : ''} ${lineRange(c.startLine, c.line)}${c.side === 'LEFT' ? ' of the old file' : ''}`;
+  const where = linesText(c.startLine, c.line, c.side);
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
     <textarea data-compose-text="${esc(draftKey(c.path, c.side, c.line))}" placeholder="Leave a comment">${esc(c.text)}</textarea>
     <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
@@ -427,7 +436,7 @@ function textareaKey(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') e.target.blur();
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-address],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-address-thread],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
@@ -460,7 +469,7 @@ async function commentClick(t, e) {
     await postComment('reply', { thread: id, body: text }, { replyTo: id, comment: sendingComment(text, true) }, () => restoreReply(id, text));
     return true;
   }
-  if (d.address !== undefined) { const th = C.threads.find(x => x.id === d.address); if (th) await sendQuickPrompt(addressPrompt(th)); return true; }
+  if (d.addressThread !== undefined) { const th = shownThreads().find(x => x.id === d.addressThread); if (th) await sendQuickPrompt(addressPrompt(th)); return true; }
   if (d.resolve !== undefined) { await post('resolve', { thread: d.resolve, resolved: d.resolved === '1' }); return true; }
   if (d.delete !== undefined) { e.preventDefault(); await post('delete', { comment: d.delete }); return true; }
   if (d.threadOpen !== undefined) { state.openThreads.add(d.threadOpen); render(); return true; }
