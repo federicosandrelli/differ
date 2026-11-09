@@ -1,5 +1,9 @@
+/* The page never scrolls: each pane scrolls on its own. The body clips what runs past the window, since a scrollable
+   page lets a scrollIntoView or the terminal's focus lift every pane, and the code then ends partway down the window.
+   The overflow on html keeps the body's from moving to the window, where a clip would still let scripts scroll. */
 html, body { height: 100%; }
-body { display: flex; }
+html { overflow: hidden; }
+body { display: flex; overflow: clip; }
 /* A mark wraps a whole match, highlighter tokens and all, so the tokens take its colour. */
 mark { background: var(--search-hit-bg); color: var(--search-hit-fg); border-radius: 2px; padding: 0 1px; }
 mark * { color: inherit !important; }
@@ -44,6 +48,9 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 #side .sect.resizing { overflow: clip; }
 #side .sect.leaving { pointer-events: none; }
 #side .sect .notice { padding: 8px 16px; }
+/* The notices and panels between the head and the tree scroll on their own once the sidebar has no room left for
+   them, so the footer stays in the window. */
+#side .panels { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 #side .scroll { overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
 #side .list { flex: 1; padding-bottom: 24px; }
 /* While the search box has focus, it stays at the top of the scrolling part of the sidebar, over the tree. */
@@ -72,7 +79,9 @@ html.framed #side .foot .claude-pick { margin-right: -4px; }
    header names the session's state; its screen is where xterm.js draws, on the canvas colour the terminal's theme
    also uses. */
 #side .termgrip { flex: none; height: 6px; margin-bottom: -6px; cursor: row-resize; position: relative; z-index: 2; }
-#side #termslot { flex: none; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
+/* The slot gives up height when the panels above it need the room, so the footer stays in the window. It keeps the
+   height of its border and the terminal's header, which would otherwise draw over the footer. */
+#side #termslot { flex: 0 1 auto; display: flex; flex-direction: column; min-height: 33px; border-top: 1px solid var(--border); }
 #termcol { width: var(--term, 520px); min-width: 320px; max-width: 60vw; flex: none; display: flex; flex-direction: column; height: 100vh; position: relative; border-right: 1px solid var(--border); background: var(--bg-panel); }
 .term { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .term .thead { flex: none; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
@@ -262,8 +271,11 @@ tr.notes > td > div.notes > :last-child { margin-bottom: 9px; }
 .form.merge .actions + .hint { margin-top: 6px; }
 .form.merge .merge-pick { position: relative; display: inline-flex; }
 .form.merge .merge-pick .more { padding: 1px 3px; }
-.form.merge .merge-pick .menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 6; }
-.checks { margin-bottom: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-panel); }
+/* The menu opens upward, over the commit message, so the bottom of the sidebar's panels never cuts it off. */
+.form.merge .merge-pick .menu { position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 6; }
+/* The list scrolls on its own once it takes 40% of the window, so a pull request with many checks leaves the rest of
+   the sidebar its room. */
+.checks { margin-bottom: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-panel); max-height: 40vh; overflow-y: auto; }
 .checks .crow { display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 12px; }
 .checks .crow + .crow, .checks .fail + .crow, .checks .fail { border-top: 1px solid var(--border); }
 .checks .crow .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

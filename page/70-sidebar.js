@@ -121,6 +121,8 @@ function animateSections(side, before) {
     animateHeight(el, old.h, 0, () => { el.classList.remove('leaving'); el.innerHTML = ''; });
   }
 }
+// The parts of the sidebar that scroll on their own, and keep their place when the sidebar renders again.
+const SIDE_SCROLLS = ['.scroll', '.panels', '.checks'];
 function renderSide() {
   // The box keeps the spaces the reader typed around the query, which the search ignores.
   const box = document.querySelector('#side .search');
@@ -136,15 +138,14 @@ function renderSide() {
   const title = `#${PR.number} ${esc(PR.title)}`;
   const h = `<div class="head"><h1 data-go="overview" title="${title}">${title}</h1>
     <div class="meta">${statusChip()}<span class="links"><span class="file-counts">${plural(FILES.length, 'file')} · ${reviewed} reviewed</span><span class="gh"><a href="${PR.url}" target="_blank">GitHub</a><button class="ghost copy" data-copy-url aria-label="Copy link">${COPY}</button></span></span>${API ? headButtons() : ''}</div></div>
-    ${sectionHtml('rebuild', rebuildNotice())}
-    ${commentNotices()}${mergeNotice()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}${state.mergePanel && isOwn() ? mergePanelHtml() : ''}
+    <div class="panels">${sectionHtml('rebuild', rebuildNotice())}
+    ${commentNotices()}${mergeNotice()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}${state.mergePanel && isOwn() ? mergePanelHtml() : ''}</div>
     <div class="scroll">${sectionHtml('filters', `<div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>`)}
     ${sectionHtml('search', `<div class="searchbar">
       <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>`)}
     <div class="list" tabindex="0">${renderList()}</div></div>${termSlotHtml()}${claudeFootHtml()}<div class="grip"></div>`;
-  const prev = document.querySelector('#side .scroll');
-  const scroll = prev ? prev.scrollTop : 0;
+  const scrolls = SIDE_SCROLLS.map((sel) => document.querySelector(`#side ${sel}`)?.scrollTop || 0);
   const ae = document.activeElement;
   const focused = ae && (ae.classList.contains('search') ? '.search' : ae.classList.contains('list') ? '.list' : null);
   const selection = focused && focused !== '.list' ? [ae.selectionStart, ae.selectionEnd, ae.selectionDirection] : null;
@@ -158,7 +159,7 @@ function renderSide() {
   mountTerminal();
   if (inTerminal && TERM.term) TERM.term.focus();
   if (SHELL) SHELL.draft(hasDraft());
-  side.querySelector('.scroll').scrollTop = scroll;
+  SIDE_SCROLLS.forEach((sel, i) => { const el = side.querySelector(sel); if (el) el.scrollTop = scrolls[i]; });
   if (focused === '.list') document.querySelector('#side .list').focus({ preventScroll: true });
   else if (focused) { const el = document.querySelector(`#side ${focused}`); if (el) { el.focus({ preventScroll: true }); el.setSelectionRange(...selection); } }
   refocusBox(side, typing);

@@ -2651,6 +2651,26 @@ def test_while_github_blocks_the_merge_auto_merge_turns_on_and_off(
     assert len(sent(gh_state, "disablePullRequestAutoMerge")) == off + 1
 
 
+def test_a_long_list_of_checks_scrolls_on_its_own_and_the_page_stays_put(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    page.set_viewport_size({"width": 1100, "height": 560})
+    running = with_checks(*(check_run(f"job{i}", "IN_PROGRESS", None) for i in range(30)), mergeStateStatus="BLOCKED")
+    open_pr(page, server_url, mine(add_pr, gh_state, running))
+    page.click("#side .leaf[data-path='a.py']")
+    page.click("#side button[data-merge-panel]")
+    checks = page.locator("#side .checks")
+    expect(checks).to_be_visible()
+    assert checks.evaluate("el => el.scrollHeight > el.clientHeight"), "the checks list scrolls on its own"
+    page.evaluate("revealActive(); document.querySelector('#side .leaf.active').scrollIntoView({ block: 'center' })")
+    assert page.evaluate("document.scrollingElement.scrollTop") == 0
+    assert page.evaluate("document.getElementById('main').getBoundingClientRect().bottom") == 560
+    assert page.evaluate("document.querySelector('#side .foot').getBoundingClientRect().bottom") == 560
+    checks.evaluate("el => { el.scrollTop = 100; }")
+    page.evaluate("renderSide()")
+    assert checks.evaluate("el => el.scrollTop") == 100, "a new render keeps the list where the reader scrolled it"
+
+
 def test_a_branch_behind_its_base_is_rebased_by_github_from_the_pages_head(
     page: Page, server_url: str, add_pr: AddPr, gh_state: Path
 ) -> None:
