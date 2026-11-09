@@ -400,9 +400,12 @@ def test_a_card_links_the_linear_issue_and_the_claude_code_session_of_its_own_pu
     save(board.classify(ME, [[linked, pr(2, updated="2026-10-01T00:00:00Z")], [], [], [], []], []))
     first, second = re.findall(r'<div class="card.*?</div>', board.sections_html())
     assert (
-        '<a href="https://linear.app/acme/issue/GE-42" target="_blank"' in first and 'title="GE-42 in Linear"' in first
+        '<a class="linear" href="https://linear.app/acme/issue/GE-42" target="_blank"' in first
+        and 'title="GE-42 in Linear"' in first
     )
-    assert '<a href="claude://code/continue?session=local_a" title="Claude Code: Fix &lt;it&gt;"' in first
+    assert (
+        '<a class="claude" href="claude://code/continue?session=local_a" title="Claude Code: Fix &lt;it&gt;"' in first
+    )
     assert "linear.app" not in second and "claude://" not in second
 
 

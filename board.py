@@ -485,12 +485,16 @@ def links_html(r: Row, session: claude_desktop.Session | None) -> str:
     links = ""
     if m := LINEAR_ISSUE.match(r["linear"]):
         links += (
-            f'<a href="{html.escape(r["linear"])}" target="_blank" rel="noopener" title="{html.escape(m[1])} in Linear" '
-            f'aria-label="{html.escape(m[1])} in Linear">{render.reason_icon("linear")}</a>'
+            f'<a class="linear" href="{html.escape(r["linear"])}" target="_blank" rel="noopener" '
+            f'title="{html.escape(m[1])} in Linear" aria-label="{html.escape(m[1])} in Linear">'
+            f"{render.reason_icon('linear')}</a>"
         )
     if session:
         label = html.escape(f"Claude Code: {session.title}" if session.title else "Claude Code session")
-        links += f'<a href="{html.escape(session.link)}" title="{label}" aria-label="{label}">{render.reason_icon("bot")}</a>'
+        links += (
+            f'<a class="claude" href="{html.escape(session.link)}" title="{label}" aria-label="{label}">'
+            f"{render.reason_icon('claude')}</a>"
+        )
     return f'<span class="links">{links}</span>' if links else ""
 
 
