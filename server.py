@@ -538,11 +538,9 @@ class Handler(BaseHTTPRequestHandler):
                     side=one_of(body.get("side", "RIGHT"), comments.Side),
                     start_line=None if body.get("start_line") is None else line_number(body["start_line"]),
                     start_side=None if start_side is None else one_of(start_side, comments.Side),
-                    mode=one_of(body.get("mode", "review"), comments.Mode),
                 )
             elif action == "reply":
-                mode = one_of(body.get("mode", "review"), comments.Mode)
-                result = comments.reply(ref, thread_id=body["thread"], body=body["body"], mode=mode)
+                result = comments.reply(body["thread"], body["body"])
             elif action == "resolve":
                 result = comments.resolve(body["thread"], bool(body.get("resolved", True)))
             elif action == "delete":

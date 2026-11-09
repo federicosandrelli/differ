@@ -42,8 +42,8 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
   waiting for a reviewer or being reviewed, and the ones you opened recently.
 - A page is built on the first visit and cached per head commit in
   `~/.cache/differ`. Cmd+R rebuilds it.
-- Hover a line and click `+` to comment on it. A comment goes to GitHub at once
-  or into a pending review. Threads take replies and can be resolved.
+- Hover a line and click `+` to comment on it. A comment goes to GitHub at once.
+  Threads take replies and can be resolved.
 - On your own pull requests, the sidebar button opens the merge panel: the
   checks, the review decision, merge and auto-merge.
 - The `</>` button in a file header opens the repository in your editor (VS
@@ -70,8 +70,6 @@ It starts with Opus 5.5 unless you pick another model in the settings.
 - "Send to Claude" in a comment box sends the comment to the session instead of
   GitHub. The session listens for these comments, and its reply shows in the
   thread. The bot's dot is lit while it listens.
-- "Mention in terminal" in a comment box puts the lines into the session's
-  prompt, so you can ask about them there.
 - The session runs with permissions bypassed: it reads, edits, commits and
   pushes without asking. The repository's own `CLAUDE.md`, hooks and settings
   load, on anyone's pull request, as soon as its page opens while Auto start is

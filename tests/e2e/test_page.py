@@ -1263,12 +1263,6 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
         page.keyboard.type("hi there")
         page.wait_for_function(f"({TERM_TEXT})().includes('HI THERE')")
 
-        section = page.locator(APP)
-        section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
-        page.click("button[data-compose-mention]")
-        page.wait_for_function(f"({TERM_TEXT})().includes('@SRC/APP.PY#L11 ')")
-        assert page.evaluate("!!document.activeElement.closest('.xterm')")
-
         # A render of the sidebar keeps the focus in the terminal.
         page.evaluate("renderSide()")
         assert page.evaluate("!!document.activeElement.closest('.xterm')")
@@ -1475,21 +1469,20 @@ def refused_mutations(page: Page, gh_state: Path) -> Iterator[None]:
         fail.unlink()
 
 
-def send_on_hello(page: Page, text: str, mode: str = "single") -> Locator:
+def send_on_hello(page: Page, text: str) -> Locator:
     """Send a comment on the line that prints hello, and return its thread."""
     section = page.locator(APP)
     section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
     page.locator("textarea[data-compose-text]").fill(text)
-    page.click(f"button[data-compose-send='{mode}']")
+    page.click("button[data-compose-send='single']")
     return section.locator("div.thread[data-thread]", has_text=text)
 
 
 def test_a_comment_shows_as_sending_until_github_has_it(page: Page, server_url: str, gh_state: Path) -> None:
     with held_mutations(gh_state) as release:
         open_pr(page, server_url)
-        thread = send_on_hello(page, "Greet by name", "review")
+        thread = send_on_hello(page, "Greet by name")
         expect(thread.locator(".tag.sending")).to_be_visible()
-        expect(thread.locator(".tag.pending")).to_be_visible()
         expect(page.locator("textarea[data-compose-text]")).to_have_count(0)
         expect(thread.locator("a[target=_blank]")).to_have_count(0)
 
@@ -1570,7 +1563,7 @@ def test_a_refused_reply_goes_back_to_its_box_and_leaves_the_focus_where_it_is(
         open_pr(page, server_url)
         page.click("button[data-reply='T1']")
         page.locator("textarea[data-reply-text='T1']").fill("Will do")
-        page.click("button[data-reply-send='T1'][data-mode='single']")
+        page.click("button[data-reply-send='T1']")
         expect(page.locator("div.thread[data-thread='T1'] .tag.sending")).to_be_visible()
         page.locator(APP).locator("tr.ctx", has_text="def main():").locator("td.n.key").click()
         page.keyboard.type("Other")
@@ -1582,17 +1575,14 @@ def test_a_refused_reply_goes_back_to_its_box_and_leaves_the_focus_where_it_is(
     expect(page.locator("textarea[data-compose-text]")).to_have_value("OtherX")
 
 
-def test_a_reply_without_a_pending_review_shows_as_sending_and_not_pending(
-    page: Page, server_url: str, gh_state: Path
-) -> None:
+def test_a_reply_shows_as_sending_until_github_has_it(page: Page, server_url: str, gh_state: Path) -> None:
     with held_mutations(gh_state) as release:
         open_pr(page, server_url)
         page.click("button[data-reply='T1']")
         page.locator("textarea[data-reply-text='T1']").fill("Will do")
-        page.click("button[data-reply-send='T1'][data-mode='review']")
+        page.click("button[data-reply-send='T1']")
         reply = page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")
         expect(reply.locator(".tag.sending")).to_be_visible()
-        expect(reply.locator(".tag.pending")).to_have_count(0)
         expect(page.locator("textarea[data-reply-text='T1']")).to_have_count(0)
 
         release()

@@ -222,56 +222,29 @@ def test_a_verdict_on_an_older_commit_or_a_different_verdict_goes_out(
     assert posted == [event]
 
 
-@pytest.mark.parametrize(
-    ("mode", "pending", "answer"),
-    [
-        (
-            "single",
-            None,
-            {"addPullRequestReview": {"pullRequestReview": {"id": "R1", "comments": {"nodes": [{"id": "C1"}]}}}},
-        ),
-        (
-            "review",
-            "R1",
-            {"addPullRequestReviewThread": {"thread": {"id": "T1", "comments": {"nodes": [{"id": "C1"}]}}}},
-        ),
-        (
-            "review",
-            None,
-            {"addPullRequestReview": {"pullRequestReview": {"id": "R1", "comments": {"nodes": [{"id": "C1"}]}}}},
-        ),
-    ],
-)
-def test_a_new_thread_answers_its_comment_id(
-    monkeypatch: pytest.MonkeyPatch, mode: comments.Mode, pending: str | None, answer: dict
-) -> None:
-    monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", pending, None))
+def test_a_new_thread_answers_its_comment_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    answer = {"addPullRequestReview": {"pullRequestReview": {"id": "R1", "comments": {"nodes": [{"id": "C1"}]}}}}
+    monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", None, None))
     monkeypatch.setattr(comments, "graphql", lambda query, **variables: answer)
-    result = comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT", mode=mode)
-    assert result["comment"] == "C1"
+    assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT") == {"comment": "C1"}
 
 
 @pytest.mark.parametrize(
-    ("mode", "answer", "result"),
-    [
-        ("single", {"addPullRequestReview": {"pullRequestReview": None}}, {"posted": True, "comment": ""}),
-        ("review", {"addPullRequestReview": None}, {"pending": None, "comment": ""}),
-    ],
+    "answer", [{"addPullRequestReview": {"pullRequestReview": None}}, {"addPullRequestReview": None}]
 )
 def test_a_new_thread_without_a_comment_id_in_the_answer_still_succeeds(
-    monkeypatch: pytest.MonkeyPatch, mode: comments.Mode, answer: dict, result: dict
+    monkeypatch: pytest.MonkeyPatch, answer: dict
 ) -> None:
     monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", None, None))
     monkeypatch.setattr(comments, "graphql", lambda query, **variables: answer)
-    assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT", mode=mode) == result
+    assert comments.add_thread(REF, path="app.py", body="Hi", line=5, side="RIGHT") == {"comment": ""}
 
 
 def test_a_reply_answers_its_comment_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(comments, "_target", lambda ref: comments.Target("PR_1", "c1", None, None))
     monkeypatch.setattr(
         comments, "graphql", lambda query, **variables: {"addPullRequestReviewThreadReply": {"comment": {"id": "C2"}}}
     )
-    assert comments.reply(REF, thread_id="T1", body="Done", mode="single") == {"pending": None, "comment": "C2"}
+    assert comments.reply("T1", "Done") == {"comment": "C2"}
 
 
 def test_viewed_reads_every_page_and_keeps_the_viewed_files(monkeypatch: pytest.MonkeyPatch) -> None:

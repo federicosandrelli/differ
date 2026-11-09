@@ -225,14 +225,6 @@ function toggleTermDock() {
   renderSide();
   if (TERM.term) setTimeout(() => { fitTerm(); TERM.term.focus(); }, 0);
 }
-// Put a mention of the comment box's lines into the session's prompt, and bring the terminal up with the cursor in it.
-async function mentionInTerminal(c) {
-  const lines = c.startLine !== c.line ? `#L${c.startLine}-L${c.line}` : `#L${c.line}`;
-  const text = `@${c.path}${lines}${c.side === 'LEFT' ? ' (old)' : ''} `;
-  if (!TERM.open) await openTerminal();
-  try { await api('claude_paste', { text }); } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); return; }
-  if (TERM.term) TERM.term.focus();
-}
 // Send a quick prompt to the session, and bring the terminal up with the cursor in it, to show the answer.
 async function sendQuickPrompt(prompt) {
   TERM.menu = false;

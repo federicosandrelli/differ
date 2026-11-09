@@ -385,7 +385,6 @@ def test_link_names_the_pull_request_whether_its_repository_is_followed_and_whet
     ("action", "fields", "why"),
     [
         ("submit", {"event": "MERGE"}, "'MERGE' is not one of 'APPROVE', 'REQUEST_CHANGES', 'COMMENT'"),
-        ("reply", {"thread": "T", "body": "b", "mode": "now"}, "'now' is not one of 'review', 'single'"),
         ("comment", {"path": "a.py", "body": "b", "line": 1, "side": "UP"}, "'UP' is not one of 'LEFT', 'RIGHT'"),
         ("comment", {"path": "a.py", "body": "b", "line": None}, "None is not a line number"),
         ("comment", {"path": "a.py", "body": "b", "line": 2, "start_line": "1"}, "'1' is not a line number"),

@@ -4,9 +4,8 @@
 
 Usage: comments.py <owner>/<repo>#<number>   prints the comments as JSON
 
-Inline comments are grouped in review threads. A new comment goes into the viewer's pending review when there
-is one (and starts one otherwise), or is posted at once as a review of its own, which is what GitHub's
-"Add single comment" button does.
+Inline comments are grouped in review threads. A new comment is posted at once as a review of its own, which is what
+GitHub's "Add single comment" button does.
 """
 
 from __future__ import annotations
@@ -21,8 +20,6 @@ from github import PullRef, graphql
 
 Side = Literal["LEFT", "RIGHT"]
 Event = Literal["APPROVE", "REQUEST_CHANGES", "COMMENT"]
-# "review" adds a comment to the viewer's pending review, starting one when needed; "single" posts it at once.
-Mode = Literal["review", "single"]
 VerdictState = Literal["APPROVED", "CHANGES_REQUESTED"]
 
 
@@ -235,7 +232,6 @@ def add_thread(
     side: Side,
     start_line: int | None = None,
     start_side: Side | None = None,
-    mode: Mode = "review",
 ) -> dict:
     """Comment on a line or a range of lines. The answer holds the new comment's id as `comment`, or "" when GitHub's
     answer lacks it."""
@@ -243,47 +239,10 @@ def add_thread(
     thread = {"path": path, "body": body, "line": line, "side": side}
     if start_line is not None and start_line != line:
         thread.update(startLine=start_line, startSide=start_side or side)
-    if mode == "single":
-        data = graphql(
-            """
-mutation($pr: ID!, $oid: GitObjectID!, $threads: [DraftPullRequestReviewThread]) {
-  addPullRequestReview(input: {pullRequestId: $pr, commitOID: $oid, event: COMMENT, threads: $threads}) {
-    pullRequestReview { id comments(first: 1) { nodes { id } } }
-  }
-}""",
-            pr=target.pr_id,
-            oid=target.head,
-            threads=[thread],
-        )
-        return {
-            "posted": True,
-            "comment": _first_comment_id((data.get("addPullRequestReview") or {}).get("pullRequestReview")),
-        }
-    if target.pending:
-        data = graphql(
-            """
-mutation($review: ID!, $path: String!, $body: String!, $line: Int!, $side: DiffSide!, $startLine: Int, $startSide: DiffSide) {
-  addPullRequestReviewThread(input: {pullRequestReviewId: $review, path: $path, body: $body, line: $line, side: $side,
-                                     startLine: $startLine, startSide: $startSide}) {
-    thread { id comments(first: 1) { nodes { id } } }
-  }
-}""",
-            review=target.pending,
-            path=path,
-            body=body,
-            line=line,
-            side=side,
-            startLine=thread.get("startLine"),
-            startSide=thread.get("startSide"),
-        )
-        return {
-            "pending": target.pending,
-            "comment": _first_comment_id((data.get("addPullRequestReviewThread") or {}).get("thread")),
-        }
     data = graphql(
         """
 mutation($pr: ID!, $oid: GitObjectID!, $threads: [DraftPullRequestReviewThread]) {
-  addPullRequestReview(input: {pullRequestId: $pr, commitOID: $oid, threads: $threads}) {
+  addPullRequestReview(input: {pullRequestId: $pr, commitOID: $oid, event: COMMENT, threads: $threads}) {
     pullRequestReview { id comments(first: 1) { nodes { id } } }
   }
 }""",
@@ -291,25 +250,22 @@ mutation($pr: ID!, $oid: GitObjectID!, $threads: [DraftPullRequestReviewThread])
         oid=target.head,
         threads=[thread],
     )
-    review = (data.get("addPullRequestReview") or {}).get("pullRequestReview") or {}
-    return {"pending": review.get("id"), "comment": _first_comment_id(review)}
+    return {"comment": _first_comment_id((data.get("addPullRequestReview") or {}).get("pullRequestReview"))}
 
 
-def reply(ref: PullRef, *, thread_id: str, body: str, mode: Mode = "review") -> dict:
-    """Reply in a thread, into the pending review when there is one and mode is "review", else posted at once. The
-    answer holds the new comment's id as `comment`, or "" when GitHub's answer lacks it."""
-    pending = _target(ref).pending if mode == "review" else None
+def reply(thread_id: str, body: str) -> dict:
+    """Reply in a thread, posted at once. The answer holds the new comment's id as `comment`, or "" when GitHub's
+    answer lacks it."""
     data = graphql(
         """
-mutation($thread: ID!, $body: String!, $review: ID) {
-  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $thread, body: $body, pullRequestReviewId: $review}) { comment { id } }
+mutation($thread: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $thread, body: $body}) { comment { id } }
 }""",
         thread=thread_id,
         body=body,
-        review=pending,
     )
     comment = (data.get("addPullRequestReviewThreadReply") or {}).get("comment") or {}
-    return {"pending": pending, "comment": comment.get("id") or ""}
+    return {"comment": comment.get("id") or ""}
 
 
 def resolve(thread_id: str, resolved: bool) -> dict:

@@ -57,7 +57,7 @@ them: it holds every message of the others.
 
 ## What the reader wants
 
-The reader talks to you in this terminal too, and can paste a mention of lines into your prompt, such as
-`@src/app.py#L11-L14`. A message may want an answer, a review of the change, or a change to the code. On a pull request
-by another author, discuss and review unless the reader asks for a change; a push goes to {author}'s branch. On the
-reader's own pull request, make the change and push when asked.
+The reader talks to you in this terminal too, and can mention lines in a message, such as `@src/app.py#L11-L14`. A
+message may want an answer, a review of the change, or a change to the code. On a pull request by another author,
+discuss and review unless the reader asks for a change; a push goes to {author}'s branch. On the reader's own pull
+request, make the change and push when asked.

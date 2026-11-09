@@ -80,10 +80,9 @@ function arrived(s, ids, load) {
   if (s.takenAtLoad === undefined) return false;
   return ids.has(s.comment.id) || load > s.takenAtLoad + (s.comment.id ? 1 : 0);
 }
-// A comment the viewer is sending, shaped like GitHub's. It is pending when GitHub will put it in a pending review: a
-// reply joins the pending review only when there is one, while a new thread starts one.
-const sendingComment = (body, mode, reply) => ({ id: '', author: C.viewer || 'you', body, html: '', created: new Date().toISOString(), url: '',
-  pending: mode === 'review' && (!reply || !!C.pending), reply, sending: true });
+// A comment the viewer is sending, shaped like GitHub's.
+const sendingComment = (body, reply) => ({ id: '', author: C.viewer || 'you', body, html: '', created: new Date().toISOString(), url: '',
+  pending: false, reply, sending: true });
 // The thread a comment box starts, shaped like GitHub's, with the comment in it. It is `local`: GitHub has no copy yet.
 function localThread(c, comment) {
   const start = c.startLine !== c.line ? c.startLine : null;
@@ -169,7 +168,7 @@ function threadHtml(f, t) {
     return `<div class="thread card folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
   }
   const head = threadHead(t);
-  const reply = t.local ? '' : state.replyOpen.has(t.id) ? replyHtml(t, gitHubReplyButtons(t)) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
+  const reply = t.local ? '' : state.replyOpen.has(t.id) ? replyHtml(t, btn(`data-reply-send="${esc(t.id)}"`, 'Add single comment', true)) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
     ${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
   return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
@@ -180,14 +179,12 @@ function replyHtml(t, send) {
     <div class="actions"><span class="spacer"></span>${btn(`data-reply-cancel="${esc(t.id)}"`, 'Cancel')}
     ${send}</div></div>`;
 }
-const gitHubReplyButtons = (t) => btn(`data-reply-send="${esc(t.id)}" data-mode="single"`, 'Add single comment')
-  + btn(`data-reply-send="${esc(t.id)}" data-mode="review"`, C.pending ? 'Add review comment' : 'Start a review', true);
 function composeHtml(f, c) {
   const where = `line${c.startLine !== c.line ? 's' : ''} ${lineRange(c.startLine, c.line)}${c.side === 'LEFT' ? ' of the old file' : ''}`;
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
     <textarea data-compose-text="${esc(draftKey(c.path, c.side, c.line))}" placeholder="Leave a comment">${esc(c.text)}</textarea>
-    <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}${termSession().running ? btn('data-compose-mention', 'Mention in terminal') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
-    ${claudeOn() && !CLAUDE_ENDED.includes(prStatus()) ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment')}${btn('data-compose-send="review"', C.pending ? 'Add review comment' : 'Start a review', true)}</div></div>`;
+    <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
+    ${claudeOn() && !CLAUDE_ENDED.includes(prStatus()) ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment', true)}</div></div>`;
 }
 // A suggestion shows as the lines it replaces, from the file, over the lines it proposes.
 function suggestionHtml(code, ctx) {
@@ -423,12 +420,11 @@ function textareaKey(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') e.target.blur();
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-mention],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
   if (d.composeCancel !== undefined) { state.compose = null; render(); return true; }
-  if (d.composeMention !== undefined) { await mentionInTerminal(state.compose); return true; }
   if (d.suggest !== undefined) {
     const c = state.compose, f = BY_PATH[c.path];
     c.text = (c.text && !c.text.endsWith('\n') ? c.text + '\n' : c.text) + suggestionTemplate(f, c);
@@ -440,9 +436,9 @@ async function commentClick(t, e) {
     const c = state.compose;
     if (!c.text.trim()) { state.focus = '[data-compose-text]'; render(); return true; }
     if (d.composeSend === 'claude') { await sendToClaude(c); return true; }
-    const body = { path: c.path, body: c.text, line: c.line, side: c.side, mode: d.composeSend };
+    const body = { path: c.path, body: c.text, line: c.line, side: c.side };
     if (c.startLine !== c.line) { body.start_line = c.startLine; body.start_side = c.side; }
-    const comment = sendingComment(c.text, d.composeSend, false);
+    const comment = sendingComment(c.text, false);
     state.compose = null;
     await postComment('comment', body, { thread: localThread(c, comment), comment }, () => restoreCompose(c));
     return true;
@@ -454,7 +450,7 @@ async function commentClick(t, e) {
     if (!text.trim()) return true;
     const id = d.replySend;
     state.replyOpen.delete(id);
-    await postComment('reply', { thread: id, body: text, mode: d.mode }, { replyTo: id, comment: sendingComment(text, d.mode, true) }, () => restoreReply(id, text));
+    await postComment('reply', { thread: id, body: text }, { replyTo: id, comment: sendingComment(text, true) }, () => restoreReply(id, text));
     return true;
   }
   if (d.resolve !== undefined) { await post('resolve', { thread: d.resolve, resolved: d.resolved === '1' }); return true; }
