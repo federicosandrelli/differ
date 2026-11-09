@@ -120,8 +120,11 @@ function claudeThreadHtml(f, t) {
 }
 // The description Claude gave the file; empty when it has none, or while comments can't go to Claude.
 const claudeDescription = (f) => claudeOn() && Object.hasOwn(CL.descriptions, f.path) ? CL.descriptions[f.path] : '';
-function claudeDescriptionHtml(f, body) {
-  return `<div class="chead">${iconHtml('bot')}<b>Claude</b></div><div class="cbody">${renderMarkdown(body, { file: f })}</div>`;
+const CLAUDE_CHEVRON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// The description under its title, whose chevron folds it to the title alone.
+function claudeDescriptionHtml(f, body, open) {
+  const chev = `<button class="chev ghost${open ? ' open' : ''}" data-claude-fold="${esc(f.path)}" aria-label="${open ? 'Hide' : 'Show'} Claude's description" aria-expanded="${open}">${CLAUDE_CHEVRON}</button>`;
+  return `<div class="chead">${chev}${iconHtml('bot')}<b>Claude</b></div>${open ? `<div class="cbody">${renderMarkdown(body, { file: f })}</div>` : ''}`;
 }
 // The comments for Claude on files this diff leaves out, for the overview, under the path each one is on.
 function claudeOrphansHtml() {
@@ -152,10 +155,16 @@ function claudeFootHtml() {
 }
 
 // ---------- actions
-const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-follow]';
+const CLAUDE_ATTRS = '[data-claude-delete],[data-claude-follow],[data-claude-fold]';
 async function claudeClick(t) {
   const d = t.dataset;
   CL.error = '';
+  if (d.claudeFold !== undefined) {
+    const folded = state.descriptionFolded;
+    if (!folded.delete(d.claudeFold)) folded.add(d.claudeFold);
+    renderKeepingHeader(BY_PATH[d.claudeFold]);
+    return;
+  }
   if (d.claudeFollow !== undefined) { await followUp(d.claudeFollow); return; }
   if (d.claudeDelete !== undefined) {
     try { await postClaude('claude_delete', { id: d.claudeDelete }); } catch (e) { CL.error = e.message; renderSide(); }

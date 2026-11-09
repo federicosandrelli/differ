@@ -26,6 +26,8 @@ const state = {
   // The merge panel, its method menu, the reader's choice to show or hide its checks (null: the default), and the
   // commit message the reader typed for each merge method.
   mergePanel: false, mergeMenu: false, checksOpen: null, mergeText: {},
+  // The paths of the files whose description from Claude the reader folded to its title.
+  descriptionFolded: new Set(),
 };
 
 const LS = (k) => `dr:${PR.head.slice(0, 12)}:${k}`;

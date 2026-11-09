@@ -58,9 +58,9 @@ TOOLS: list[dict] = [
     {
         "name": "describe_file",
         "description": (
-            "Set the description of what this pull request changes in one file, in Markdown. differ shows it in a "
-            "box under the file's header, in place of the description before. An empty body removes it. `path` is "
-            "the file's path in the diff: its new path when the pull request renames it. Follow the "
+            "Set the description of why this pull request changes one file, and what it changes, in Markdown. "
+            "differ shows it under the file's header, in place of the description before. An empty body removes "
+            "it. `path` is the file's path in the diff: its new path when the pull request renames it. Follow the "
             "differ-file-descriptions skill to write the body."
         ),
         "inputSchema": {

@@ -215,18 +215,19 @@ function updateSection(f, el) {
 // Give an open file's section a box under its header with the description Claude gave the file, and take the box
 // from a closed file or one without a description, keeping what is on screen still when the box is above it.
 function patchDescription(f, el) {
-  const body = sectionOpen(f) ? claudeDescription(f) : '';
+  const body = sectionOpen(f) ? claudeDescription(f) : '', open = !state.descriptionFolded.has(f.path);
+  const key = `${open}|${body}`;
   let box = el.querySelector(':scope > .fdesc');
-  if (box && box.dataset.body === body) return;
-  if (box && body) { replaceContent(box, claudeDescriptionHtml(f, body)); box.dataset.body = body; return; }
+  if (box && box.dataset.key === key) return;
+  if (box && body) { replaceContent(box, claudeDescriptionHtml(f, body, open)); box.dataset.key = key; return; }
   // The header sticks, so where it ends in the content is the section's top plus its height.
   const head = el.querySelector(':scope > .fhead'), above = span(el)[0] + head.offsetHeight <= main.scrollTop + 1;
   const before = box ? box.offsetHeight : 0;
   if (box) box.remove();
   if (body) {
-    head.insertAdjacentHTML('afterend', `<div class="fdesc comment">${claudeDescriptionHtml(f, body)}</div>`);
+    head.insertAdjacentHTML('afterend', `<div class="fdesc comment">${claudeDescriptionHtml(f, body, open)}</div>`);
     box = head.nextElementSibling;
-    box.dataset.body = body;
+    box.dataset.key = key;
   }
   if (above) main.scrollTop += (body ? box.offsetHeight : 0) - before;
 }

@@ -2571,19 +2571,25 @@ def test_a_draft_offers_ready_for_review(page: Page, server_url: str, add_pr: Ad
     assert len(sent(gh_state, "markPullRequestReadyForReview")) == before + 1
 
 
-def test_the_view_stays_still_while_descriptions_arrive_change_and_leave(
-    page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
-) -> None:
-    lines = "".join(f"value_{n} = {n}\n" for n in range(80))
-    path = add_pr({}, {"src/first.py": lines, "src/second.py": lines})
-    number = path.rsplit("/", 1)[1]
-    descriptions = cache_dir / "descriptions" / "acme" / "widgets" / f"{number}.json"
+def describer(page: Page, cache_dir: Path, path: str) -> Callable[[dict[str, str]], None]:
+    """A function that gives the files of the pull request at path the descriptions it takes, by path, as Claude's
+    `describe_file` would, and has the page load them."""
+    descriptions = cache_dir / "descriptions" / "acme" / "widgets" / f"{path.rsplit('/', 1)[1]}.json"
     descriptions.parent.mkdir(parents=True, exist_ok=True)
 
     def describe(found: dict[str, str]) -> None:
         descriptions.write_text(json.dumps(found))
         page.evaluate("loadClaude()")
 
+    return describe
+
+
+def test_the_view_stays_still_while_descriptions_arrive_change_and_leave(
+    page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
+) -> None:
+    lines = "".join(f"value_{n} = {n}\n" for n in range(80))
+    path = add_pr({}, {"src/first.py": lines, "src/second.py": lines})
+    describe = describer(page, cache_dir, path)
     open_pr(page, server_url, path)
     first, second = (
         page.locator("section[data-file='src/first.py']"),
@@ -2606,3 +2612,23 @@ def test_the_view_stays_still_while_descriptions_arrive_change_and_leave(
     after = row.bounding_box()
     assert before and changed and after
     assert changed["y"] == pytest.approx(before["y"], abs=1) and after["y"] == pytest.approx(before["y"], abs=1)
+
+
+def test_the_chevron_folds_a_description_to_its_title_until_the_reader_unfolds_it(
+    page: Page, server_url: str, add_pr: AddPr, cache_dir: Path
+) -> None:
+    path = add_pr({}, {"src/first.py": "a = 1\n", "src/second.py": "b = 2\n"})
+    describe = describer(page, cache_dir, path)
+    open_pr(page, server_url, path)
+    describe({"src/first.py": "Adds `a`.", "src/second.py": "Adds `b`."})
+    first, second = (page.locator(f"section[data-file='src/{name}.py'] > .fdesc") for name in ("first", "second"))
+    expect(first.locator(".cbody")).to_have_text("Adds a.")
+    first.locator("[data-claude-fold]").click()
+    expect(first.locator(".cbody")).to_have_count(0)
+    expect(first.locator("[data-claude-fold]")).to_have_attribute("aria-expanded", "false")
+    expect(second.locator(".cbody")).to_have_text("Adds b.")
+    describe({"src/first.py": "Adds `a` and nothing else.", "src/second.py": "Adds `b`."})
+    page.wait_for_function("CL.descriptions['src/first.py'].endsWith('nothing else.')")
+    expect(first.locator(".cbody")).to_have_count(0)
+    first.locator("[data-claude-fold]").click()
+    expect(first.locator(".cbody")).to_have_text("Adds a and nothing else.")
