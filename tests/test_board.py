@@ -430,15 +430,6 @@ def test_html_keeps_an_empty_column_with_none() -> None:
     assert column_counts(page)[:4] == ["0", "0", "0", "1"]
 
 
-def test_html_shows_the_first_rows_of_a_section_and_a_button_for_the_rest() -> None:
-    save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 9)], [], [], [], []], []))
-    drafts = sub(board.sections_html(), "draft")
-    assert drafts.count('<div class="card') == 8 and drafts.count(" hidden>") == 3
-    assert '<button class="ghost more">Show 3 more</button>' in drafts
-    save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 6)], [], [], [], []], []))
-    assert "more</button>" not in sub(board.sections_html(), "draft")
-
-
 def test_full_names_every_section_a_search_with_as_many_answers_as_it_reads_feeds() -> None:
     limit = board.github.SEARCH_LIMIT
     some, many = [pr(1)], [pr(n) for n in range(limit)]
@@ -505,9 +496,9 @@ def test_html_shows_the_rows_of_the_repositories_turned_on_and_counts_them() -> 
     page = board.sections_html(["acme/api"])
     assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["8", "9", "11"]
     assert column_counts(page)[:4] == ["0", "0", "1", "1"]
-    assert "more</button>" not in sub(page, "draft") and board.NONE_HTML in sub(page, "reviewing")
+    assert board.NONE_HTML in sub(page, "reviewing")
     page = board.sections_html(["acme/web", "acme/api"])
-    assert column_counts(page)[2:4] == ["8", "1"] and "Show 3 more" in sub(page, "draft")
+    assert column_counts(page)[2:4] == ["8", "1"]
     assert 'href="/acme/tools/pull/10"' not in page
 
 

@@ -3,18 +3,17 @@
 __BANNER__
 <div id="board">__BOARD__</div>
 <script>
-// The lists the reader opened with Show N more, and the folded columns the reader opened, by key, so they stay
-// open when the board draws again.
+// The folded columns the reader opened, by key, and where the reader scrolled each list, so a redraw of the board
+// keeps them. A list scrolls only once its folded column is open.
 const board = document.getElementById('board');
-const opened = new Set();
 const openedColumns = new Set();
-const showOpened = () => {
-  for (const more of board.querySelectorAll('.sub > .more')) {
-    if (!opened.has(more.parentElement.dataset.key)) continue;
-    for (const card of more.parentElement.querySelectorAll(':scope > [hidden]')) card.hidden = false;
-    more.remove();
-  }
+const lists = () => board.querySelectorAll('.sub, .list');
+const listKey = (list) => list.dataset.key ?? 'opened';
+const redraw = (h) => {
+  const scrolled = new Map([...lists()].map(list => [listKey(list), list.scrollTop]));
+  board.innerHTML = h;
   for (const folded of board.querySelectorAll('.folded')) folded.open = openedColumns.has(folded.dataset.key);
+  for (const list of lists()) list.scrollTop = scrolled.get(listKey(list)) ?? 0;
 };
 // A toggle event does not bubble, so the board hears it in the capture phase.
 board.addEventListener('toggle', (e) => {
@@ -40,11 +39,7 @@ board.addEventListener('click', (e) => {
     return;
   }
   const pill = e.target.closest('.card .reason');
-  if (pill) { pill.closest('.card').querySelector('.cover').click(); return; }
-  const more = e.target.closest('.sub > .more');
-  if (!more) return;
-  opened.add(more.parentElement.dataset.key);
-  showOpened();
+  if (pill) pill.closest('.card').querySelector('.cover').click();
 });
 // A cached load draws the board from GitHub's last answer at once; the others ask GitHub again first, and the update
 // notice at the end of the repository strip turns busy meanwhile. The board is stale until a load that asks
@@ -78,8 +73,7 @@ const loadBoard = (cached) => {
   if (!cached) setUpdate(Notice.busy('Updating…'));
   fetchBoard(query, signal).then((h) => {
     const focused = document.activeElement?.dataset?.repo;
-    board.innerHTML = h;
-    showOpened();
+    redraw(h);
     if (focused) board.querySelector(`[data-repo="${CSS.escape(focused)}"]`)?.focus();
     if (board.querySelector('.repos')) {
       on = [...board.querySelectorAll('[data-repo].on')].map(b => b.dataset.repo);

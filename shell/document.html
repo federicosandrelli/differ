@@ -23,6 +23,7 @@ main:has(#board) { max-width: 1320px; }
 .columns { --column-min: 400px; --gap: 20px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--gap); }
 .columns > .column { flex: 1 1 calc((var(--n) * var(--column-min) + (var(--n) - 1) * var(--gap) - 100%) * 999); }
 .column, .sub { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sub { max-height: 50vh; overflow-y: auto; }
 .column h3, .folded h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 /* A folded column opens under the row, from a summary that holds the column's chevron and its head. */
 .folded { margin-top: 16px; }
@@ -30,8 +31,6 @@ main:has(#board) { max-width: 1320px; }
 .folded > summary::-webkit-details-marker { display: none; }
 .folded > summary:hover, .folded > summary:hover h3 { color: var(--accent); }
 .folded > .column { margin-top: 8px; }
-.sub > [hidden] { display: none; }
-.sub > .more { align-self: flex-start; }
 .none { opacity: var(--dim); }
 .pr { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; }
 /* A card's two lines: the title with the age on the right, then the repository with the reasons on the right. The
@@ -57,7 +56,7 @@ main:has(#board) { max-width: 1320px; }
 .quiet .pr { gap: 2px; padding: 7px 12px; }
 .quiet .pr .t { font-weight: 400; color: var(--text-secondary); -webkit-line-clamp: 1; }
 .quiet .pr .m, .quiet .pr .age { font-size: 11px; }
-.list { overflow: hidden; }
+.list { max-height: 50vh; overflow: hidden auto; }
 .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--text); }
 .item:first-child { border-top: 0; } .item:hover { background: var(--bg-panel); text-decoration: none; }
 .item .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
