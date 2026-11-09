@@ -392,11 +392,7 @@ def test_a_row_links_the_issue_of_linears_linkback_comment_only() -> None:
     assert board.row(pr(2) | {"linear": {"nodes": [mention]}}, [])["linear"] == ""
 
 
-def test_a_card_links_the_linear_issue_and_the_claude_code_session_of_its_own_pull_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = board.claude_desktop.Session("claude://code/continue?session=local_a", "Fix <it>", 1.0)
-    monkeypatch.setattr(board.claude_desktop, "sessions", lambda: {PullRef("acme", "widgets", 1): session})
+def test_a_card_links_the_linear_issue_of_its_own_pull_request() -> None:
     linked = pr(1) | {"linear": {"nodes": [linkback("GE-42")]}}
     save(board.classify(ME, [[linked, pr(2, updated="2026-10-01T00:00:00Z")], [], [], [], []], []))
     first, second = re.findall(r'<div class="card.*?</div>', board.sections_html())
@@ -404,10 +400,7 @@ def test_a_card_links_the_linear_issue_and_the_claude_code_session_of_its_own_pu
         '<a class="linear" href="https://linear.app/acme/issue/GE-42" target="_blank"' in first
         and 'title="GE-42 in Linear"' in first
     )
-    assert (
-        '<a class="claude" href="claude://code/continue?session=local_a" title="Claude Code: Fix &lt;it&gt;"' in first
-    )
-    assert "linear.app" not in second and "claude://" not in second
+    assert "linear.app" not in second and 'class="links"' not in second
 
 
 def test_footer_names_the_viewer_only_once_github_has_answered() -> None:

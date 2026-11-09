@@ -95,7 +95,6 @@ def palette(
         search_hit_bg=search_hit_bg,
         search_hit_fg=search_hit_fg,
         backdrop="rgb(0 0 0 / 45%)",
-        claude_fg="#d97757",
         linear_fg=linear,
         **{f"syntax_{k}": v for k, v in syntax.items()},
     )

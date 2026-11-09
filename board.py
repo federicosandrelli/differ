@@ -15,7 +15,6 @@ from datetime import UTC, date, datetime
 from typing import Literal, NamedTuple, TypedDict
 
 import build
-import claude_desktop
 import followed
 import github
 import recent
@@ -480,23 +479,15 @@ def reasons_html(reasons: list[Reason]) -> str:
     return f'<span class="reasons">{pills}</span>' if pills else ""
 
 
-def links_html(r: Row, session: claude_desktop.Session | None) -> str:
-    """The links of a pull request to the places it is worked on: its Linear issue and its Claude Code session, each
-    as an icon. Empty without either."""
-    links = ""
-    if m := LINEAR_ISSUE.match(r["linear"]):
-        links += (
-            f'<a class="linear" href="{html.escape(r["linear"])}" target="_blank" rel="noopener" '
-            f'title="{html.escape(m[1])} in Linear" aria-label="{html.escape(m[1])} in Linear">'
-            f"{render.reason_icon('linear')}</a>"
-        )
-    if session:
-        label = html.escape(f"Claude Code: {session.title}" if session.title else "Claude Code session")
-        links += (
-            f'<a class="claude" href="{html.escape(session.link)}" title="{label}" aria-label="{label}">'
-            f"{render.reason_icon('claude')}</a>"
-        )
-    return f'<span class="links">{links}</span>' if links else ""
+def links_html(r: Row) -> str:
+    """The link of a pull request to its Linear issue, as an icon. Empty without one."""
+    if not (m := LINEAR_ISSUE.match(r["linear"])):
+        return ""
+    return (
+        f'<span class="links"><a class="linear" href="{html.escape(r["linear"])}" target="_blank" rel="noopener" '
+        f'title="{html.escape(m[1])} in Linear" aria-label="{html.escape(m[1])} in Linear">'
+        f"{render.reason_icon('linear')}</a></span>"
+    )
 
 
 def split_html(r: Row) -> str:
@@ -507,7 +498,7 @@ def split_html(r: Row) -> str:
     )
 
 
-def card_html(r: Row, viewer: str, quiet: bool, session: claude_desktop.Session | None) -> str:
+def card_html(r: Row, viewer: str, quiet: bool) -> str:
     """A pull request as a card of two lines: its title, a link that covers the card, with its age on the right; then
     its status icon and, for the viewer's own, `owner/repo#number`, or, for someone else's, the author's login and the
     repository's name, then its added and removed lines and its links, with the reasons on the right. A quiet card
@@ -521,17 +512,14 @@ def card_html(r: Row, viewer: str, quiet: bool, session: claude_desktop.Session 
         f'<div class="card{"" if quiet else " panel"} pr">'
         f'<span class="line"><a class="t cover" href="{html.escape(ref.path)}">{html.escape(r["title"])}</a>'
         f'<span class="age">{html.escape(ago(r["at"]))}</span></span>'
-        f'<span class="line"><span class="m">{icon}{who}{split_html(r)}{links_html(r, session)}</span>'
+        f'<span class="line"><span class="m">{icon}{who}{split_html(r)}{links_html(r)}</span>'
         f"{reasons_html(r['reasons'])}</span></div>"
     )
 
 
-def list_html(
-    key: str, rows: list[Row], viewer: str, quiet: bool, sessions: dict[PullRef, claude_desktop.Session]
-) -> str:
-    """A list of cards keyed by `key`, or None without rows. `sessions` gives the Claude Code session of a pull
-    request."""
-    cards = "".join(card_html(r, viewer, quiet, sessions.get(ref_of(r))) for r in rows)
+def list_html(key: str, rows: list[Row], viewer: str, quiet: bool) -> str:
+    """A list of cards keyed by `key`, or None without rows."""
+    cards = "".join(card_html(r, viewer, quiet) for r in rows)
     return f'<section class="sub" data-key="{key}">{cards or NONE_HTML}</section>'
 
 
@@ -546,15 +534,14 @@ def footer_html(board: Board) -> str:
     return f'<footer class="start hint">{known}<button class="ghost" data-settings>Settings <kbd>⌘,</kbd></button></footer>'
 
 
-def column_html(column: Column, board: Board, sessions: dict[PullRef, claude_desktop.Session]) -> str:
+def column_html(column: Column, board: Board) -> str:
     """A column: its label and the count of the rows of its sections, with a plus when one of them is full, then the
     rows of its sections as one list keyed by its first section, the most urgent section first, each section in the
-    board's order. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary.
-    `sessions` gives the Claude Code session of a pull request."""
+    board's order. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary."""
     rows = [r for key in column.sections for r in board["sections"].get(key) or []]
     full = any(key in board["full"] for key in column.sections)
     head = f"<h3>{html.escape(column.label)}{count_html(len(rows), full)}</h3>"
-    body = list_html(column.sections[0], rows, board["viewer"], column.quiet, sessions)
+    body = list_html(column.sections[0], rows, board["viewer"], column.quiet)
     classes = f'class="column{" quiet" if column.quiet else ""}"'
     if column.folded:
         return (
@@ -629,11 +616,10 @@ def sections_html(on: list[str] | None = None) -> str:
     strip, groups = "", []
     if board["sections"]:
         strip = f'<div class="strip">{repos_html(board, chosen)}{updated_html(board)}</div>'
-        sessions = claude_desktop.sessions()
         for group in GROUPS:
             row = [c for c in group.columns if not c.folded]
-            parts = "".join(column_html(c, filtered, sessions) for c in row)
-            folded = "".join(column_html(c, filtered, sessions) for c in group.columns if c.folded)
+            parts = "".join(column_html(c, filtered) for c in row)
+            folded = "".join(column_html(c, filtered) for c in group.columns if c.folded)
             groups.append(
                 f'<section class="group"><div class="columns" style="--n: {len(row)}">{parts}</div>{folded}</section>'
             )
