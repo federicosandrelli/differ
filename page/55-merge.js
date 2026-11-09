@@ -3,8 +3,9 @@
 // with Claude while it conflicts), reopen or mark ready.
 
 // M holds GitHub's answer to /merge once it has loaded; `error` holds why the last load or action failed. `started`
-// and `applied` count the loads as LOADS does for the comments, and `rerunAt` is when the reader last re-ran a check.
-const M = { loaded: false, error: '', timer: 0, started: 0, applied: 0, rerunAt: 0 };
+// and `applied` count the loads as LOADS does for the comments, and `watchAt` is when the reader last re-ran a check
+// or Claude's work last ended.
+const M = { loaded: false, error: '', timer: 0, started: 0, applied: 0, watchAt: 0 };
 // The labels and words of each merge method: the merge button's label, how the hint says what it does, and how the
 // auto-merge hint says it.
 const METHODS = {
@@ -15,8 +16,9 @@ const METHODS = {
 // The merge states in which GitHub merges now. UNKNOWN is a state GitHub has yet to work out, so the merge is tried.
 const MERGES_NOW = ['CLEAN', 'UNSTABLE', 'HAS_HOOKS', 'UNKNOWN'];
 const POLL_MS = 20000;
-// How long after a re-run the panel keeps asking GitHub again, so it sees the new check runs start.
-const RERUN_MS = 120000;
+// How long after a re-run, or after Claude's work ends, the panel keeps asking GitHub again, so it sees the new check
+// runs start or a push of Claude's land.
+const WATCH_MS = 120000;
 
 const isOwn = () => !!C.viewer && C.viewer === PR.author;
 // The status the merge state reports, which the poll keeps current; until it loads, the comments' status.
@@ -43,12 +45,18 @@ async function loadMerge() {
   if (d) Object.assign(M, d, { loaded: true, error: '' }); else M.error = error;
   if (M.loaded && M.status !== (C.status || PR_STATUS)) loadComments();
   if (M.loaded && M.status === 'merged') state.mergePanel = false;
-  if (M.loaded && M.status === 'open' && (runningChecks().length || M.auto_merge || M.mergeable === 'UNKNOWN' || Date.now() - M.rerunAt < RERUN_MS)) pollMerge();
+  if (M.loaded && ['open', 'draft'].includes(M.status) && (runningChecks().length || M.auto_merge || M.mergeable === 'UNKNOWN' || Date.now() - M.watchAt < WATCH_MS)) pollMerge();
   renderSide();
 }
 // Load the merge state again in POLL_MS, or later while the page is hidden.
 function pollMerge() {
   M.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadMerge(); else pollMerge(); }, POLL_MS);
+}
+// Claude's work may have pushed the branch: load the merge state again, and keep asking for WATCH_MS, until GitHub has
+// the push.
+function watchMerge() {
+  M.watchAt = Date.now();
+  loadMerge();
 }
 // Send a merge action to GitHub, then load the comments and the merge state again. False when GitHub refused it, with
 // the reason in M.error.
@@ -187,8 +195,7 @@ function rebaseButton() {
   if (!M.can_update_branch || M.mergeable === 'CONFLICTING' || !['open', 'draft'].includes(prStatus())) return '';
   return `<button data-merge-do="rebase" ${state.busy ? 'disabled' : ''}>Rebase onto ${esc(M.base)}</button>`;
 }
-// Why the Claude session can't take the rebase prompt now, or '' when it can. While Claude works, it may be rebasing
-// already.
+// Why Rebase with Claude is disabled now, or '' when it is enabled. While Claude works, it may be rebasing already.
 const claudeRebaseBlock = () => quickBlock() || (termSession().working ? 'Claude is working.' : '');
 // The button that has the Claude session rebase the branch while it conflicts with the base branch, which GitHub
 // can't do. While the session can't take the prompt, the button shows disabled, with the reason as its tooltip.
@@ -218,7 +225,7 @@ async function mergeClick(t) {
   if (d.mergeMenu !== undefined) { state.mergeMenu = !state.mergeMenu; renderSide(); return; }
   if (d.mergeMethod !== undefined) { lsSet(methodKey(), d.mergeMethod); state.mergeMenu = false; renderSide(); return; }
   if (d.mergeReload !== undefined) { M.error = ''; renderSide(); loadMerge(); return; }
-  if (d.mergeRerun !== undefined) { M.rerunAt = Date.now(); await mergeSend('rerun', { run: Number(d.mergeRerun) }); return; }
+  if (d.mergeRerun !== undefined) { M.watchAt = Date.now(); await mergeSend('rerun', { run: Number(d.mergeRerun) }); return; }
   const method = mergeMethod();
   switch (d.mergeDo) {
     case 'merge':
@@ -232,10 +239,12 @@ async function mergeClick(t) {
       await mergeSend('rebase', { head: PR.head });
       break;
     case 'claude-rebase': {
-      if (!await ask(`Have Claude rebase #${PR.number} onto ${M.base}, resolve the conflicts and force-push?`)) return;
+      const base = M.base;
+      M.error = '';
+      if (!await ask(`Have Claude rebase #${PR.number} onto ${base}, resolve the conflicts and force-push?`)) return;
       const block = claudeRebaseBlock();
       if (block) { M.error = block; renderSide(); return; }
-      await sendQuickPrompt(rebasePrompt(M.base));
+      await sendQuickPrompt(rebasePrompt(base));
       break;
     }
     case 'reopen': case 'ready': await mergeSend(d.mergeDo, {}); break;

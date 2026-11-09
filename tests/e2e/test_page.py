@@ -1280,7 +1280,7 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
         page.click("#side .foot [data-term-prompt='1']")
         expect(page.locator("#side .foot .menu")).to_have_count(0)
         expect(page.locator("#termslot .term .xterm")).to_be_visible()
-        prompt = page.evaluate("QUICK_PROMPTS[1].text").upper()
+        prompt = page.evaluate("quickPrompts()[1].text").upper()
         page.wait_for_function(f"({TERM_TEXT})().includes({json.dumps(prompt)})")
 
         # The terminal comes back on its own pull request only.
@@ -2595,6 +2595,20 @@ def test_a_branch_that_conflicts_is_rebased_by_claude_once_the_session_listens(
         page.wait_for_function(f"({TERM_TEXT})().includes({json.dumps(prompt)})")
     finally:
         close_session(page, server_url, pr)
+
+
+def test_the_merge_state_loads_again_once_claudes_work_ends(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    conflicting = {"pullRequest": {"mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY"}}
+    pr = mine(add_pr, gh_state, conflicting)
+    open_pr(page, server_url, pr)
+    button = page.locator("#side .head button[data-merge-panel]")
+    expect(button).to_have_text("Conflicts")
+    page.evaluate("CL.session = { running: true, working: true }")
+    (gh_state / f"merge{pr.rsplit('/', 1)[1]}.json").write_text("{}")
+    page.evaluate("applyClaude({ ...CL, session: { running: true, working: false } })")
+    expect(button).to_have_text("Ready to merge")
 
 
 def test_a_running_check_github_does_not_wait_for_leaves_the_merge_to_go_out_now(

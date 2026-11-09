@@ -24,10 +24,11 @@ const TERM_MIN_HEIGHT = 160, TERM_MIN_WIDTH = 320;
 const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt]';
 // The quick prompt that has Claude rebase the pull request's branch onto the latest `base` and push it.
 const rebasePrompt = (base) => ({ label: `Rebase onto ${base}`, text: `Rebase this pull request's branch onto the latest \`${base}\`: run \`git fetch origin ${base}\`, then \`git rebase origin/${base}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${base}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${base}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` });
-// The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter.
-const QUICK_PROMPTS = [
+// The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter. The rebase
+// names the base branch of the merge state once it loads, since GitHub may have retargeted the pull request.
+const quickPrompts = () => [
   { label: 'Describe file changes', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, and call describe_file once for each file." },
-  rebasePrompt(PR.base_ref),
+  rebasePrompt(M.loaded ? M.base : PR.base_ref),
 ];
 const ARROW_RIGHT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 7h8M7.5 3.5L11 7l-3.5 3.5"/><path d="M12.5 2.5v9" stroke-opacity=".5"/></svg>';
 const ARROW_LEFT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.5 7h-8M6.5 3.5L3 7l3.5 3.5"/><path d="M1.5 2.5v9" stroke-opacity=".5"/></svg>';
@@ -124,7 +125,7 @@ function quickBlock() {
 function quickMenuHtml() {
   if (!TERM.menu) return '';
   const off = quickReady() ? '' : ' disabled';
-  return `<div class="menu" role="menu">${QUICK_PROMPTS.map((p, i) => `<button role="menuitem" data-term-prompt="${i}"${off}>${esc(p.label)}</button>`).join('')}</div>`;
+  return `<div class="menu" role="menu">${quickPrompts().map((p, i) => `<button role="menuitem" data-term-prompt="${i}"${off}>${esc(p.label)}</button>`).join('')}</div>`;
 }
 // Draw the header, and under it the note that says why the session did not start, while it did not.
 function renderTermHead() {
@@ -245,7 +246,7 @@ async function termClick(t) {
   // A click on a button leaves the focus where it was in WebKit, so the terminal would keep the Escape that closes
   // the menu, and send it to Claude.
   if (d.termMenu !== undefined) { TERM.menu = !TERM.menu; if (TERM.menu) document.activeElement.blur(); renderSide(); return; }
-  if (d.termPrompt !== undefined) { await sendQuickPrompt(QUICK_PROMPTS[d.termPrompt]); return; }
+  if (d.termPrompt !== undefined) { await sendQuickPrompt(quickPrompts()[d.termPrompt]); return; }
   if (d.termToggle !== undefined) { TERM.open ? hideTerminal() : await openTerminal(); return; }
   if (d.termClose !== undefined) { hideTerminal(); return; }
   if (d.termDock !== undefined) { toggleTermDock(); return; }

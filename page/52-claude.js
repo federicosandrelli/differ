@@ -38,7 +38,7 @@ function pollClaude() {
 }
 // Show the server's answer: the threads when the comments changed, the files when their descriptions changed, else
 // the footer when the session came or went, else the terminal's header when the session moved. A reply being written
-// in a thread that is gone goes with it.
+// in a thread that is gone goes with it. The merge state loads again once Claude's work ends.
 function applyClaude(d) {
   const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
   const descriptions = JSON.stringify(d.descriptions) !== JSON.stringify(CL.descriptions);
@@ -49,8 +49,7 @@ function applyClaude(d) {
   Object.assign(CL, d, { loaded: true });
   if (threads) threadsChanged();
   if (threads || descriptions) render(); else if (footer || session) renderSide();
-  // Claude may have pushed the branch, so the merge state loads again once Claude's work ends.
-  if (worked) loadMerge();
+  if (worked) watchMerge();
 }
 // Show the server's answer to the load or action with that number, unless the answer to a later one shows already.
 function showClaude(load, d) {
