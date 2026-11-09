@@ -1328,6 +1328,36 @@ def close_session(page: Page, server_url: str, pr: str) -> None:
     page.request.post(f"{server_url}/api/acme/widgets/{number}/claude_close", data={}, headers={"Origin": server_url})
 
 
+def test_address_with_claude_waits_for_a_session_that_listens_then_sends_the_thread(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    pr = add_pr(OLD, NEW, branch="address")
+    open_pr(page, server_url, pr)
+    try:
+        button = page.locator("div.thread[data-thread='T1'] button[data-address]")
+        expect(button).to_be_disabled()
+        expect(button).to_have_attribute("title", re.compile("."))
+
+        page.click("#side .foot [data-term-toggle]")
+        expect(button).to_be_enabled(timeout=60000)
+        expect(button).not_to_have_attribute("title", re.compile("."))
+        page.click("#side .foot [data-term-toggle]")
+        button.click()
+        expect(page.locator("#termslot .term .xterm")).to_be_visible()
+        page.wait_for_function(f"({TERM_TEXT})().includes('ADDRESS THIS REVIEW THREAD')")
+        page.wait_for_function(f"({TERM_TEXT})().includes('> SAY HI PROPERLY')")
+        assert "line 11:" in page.evaluate("addressPrompt(C.threads.find(t => t.id === 'T1')).text")
+    finally:
+        close_session(page, server_url, pr)
+
+
+def test_a_resolved_thread_has_no_address_with_claude(page: Page, server_url: str) -> None:
+    open_pr(page, server_url)
+    page.click("div.thread[data-thread-open='T2']")
+    expect(page.locator("div.thread[data-thread='T2'] button[data-reply]")).to_be_visible()
+    expect(page.locator("div.thread[data-thread='T2'] button[data-address]")).to_have_count(0)
+
+
 @pytest.mark.auto_start
 def test_auto_start_starts_the_session_of_a_shell_tab_and_leaves_the_terminal_hidden(
     page: Page, server_url: str, add_pr: AddPr, cache_dir: Path

@@ -522,9 +522,10 @@ SUBMIT_WAIT = 0.5
 
 def paste(ref: PullRef, text: str, submit: bool = False) -> None:
     """Paste the text into the session's prompt as one bracketed paste, so that it lands where the cursor is and
-    nothing in it counts as a key. With `submit`, press Enter `SUBMIT_WAIT` seconds after it, which sends the prompt
-    with whatever the prompt held before, and return after the Enter."""
-    write(ref, b"\x1b[200~" + text.encode() + b"\x1b[201~")
+    nothing in it counts as a key. The text loses its escape characters, so nothing in it can end the paste early.
+    With `submit`, press Enter `SUBMIT_WAIT` seconds after it, which sends the prompt with whatever the prompt held
+    before, and return after the Enter."""
+    write(ref, b"\x1b[200~" + text.replace("\x1b", "").encode() + b"\x1b[201~")
     if submit:
         time.sleep(SUBMIT_WAIT)
         write(ref, b"\r")

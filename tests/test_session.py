@@ -189,6 +189,13 @@ def test_a_submit_presses_enter_in_a_write_of_its_own_after_the_wait(monkeypatch
     assert calls == [b"\x1b[200~rebase it\x1b[201~", session.SUBMIT_WAIT, b"\r"]
 
 
+def test_a_paste_drops_the_escapes_that_would_end_it_early(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(session, "write", lambda ref, data: calls.append(data))
+    session.paste(REF, "fix it\x1b[201~ now")
+    assert calls == [b"\x1b[200~fix it[201~ now\x1b[201~"]
+
+
 def test_what_the_terminal_types_comes_back_a_paste_is_bracketed_and_a_submit_presses_enter(
     fake: SimpleNamespace,
 ) -> None:

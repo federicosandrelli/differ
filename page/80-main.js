@@ -92,7 +92,7 @@ function headerHtml(f, open) {
 // Everything a file's body depends on besides the file itself.
 function bodyKey(f) {
   return JSON.stringify([
-    viewKey(f), C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path),
+    viewKey(f), C.version, C.pending && C.pending.id, state.busy, [...state.openThreads], [...state.replyOpen.keys()], state.showOutdated.has(f.path), quickReady(),
   ]);
 }
 function bodyParts(f) {

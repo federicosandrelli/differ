@@ -169,9 +169,16 @@ function threadHtml(f, t) {
   }
   const head = threadHead(t);
   const reply = t.local ? '' : state.replyOpen.has(t.id) ? replyHtml(t, btn(`data-reply-send="${esc(t.id)}"`, 'Add single comment', true)) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
-    ${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
+    ${addressButton(t)}${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
   return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
+}
+// The button that sends the Claude session the prompt to address an unresolved thread. While the session can't take
+// the prompt, the button shows disabled, with the reason as its tooltip.
+function addressButton(t) {
+  if (t.resolved || !termAvailable()) return '';
+  const block = quickBlock();
+  return btn(`data-address="${esc(t.id)}"${block ? ` title="${esc(block)}"` : ''}`, 'Address with Claude', false, block);
 }
 // The reply box of a thread, with the buttons that send it after Cancel.
 function replyHtml(t, send) {
@@ -420,7 +427,7 @@ function textareaKey(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') e.target.blur();
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-address],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
@@ -453,6 +460,7 @@ async function commentClick(t, e) {
     await postComment('reply', { thread: id, body: text }, { replyTo: id, comment: sendingComment(text, true) }, () => restoreReply(id, text));
     return true;
   }
+  if (d.address !== undefined) { const th = C.threads.find(x => x.id === d.address); if (th) await sendQuickPrompt(addressPrompt(th)); return true; }
   if (d.resolve !== undefined) { await post('resolve', { thread: d.resolve, resolved: d.resolved === '1' }); return true; }
   if (d.delete !== undefined) { e.preventDefault(); await post('delete', { comment: d.delete }); return true; }
   if (d.threadOpen !== undefined) { state.openThreads.add(d.threadOpen); render(); return true; }

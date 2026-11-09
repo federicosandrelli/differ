@@ -24,6 +24,13 @@ const TERM_MIN_HEIGHT = 160, TERM_MIN_WIDTH = 320;
 const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt]';
 // The quick prompt that has Claude rebase the pull request's branch onto the latest `base` and push it.
 const rebasePrompt = (base) => ({ label: `Rebase onto ${base}`, text: `Rebase this pull request's branch onto the latest \`${base}\`: run \`git fetch origin ${base}\`, then \`git rebase origin/${base}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${base}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${base}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` });
+// The prompt that has Claude address the GitHub review thread `t`: the thread's lines and every comment of it, quoted.
+function addressPrompt(t) {
+  const [start, line] = t.outdated ? [t.original_start_line, t.original_line] : [t.start_line, t.line];
+  const lines = line == null ? '' : `, line${start && start !== line ? 's' : ''} ${lineRange(start, line)}${t.side === 'LEFT' ? ' of the old file' : ''}`;
+  const comments = t.comments.map(c => `${c.author} wrote (${c.url}):\n${c.body.split('\n').map(l => `> ${l}`).join('\n')}`).join('\n\n');
+  return { label: 'Address with Claude', text: `Address this review thread of this pull request, on \`${t.path}\`${lines}${t.outdated ? ' (outdated: the code changed since)' : ''}:\n\n${comments}\n\nThe branch may have moved since, so find the code by its text. Make the change the thread asks for, then commit and push. When the thread asks a question, or you judge the change wrong, tell me here instead of changing the code. Don't reply on GitHub.` };
+}
 // The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter. The rebase
 // names the base branch of the merge state once it loads, since GitHub may have retargeted the pull request.
 const quickPrompts = () => [

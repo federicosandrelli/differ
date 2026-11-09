@@ -36,19 +36,20 @@ function pollClaude() {
   const ms = CL.session && (CL.session.starting || CL.session.working) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
   CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
-// Show the server's answer: the threads when the comments changed, the files when their descriptions changed, else
+// Show the server's answer: the threads when the comments changed, the files when their descriptions changed or the
+// session started or stopped taking quick prompts (the threads' Address with Claude buttons), else
 // the footer when the session came or went, else the terminal's header when the session moved. A reply being written
 // in a thread that is gone goes with it. The merge state loads again once Claude's work ends.
 function applyClaude(d) {
   const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
   const descriptions = JSON.stringify(d.descriptions) !== JSON.stringify(CL.descriptions);
   const session = JSON.stringify(d.session) !== JSON.stringify(CL.session);
-  const worked = CL.session?.working && !d.session?.working;
+  const worked = CL.session?.working && !d.session?.working, ready = quickReady();
   const ids = new Set(d.comments.map(c => claudeKey(c.id)));
   for (const key of state.replyOpen.keys()) if (key.startsWith(claudeKey('')) && !ids.has(key)) state.replyOpen.delete(key);
   Object.assign(CL, d, { loaded: true });
   if (threads) threadsChanged();
-  if (threads || descriptions) render(); else if (footer || session) renderSide();
+  if (threads || descriptions || ready !== quickReady()) render(); else if (footer || session) renderSide();
   if (worked) watchMerge();
 }
 // Show the server's answer to the load or action with that number, unless the answer to a later one shows already.
