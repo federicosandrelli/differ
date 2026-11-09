@@ -185,7 +185,10 @@ def test_describe_file_keeps_a_description_of_a_file_of_the_diff_only(repo: Path
         "isError": False,
     }
     refused = describe("b.py", "Unchanged.")
-    assert refused["isError"] and refused["content"][0]["text"] == "b.py is not a file of this pull request's diff."
+    assert (
+        refused["isError"]
+        and refused["content"][0]["text"] == "describe_file: b.py is not a file of this pull request's diff."
+    )
     assert claude.descriptions(REF) == {"a.py": "Prints two."}
     assert describe("a.py", "")["content"][0]["text"] == "Removed the description of a.py."
     assert claude.descriptions(REF) == {}
@@ -243,14 +246,22 @@ def test_start_thread_on_the_old_side_reads_the_file_before_the_pull_request(rep
     ]
 
 
+def test_start_thread_refuses_old_lines_the_pull_request_keeps_as_the_page_comments_on_them_on_the_new_side(
+    repo: Path,
+) -> None:
+    refused = start(path="new.py", line=1, side="LEFT", body="Unchanged.")
+    assert refused["isError"] and "every line must be one the pull request removes" in refused["content"][0]["text"]
+    assert not start(path="new.py", line=1, body="Unchanged.")["isError"]
+
+
 def test_start_thread_refuses_lines_outside_the_file_and_files_outside_the_diff(repo: Path) -> None:
     refusals = {
-        "b.py is not a file of this pull request's diff.": start(path="b.py", line=1, body="x"),
-        "a.py has 1 lines of text at the head.": start(path="a.py", line=2, body="x"),
-        "gone.py has no new side: use the other side.": start(path="gone.py", line=1, body="x"),
+        "start_thread: b.py is not a file of this pull request's diff.": start(path="b.py", line=1, body="x"),
+        "start_thread: a.py has 1 lines at the head.": start(path="a.py", line=2, body="x"),
+        "start_thread: gone.py has no new side: use the other side.": start(path="gone.py", line=1, body="x"),
         "start_thread: start_line comes after line.": start(path="a.py", start_line=2, line=1, body="x"),
         "start_thread: 0 is not a line number": start(path="a.py", line=0, body="x"),
-        "img.bin has 0 lines of text at the head.": start(path="img.bin", line=1, body="x"),
+        "start_thread: img.bin is binary: differ shows no lines of it.": start(path="img.bin", line=1, body="x"),
     }
     for text, answer in refusals.items():
         assert answer == {"content": [{"type": "text", "text": text}], "isError": True}

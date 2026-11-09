@@ -19,7 +19,7 @@ import build
 import classify
 import claude
 import github
-from fields import count_of, line_number, one_of, text_of
+from fields import Invalid, count_of, line_number, one_of, string_of, text_of
 from github import PullRef
 
 PROTOCOL = "2025-06-18"
@@ -74,7 +74,7 @@ TOOLS: list[dict] = [
             "reply in it reaches you as a `follow_up` frame. `path` is the file's path in the diff: its new path "
             "when the pull request renames it. `line` is the last line, `start_line` the first when the thread "
             "covers several. `side` is `RIGHT` (the default) for lines of the file at the head commit, `LEFT` for "
-            "lines of the file before the pull request. Lines are numbered as at the pull request's head commit on "
+            "lines the pull request removes, as the file before the pull request numbers them. Lines are numbered as at the pull request's head commit on "
             "GitHub, which leaves out commits you have not pushed. Answers the thread's `id`, that commit and the "
             "code the thread covers."
         ),
@@ -166,76 +166,75 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
             path = arguments.get("path")
             return diff(ref, path if isinstance(path, str) and path else None), False
         if name == "read_thread":
-            thread_id = arguments.get("id")
-            if not isinstance(thread_id, str):
-                return "read_thread needs the thread's id.", True
-            return json.dumps(claude.thread(ref, thread_id)), False
+            return json.dumps(claude.thread(ref, text_of(arguments.get("id")))), False
         if name == "reply_in_thread":
-            thread_id = arguments.get("id")
-            if not isinstance(thread_id, str):
-                return "reply_in_thread needs the thread's id.", True
-            body, seen = text_of(arguments.get("body")), count_of(arguments.get("seen"))
-            c = claude.reply(ref, thread_id, body, seen)
+            thread_id, body = text_of(arguments.get("id")), text_of(arguments.get("body"))
+            c = claude.reply(ref, thread_id, body, count_of(arguments.get("seen")))
             return f"Replied in the thread on {c['path']}:{c['line']}.", False
         if name == "start_thread":
-            return start_thread(ref, arguments)
+            return start_thread(ref, arguments), False
         if name == "describe_file":
-            path, body = arguments.get("path"), arguments.get("body")
-            if not isinstance(path, str) or not isinstance(body, str):
-                return "describe_file needs a path and a body.", True
+            path, body = text_of(arguments.get("path")), string_of(arguments.get("body"))
             if body.strip() and path not in paths(*commits(ref)):
-                return f"{path} is not a file of this pull request's diff.", True
+                raise Invalid(f"{path} is not a file of this pull request's diff.")
             claude.describe(ref, path, body)
             return f"{'Described' if body.strip() else 'Removed the description of'} {path}.", False
         return f"No tool named {name}.", True
     except claude.NoComment as exc:
         return str(exc), True
-    except ValueError as exc:
+    except Invalid as exc:
         return f"{name}: {exc}", True
     except Exception as exc:  # noqa: BLE001 - every failure must reach Claude as text
         return f"{type(exc).__name__}: {exc}", True
 
 
-def start_thread(ref: PullRef, arguments: dict) -> tuple[str, bool]:
+def start_thread(ref: PullRef, arguments: dict) -> str:
     """Start Claude's thread on the lines the arguments name, with the code they cover in the side's file, numbered
-    as the page numbers them; refuse a file outside the diff and lines outside the file. Answers the thread's id, the
-    commit the lines are numbered at, and the code, for Claude to check it named the lines it meant."""
-    path, start_line = arguments.get("path"), arguments.get("start_line")
-    if not isinstance(path, str):
-        return "start_thread needs the file's path.", True
-    line, body = line_number(arguments.get("line")), text_of(arguments.get("body"))
+    as the page numbers them. Raises Invalid for a file outside the diff, lines outside the file, and, on the LEFT
+    side, lines the pull request does not remove, which the page comments on from the RIGHT side. Answers the
+    thread's id, the commit the lines are numbered at, and the code, for Claude to check it named the lines it
+    meant."""
+    path, line, body = (
+        text_of(arguments.get("path")),
+        line_number(arguments.get("line")),
+        text_of(arguments.get("body")),
+    )
     side: claude.Side = one_of(arguments.get("side", "RIGHT"), claude.Side)
+    start_line = arguments.get("start_line")
     first = line if start_line is None else line_number(start_line)
     if first > line:
-        return "start_thread: start_line comes after line.", True
+        raise Invalid("start_line comes after line.")
     mirror, base, head = commits(ref)
     old = paths(mirror, base, head).get(path)
     if old is None:
-        return f"{path} is not a file of this pull request's diff.", True
+        raise Invalid(f"{path} is not a file of this pull request's diff.")
     commit, file = (head, path) if side == "RIGHT" else (base, old)
     if (content := build.read_files(mirror, commit, [file]).get(file)) is None:
-        return f"{path} has no {'new' if side == 'RIGHT' else 'old'} side: use the other side.", True
-    lines = file_lines(classify.decoded(content))
+        raise Invalid(f"{path} has no {'new' if side == 'RIGHT' else 'old'} side: use the other side.")
+    if classify.is_binary(content):
+        raise Invalid(f"{file} is binary: differ shows no lines of it.")
+    lines = classify.text_lines(classify.decoded(content))
     if line > len(lines):
-        where = "at the head" if side == "RIGHT" else "before the pull request"
-        return f"{file} has {len(lines)} lines of text {where}.", True
+        raise Invalid(
+            f"{file} has {len(lines)} lines {'at the head' if side == 'RIGHT' else 'before the pull request'}."
+        )
+    if side == "LEFT" and not set(range(first, line + 1)) <= removed(file_patch(mirror, base, head, path)):
+        raise Invalid("on the LEFT side, every line must be one the pull request removes: comment on the RIGHT side.")
     code = lines[first - 1 : line]
     start = None if first == line else first
-    c = claude.start(ref, path=path, line=line, start_line=start, side=side, commit=head, code=code, body=body)
+    c = claude.start_thread(ref, path=path, line=line, start_line=start, side=side, commit=head, code=code, body=body)
     numbered = "".join(f"\n{n:>5}  {text}" for n, text in enumerate(code, first))
-    return f"Started thread {c['id']} on {path}:{line_range(first, line)} ({side}) at {commit[:12]}:{numbered}", False
+    return f"Started thread {c['id']} on {path}:{line_range(first, line)} ({side}) at {commit[:12]}:{numbered}"
 
 
 def line_range(first: int, last: int) -> str:
     return str(last) if first == last else f"{first}-{last}"
 
 
-def file_lines(text: str) -> list[str]:
-    """The lines of a file as the page numbers them: split at each new line, without the empty one after the last."""
-    lines = text.split("\n")
-    if lines and lines[-1] == "":
-        lines.pop()
-    return lines
+def removed(patch: str) -> set[int]:
+    """The old file's lines that a patch of one file removes."""
+    hunks = [h for f in classify.parse_patch(patch) for h in f.hunks]
+    return {old for h in hunks for tag, old, _, _ in h.lines if tag == "-" and old is not None}
 
 
 def commits(ref: PullRef) -> tuple[Path, str, str]:
@@ -251,18 +250,22 @@ def diff(ref: PullRef, path: str | None) -> str:
     """The pull request's diff from the mirror, from the commit its branch left the base branch at, as the page's,
     headed by that commit and the head, cut at DIFF_MAX characters."""
     mirror, base, head_commit = commits(ref)
-    args = ["-c", "diff.suppressBlankEmpty=false", "--literal-pathspecs", "diff-tree", "-p", "-M", "-U3", base]
-    args.append(head_commit)
-    if path:
-        # git pairs a rename only when both of its paths are in the pathspec.
-        args += ["--", *dict.fromkeys([path, paths(mirror, base, head_commit).get(path, path)])]
-    patch = build.git(mirror, *args).decode(errors="replace")
+    patch = file_patch(mirror, base, head_commit, path)
     head = f"base {base}\nhead {head_commit}\n\n"
     if not patch:
         return head + (f"{path} is not changed by this pull request." if path else "The diff is empty.")
     if len(patch) > DIFF_MAX:
         patch = patch[:DIFF_MAX] + f"\n[cut after {DIFF_MAX} characters; ask for one file with `path`]\n"
     return head + patch
+
+
+def file_patch(mirror: Path, base: str, head: str, path: str | None) -> str:
+    """The patch from base to head, as the page's; with path, of that file alone, named as the page names it."""
+    args = ["-c", "diff.suppressBlankEmpty=false", "--literal-pathspecs", "diff-tree", "-p", "-M", "-U3", base, head]
+    if path:
+        # git pairs a rename only when both of its paths are in the pathspec.
+        args += ["--", *dict.fromkeys([path, paths(mirror, base, head).get(path, path)])]
+    return build.git(mirror, *args).decode(errors="replace")
 
 
 def paths(mirror: Path, base: str, head: str) -> dict[str, str]:

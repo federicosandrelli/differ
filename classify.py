@@ -438,11 +438,25 @@ def is_generated(path: str, source: str, marked: set[str]) -> bool:
     return any(GENERATED_MARKER.search(line) for line in source.splitlines()[:5])
 
 
+def is_binary(content: bytes) -> bool:
+    """Whether a file's content is binary, which the page shows no lines of: a NUL byte in its first 8 KB."""
+    return b"\0" in content[:8192]
+
+
 def decoded(content: bytes | None) -> str:
     """A file's content as text, or empty for a binary file or a file that is not there."""
-    if content is None or b"\0" in content[:8192]:
+    if content is None or is_binary(content):
         return ""
     return content.decode("utf-8", errors="replace")
+
+
+def text_lines(text: str) -> list[str]:
+    """A file's lines as the page numbers them (`contentLines` in page/00-data.js): split at each new line, without
+    the empty one after the last."""
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
 
 
 def enclosing(symbols: list[Symbol], line: int) -> Symbol | None:

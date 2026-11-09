@@ -3,7 +3,7 @@ the session that listens for them.
 
 A pull request's comments live in its `records.COMMENTS` record, oldest first, and the descriptions Claude gives its
 files in its `records.DESCRIPTIONS` record, until the pull request is merged or closed. Each comment is a thread on
-its lines: the reader's messages and Claude's replies, oldest first. Claude can start a thread too (`start`). A session listens over a WebSocket, one session
+its lines: the reader's messages and Claude's replies, oldest first. Claude can start a thread too (`start_thread`). A session listens over a WebSocket, one session
 per pull request. While one listens, a new comment, or the reader's reply in a thread, goes to it at once as a text
 frame, and when one connects, every thread without Claude's reply to the reader's last message goes to it."""
 
@@ -232,7 +232,7 @@ def add(
     return answer(ref, listening, comments, commit)
 
 
-def start(
+def start_thread(
     ref: PullRef, *, path: str, line: int, start_line: int | None, side: Side, commit: str, code: list[str], body: str
 ) -> dict:
     """Keep a thread Claude starts on lines of the pull request, with an id never used before. Nothing waits for
