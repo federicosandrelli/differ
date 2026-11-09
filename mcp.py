@@ -42,17 +42,26 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "read_thread",
+        "description": (
+            "Read a thread the reader sent to Claude from differ, by the `id` of a frame the Monitor received: its "
+            "lines, the code it is on, every message of the thread, oldest first, and `seen`, the number of those "
+            "messages, to send back with your reply."
+        ),
+        "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+    },
+    {
         "name": "reply_in_thread",
         "description": (
-            "Reply in a thread the reader sent to Claude from differ. `id` and `seen` come from the latest frame of "
-            "the thread the Monitor received: `seen` is the number of its messages you read, so differ knows which "
+            "Reply in a thread the reader sent to Claude from differ. `id` and `seen` come from the thread as "
+            "read_thread gave it: `seen` is the number of its messages you read, so differ knows which "
             "of the reader's messages the reply answers. differ shows the reply in the thread on the lines, as "
             "Markdown. Reply once per thread you handle, in one or two plain sentences."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {"id": {"type": "string"}, "body": {"type": "string"}, "seen": {"type": "integer"}},
-            "required": ["id", "body"],
+            "required": ["id", "body", "seen"],
         },
     },
     {
@@ -130,13 +139,23 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
         if name == "pull_request_diff":
             path = arguments.get("path")
             return diff(ref, path if isinstance(path, str) and path else None), False
+        if name == "read_thread":
+            thread_id = arguments.get("id")
+            if not isinstance(thread_id, str):
+                return "read_thread needs the thread's id.", True
+            return json.dumps(claude.thread(ref, thread_id)), False
         if name == "reply_in_thread":
             thread_id, body, seen = arguments.get("id"), arguments.get("body"), arguments.get("seen")
-            if not isinstance(thread_id, str) or not isinstance(body, str) or not body.strip():
-                return "reply_in_thread needs the thread's id and a body.", True
-            c = claude.reply(
-                ref, thread_id, body, seen if isinstance(seen, int) and not isinstance(seen, bool) else None
-            )
+            if (
+                not isinstance(thread_id, str)
+                or not isinstance(body, str)
+                or not body.strip()
+                or not isinstance(seen, int)
+                or isinstance(seen, bool)
+                or seen < 0
+            ):
+                return "reply_in_thread needs the thread's id, a body and seen.", True
+            c = claude.reply(ref, thread_id, body, seen)
             return f"Replied in the thread on {c['path']}:{c['line']}.", False
         if name == "describe_file":
             path, body = arguments.get("path"), arguments.get("body")

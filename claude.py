@@ -202,21 +202,26 @@ def moved(hunks: list[classify.Hunk], first: int, last: int) -> tuple[int, int] 
 
 
 def frame(ref: PullRef, c: dict, replay: bool) -> str:
-    """The text frame that brings a thread to the session: where it sits, the code it is on, every message of the
-    thread, and `seen`, the number of those messages, for Claude's reply to name. The event is `comment` for a new
-    thread, and `follow_up` once the reader replied in it. `replay` marks a thread the session may have had before it
-    connected again."""
-    keys = ("id", "path", "line", "start_line", "side", "commit", "code", "messages")
+    """The text frame that tells the session a thread waits for it: the thread's id, and `seen`, the number of its
+    messages. The event is `comment` for a new thread, and `follow_up` once the reader replied in it. `replay` marks a
+    thread the session may have had before it connected again. The frame leaves out the thread itself, since Claude
+    Code's Monitor tool cuts an event after 500 characters."""
     event = "comment" if len(c["messages"]) == 1 else "follow_up"
-    return json.dumps(
-        {"event": event, "pr": str(ref), **{k: c[k] for k in keys}, "seen": len(c["messages"]), "replay": replay}
-    )
+    return json.dumps({"event": event, "pr": str(ref), "id": c["id"], "seen": len(c["messages"]), "replay": replay})
+
+
+def thread(ref: PullRef, comment_id: str) -> dict:
+    """The comment's thread: where it sits, the code it is on, every message, oldest first, and `seen`, the number of
+    those messages. Raises NoComment for an unknown id."""
+    with lock:
+        c = find(read(ref), comment_id)
+    keys = ("id", "path", "line", "start_line", "side", "commit", "code", "messages")
+    return {**{k: c[k] for k in keys}, "seen": len(c["messages"])}
 
 
 def deliver(ref: PullRef, comments: list[dict], replay: bool) -> None:
-    """Send the comments to the session that listens on the pull request, if one does, and mark each one it took
-    sent, with `sent_count`, the number of messages the thread had, so that `reply` can tell whether the reader wrote
-    again before Claude answered. A session that has gone stops listening. Call it with the lock held."""
+    """Send the comments to the session that listens on the pull request, if one does, and mark each waiting one
+    it took sent. A session that has gone stops listening. Call it with the lock held."""
     for c in comments:
         if not (send := listeners.get(ref)):
             return
@@ -225,7 +230,6 @@ def deliver(ref: PullRef, comments: list[dict], replay: bool) -> None:
         except OSError:
             del listeners[ref]
             return
-        c["sent_count"] = len(c["messages"])
         if c["state"] == "waiting":
             c["state"] = "sent"
 
@@ -270,16 +274,13 @@ def find(comments: list[dict], comment_id: str) -> dict:
     raise NoComment(f"no Claude comment {comment_id}")
 
 
-def reply(ref: PullRef, comment_id: str, body: str, seen: int | None = None) -> dict:
+def reply(ref: PullRef, comment_id: str, body: str, seen: int) -> dict:
     """Add Claude's reply to the end of a comment's thread. `seen` is the number of the thread's messages that
-    Claude read before it replied; when None, the number the thread had when `deliver` last sent it, or all of them
-    for a thread never sent. The state becomes `answered` unless the reader wrote after those messages. Answers the
-    comment as kept."""
+    Claude read before it replied. The state becomes `answered` unless the reader wrote after those messages. Answers
+    the comment as kept."""
     with lock:
         comments = read(ref)
         c = find(comments, comment_id)
-        if seen is None:
-            seen = c.get("sent_count", len(c["messages"]))
         unread = c["messages"][seen:]
         c["messages"].append(message("claude", body, now()))
         if not any(m["author"] == "reader" for m in unread):

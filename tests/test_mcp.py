@@ -51,7 +51,7 @@ def test_initialize_echoes_the_clients_protocol_version_and_offers_tools() -> No
 
 def test_tools_list_names_the_tools_with_their_schemas() -> None:
     tools = result("tools/list")["tools"]
-    assert [t["name"] for t in tools] == ["pull_request_diff", "reply_in_thread", "describe_file"]
+    assert [t["name"] for t in tools] == ["pull_request_diff", "read_thread", "reply_in_thread", "describe_file"]
     assert all("inputSchema" in t and t["description"] for t in tools)
 
 
@@ -83,7 +83,9 @@ def test_the_token_is_per_pull_request_and_checked_in_the_authorization_header()
 def test_reply_in_thread_answers_the_thread_and_names_its_lines() -> None:
     claude.add(REF, path="src/app.py", line=11, start_line=None, side="RIGHT", commit="abc", code=["x"], body="Why?")
     (c,) = claude.fetch(REF, "abc")["comments"]
-    answer = result("tools/call", {"name": "reply_in_thread", "arguments": {"id": c["id"], "body": "Because."}})
+    answer = result(
+        "tools/call", {"name": "reply_in_thread", "arguments": {"id": c["id"], "body": "Because.", "seen": 1}}
+    )
     assert answer == {
         "content": [{"type": "text", "text": "Replied in the thread on src/app.py:11."}],
         "isError": False,
@@ -94,6 +96,16 @@ def test_reply_in_thread_answers_the_thread_and_names_its_lines() -> None:
         "author": "claude",
         "body": "Because.",
     }
+
+
+def test_read_thread_gives_every_message_of_the_thread_and_seen() -> None:
+    claude.add(REF, path="src/app.py", line=11, start_line=None, side="RIGHT", commit="abc", code=["x"], body="Why?")
+    (c,) = claude.fetch(REF, "abc")["comments"]
+    claude.follow_up(REF, c["id"], "And how?", "abc")
+    answer = result("tools/call", {"name": "read_thread", "arguments": {"id": c["id"]}})
+    thread = json.loads(answer["content"][0]["text"])
+    assert not answer["isError"] and (thread["path"], thread["code"], thread["seen"]) == ("src/app.py", ["x"], 2)
+    assert [m["body"] for m in thread["messages"]] == ["Why?", "And how?"]
 
 
 def test_a_reply_with_seen_leaves_a_thread_the_reader_wrote_in_since_waiting() -> None:
@@ -107,9 +119,10 @@ def test_a_reply_with_seen_leaves_a_thread_the_reader_wrote_in_since_waiting() -
 
 
 def test_a_tool_failure_comes_back_as_text_with_is_error() -> None:
-    answer = result("tools/call", {"name": "reply_in_thread", "arguments": {"id": "nope", "body": "x"}})
+    answer = result("tools/call", {"name": "reply_in_thread", "arguments": {"id": "nope", "body": "x", "seen": 1}})
     assert answer == {"content": [{"type": "text", "text": "no Claude comment nope"}], "isError": True}
     assert result("tools/call", {"name": "reply_in_thread", "arguments": {"id": "a"}})["isError"]
+    assert result("tools/call", {"name": "reply_in_thread", "arguments": {"id": "a", "body": "x"}})["isError"]
     assert result("tools/call", {"name": "fly", "arguments": {}}) == {
         "content": [{"type": "text", "text": "No tool named fly."}],
         "isError": True,

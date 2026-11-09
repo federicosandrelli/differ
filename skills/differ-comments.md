@@ -37,61 +37,69 @@ session listened, and those you had not answered yet.
 
 ## Handle a comment or a follow-up
 
-A new comment arrives as one text frame with `"event": "comment"`:
+A new comment arrives as one text frame with `"event": "comment"`, and the reader's reply in a thread as one with
+`"event": "follow_up"`. A frame names the thread only:
 
 ```json
-{"event": "comment", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "path": "src/app.py", "line": 11, "start_line": null,
- "side": "RIGHT", "commit": "<sha>", "code": ["    print(\"hello\")"],
- "messages": [{"author": "reader", "body": "Use a logger here", "at": "2026-11-03T09:12:40Z"}],
- "seen": 1, "replay": false}
-```
-
-When the reader replies in a thread, the whole thread arrives again with `"event": "follow_up"`. Its `messages` hold
-every message of the thread, oldest first, yours included:
-
-```json
-{"event": "follow_up", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "path": "src/app.py", "line": 11, "start_line": null,
- "side": "RIGHT", "commit": "<sha>", "code": ["    print(\"hello\")"],
- "messages": [{"author": "reader", "body": "Use a logger here", "at": "2026-11-03T09:12:40Z"},
-              {"author": "claude", "body": "Replaced the print with `log.info`.", "at": "2026-11-03T09:13:05Z"},
-              {"author": "reader", "body": "Make it debug, not info", "at": "2026-11-03T09:20:11Z"}],
- "seen": 3, "replay": false}
+{"event": "follow_up", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "seen": 3, "replay": false}
 ```
 
 - `id` names the thread. It stays the same for every reply in it.
+- `seen` is the number of messages the thread had when differ sent the frame.
+- `replay` is true when differ sends the thread again because this session connected again.
+
+Read the thread itself with `curl`, since the Monitor cuts a long frame:
+
+```bash
+curl -sS "http://127.0.0.1:<port>/api/<owner>/<repo>/<number>/claude_thread?id=5f0c2a9e41b7"
+```
+
+```json
+{"id": "5f0c2a9e41b7", "path": "src/app.py", "line": 11, "start_line": null, "side": "RIGHT", "commit": "<sha>",
+ "code": ["    print(\"hello\")"],
+ "messages": [{"author": "reader", "body": "Use a logger here", "at": "2026-11-03T09:12:40Z"},
+              {"author": "claude", "body": "Replaced the print with `log.info`.", "at": "2026-11-03T09:13:05Z"},
+              {"author": "reader", "body": "Make it debug, not info", "at": "2026-11-03T09:20:11Z"}],
+ "seen": 3}
+```
+
 - `line` is the last line of the comment, and `start_line` the first when it covers several lines.
 - `side` is `RIGHT` for a line of the file at `commit`, and `LEFT` for a line of the old file, before the pull request.
 - `code` holds the lines the comment covers, as the reader saw them when they started the thread.
-- `messages` has `author` `reader` for the reader and `claude` for you.
+- `messages` holds every message of the thread, oldest first, with `author` `reader` for the reader and `claude` for
+  you.
 - `seen` is the number of messages in `messages`. Send it back with your reply.
-- `replay` is true when differ sends the thread again because this session connected again. Skip a replayed thread
-  that you are still working on.
 
-Several frames with one `id` can wait for you, when the reader replies before you answer. Handle only the latest of
-them: it holds every message of the others. For each frame you handle:
+An answer with `"error"` and the status 404 means the reader deleted the thread. Skip its frame.
+
+Several frames with one `id` can wait for you, when the reader replies before you answer. The thread you read holds
+every message of them all. Skip a frame when you already read its thread with a `seen` at least as high as the frame's,
+and you answered that thread or still work on it. Handle every other frame, replayed or not. For each thread you
+handle:
 
 1. Read the whole thread in `messages`. Answer each message of the reader that none of your replies answers yet, in
    the light of what was said before. A reply of yours can come after a message of the reader that it does not
-   answer, when the reader wrote while you worked.
+   answer, when the reader wrote while you worked. When every message of the reader already has your answer, skip the thread
+   without a reply.
 2. Read the file around the line. The branch may have new commits since `commit`, so find the code by its text.
 3. When the reader asks for a change, make it. Follow this repository's own rules for commits and pushes.
 4. Reply once, also when nothing needs a change. The reply is one or two plain sentences: what you changed, or the
    answer. differ shows Markdown.
 
 Send the reply with `curl`. differ refuses a POST without its own Origin header and a JSON body. Write the body as
-JSON, with quotes, backslashes and new lines escaped. Copy `seen` from the frame you answer, so that differ knows which
+JSON, with quotes, backslashes and new lines escaped. Copy `seen` from the thread you read, so that differ knows which
 of the reader's messages your reply answers:
 
 ```bash
 curl -sS -X POST "http://127.0.0.1:<port>/api/<owner>/<repo>/<number>/claude_reply" \
   -H "Origin: http://127.0.0.1:<port>" -H "Content-Type: application/json" \
   --data-binary @- <<'EOF'
-{"id": "5f0c2a9e41b7", "seen": 1, "body": "Replaced the print with `log.info`."}
+{"id": "5f0c2a9e41b7", "seen": 3, "body": "Logged it at debug."}
 EOF
 ```
 
 differ adds the reply to the end of the thread. The answer is the thread as JSON, with `"state": "answered"`, or
-another state when the reader wrote again after the frame you answered; that newer message comes to you as its own
+another state when the reader wrote again after the thread you read; that newer message comes to you as its own
 frame. An answer with `"error"` says what to fix.
 
 ## When the monitor ends
@@ -105,5 +113,5 @@ frame. An answer with `"error"` says what to fix.
 ## Rules
 
 - Answer every comment in differ, never on GitHub.
-- Reply once per frame you handle. Every reply you send adds a message to the thread.
+- Reply once per thread you handle. Every reply you send adds a message to the thread.
 - Never delete a thread. The reader deletes threads in differ.

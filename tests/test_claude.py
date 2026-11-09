@@ -5,6 +5,7 @@ import os
 import socket
 import struct
 import threading
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -49,8 +50,8 @@ def said(c: dict) -> list[tuple[str, str]]:
 
 
 def last_said(text: str | bytes) -> str:
-    """The body of the last message of the thread a frame brings."""
-    return json.loads(text)["messages"][-1]["body"]
+    """The body of the last message of the thread a frame names."""
+    return claude.thread(REF, json.loads(text)["id"])["messages"][-1]["body"]
 
 
 def test_the_accept_key_answers_the_handshake_key_of_the_rfc() -> None:
@@ -81,22 +82,27 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
     claude.attach(REF, frames.append)
     (sent,) = claude.fetch(REF, "abc")["comments"]
     assert [json.loads(f) for f in frames] == [
-        {
-            "event": "comment",
-            "pr": "acme/widgets#1",
-            "id": ids()[0],
-            "path": "src/app.py",
-            "line": 11,
-            "start_line": None,
-            "side": "RIGHT",
-            "commit": "abc",
-            "code": ["print(1)"],
-            "messages": sent["messages"],
-            "seen": 1,
-            "replay": True,
-        }
+        {"event": "comment", "pr": "acme/widgets#1", "id": sent["id"], "seen": 1, "replay": True}
     ]
+    assert claude.thread(REF, sent["id"]) == {
+        "id": sent["id"],
+        "path": "src/app.py",
+        "line": 11,
+        "start_line": None,
+        "side": "RIGHT",
+        "commit": "abc",
+        "code": ["print(1)"],
+        "messages": sent["messages"],
+        "seen": 1,
+    }
     assert states() == ["sent"] and claude.fetch(REF, "abc")["listening"]
+
+
+def test_a_frame_for_a_long_thread_fits_in_a_monitor_event() -> None:
+    add("x" * 2000)
+    frames: list[str] = []
+    claude.attach(REF, frames.append)
+    assert len(frames[0]) < 500 and last_said(frames[0]) == "x" * 2000
 
 
 def test_a_comment_goes_at_once_to_the_session_that_listens() -> None:
@@ -145,7 +151,7 @@ def test_a_session_that_connects_again_gets_every_comment_without_a_reply() -> N
     add("two")
     first = [].append
     claude.attach(REF, first)
-    claude.reply(REF, ids()[0], "Done.")
+    claude.reply(REF, ids()[0], "Done.", seen=1)
     claude.detach(REF, first)
     again: list[str] = []
     claude.attach(REF, again.append)
@@ -157,30 +163,30 @@ def test_a_reply_answers_its_comment_and_a_delete_removes_it() -> None:
     add("one")
     add("two")
     one, two = ids()
-    c = claude.reply(REF, two, "Renamed it.")
+    c = claude.reply(REF, two, "Renamed it.", seen=1)
     assert c["state"] == "answered" and said(c) == [("reader", "two"), ("claude", "Renamed it.")]
     assert [said(c) for c in claude.delete(REF, one, "abc")["comments"]] == [said(c)]
     assert add("three")["comments"][-1]["id"] not in {one, two}
     with pytest.raises(claude.NoComment):
-        claude.reply(REF, one, "Too late.")
+        claude.reply(REF, one, "Too late.", seen=1)
 
 
-def test_the_readers_reply_goes_to_the_session_with_the_whole_thread_and_waits_for_claude_again() -> None:
+def test_the_readers_reply_goes_to_the_session_as_a_follow_up_and_waits_for_claude_again() -> None:
     add("Use a logger here")
     (thread,) = ids()
     frames: list[str] = []
     claude.attach(REF, frames.append)
-    claude.reply(REF, thread, "Logged it at info.")
+    claude.reply(REF, thread, "Logged it at info.", seen=1)
     (c,) = claude.follow_up(REF, thread, "Make it debug", "abc")["comments"]
     assert c["state"] == "sent"
     last = json.loads(frames[-1])
     assert (last["event"], last["id"], last["seen"], last["replay"]) == ("follow_up", thread, 3, False)
-    assert said(last) == [
+    assert said(claude.thread(REF, thread)) == [
         ("reader", "Use a logger here"),
         ("claude", "Logged it at info."),
         ("reader", "Make it debug"),
     ]
-    claude.reply(REF, thread, "Made it debug.")
+    claude.reply(REF, thread, "Made it debug.", seen=3)
     assert said(claude.fetch(REF, "abc")["comments"][0])[-2:] == [
         ("reader", "Make it debug"),
         ("claude", "Made it debug."),
@@ -204,7 +210,7 @@ def test_claudes_reply_to_an_older_frame_keeps_the_readers_newer_message_waiting
 def test_a_reply_written_while_no_session_listens_goes_to_the_next_one_as_a_follow_up() -> None:
     add()
     (thread,) = ids()
-    claude.reply(REF, thread, "Done.")
+    claude.reply(REF, thread, "Done.", seen=1)
     claude.follow_up(REF, thread, "One more thing", "abc")
     assert states() == ["waiting"]
     frames: list[str] = []
@@ -296,6 +302,11 @@ def post(port: int, action: str, body: dict) -> dict:
         return json.loads(response.read())
 
 
+def get_thread(port: int, thread: str) -> dict:
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/acme/widgets/1/claude_thread?id={thread}") as response:
+        return json.loads(response.read())
+
+
 def until_listening(expected: bool) -> None:
     for _ in range(200):
         if claude.fetch(REF, "abc")["listening"] == expected:
@@ -310,16 +321,28 @@ def test_a_session_listens_over_a_websocket_and_replies_through_a_post(port: int
     until_listening(True)
     post(port, "claude", {"path": "src/app.py", "line": 11, "side": "RIGHT", "commit": "abc", "body": "Log it"})
     opcode, payload = receive(sock)
-    assert opcode == websocket.TEXT and last_said(payload) == "Log it"
     thread = json.loads(payload)["id"]
+    read = get_thread(port, thread)
+    assert opcode == websocket.TEXT and (read["messages"][-1]["body"], read["seen"]) == ("Log it", 1)
     assert post(port, "claude_reply", {"id": thread, "seen": 1, "body": "Logged."})["state"] == "answered"
     post(port, "claude_follow_up", {"id": thread, "body": "At debug"})
     opcode, payload = receive(sock)
-    assert (json.loads(payload)["event"], last_said(payload)) == ("follow_up", "At debug")
+    read = get_thread(port, thread)
+    assert (json.loads(payload)["event"], read["messages"][-1]["body"], read["seen"]) == ("follow_up", "At debug", 3)
     sock.sendall(bytes([0x88, 0x82, 0, 0, 0, 0]) + struct.pack(">H", 1000))
     assert receive(sock)[0] == websocket.CLOSE
     sock.close()
     until_listening(False)
+
+
+@pytest.mark.parametrize(
+    ("thread", "code", "error"),
+    [("nope", 404, "no Claude comment nope"), ("", 400, "Bad request: claude_thread needs ?id=<thread id>")],
+)
+def test_reading_a_thread_without_a_known_id_fails(port: int, thread: str, code: int, error: str) -> None:
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        get_thread(port, thread)
+    assert (exc.value.code, json.loads(exc.value.read())) == (code, {"error": error})
 
 
 def test_a_second_websocket_gets_a_close_frame_with_the_reason(port: int) -> None:
@@ -499,25 +522,6 @@ def test_install_skills_reports_a_folder_it_cannot_write(skills: Path, capsys: p
     skills.parent.write_text("a file where the folder should be")
     claude.install_skills()
     assert "Could not install the differ-comments skill" in capsys.readouterr().err
-
-
-def test_a_reply_without_seen_counts_the_messages_the_thread_had_when_it_was_sent() -> None:
-    frames: list[str] = []
-    send = frames.append
-    claude.attach(REF, send)
-    (c,) = add()["comments"]
-    assert claude.fetch(REF, "abc")["comments"][0]["sent_count"] == 1
-    claude.reply(REF, c["id"], "Done.")
-    assert states() == ["answered"]
-    claude.detach(REF, send)
-    claude.follow_up(REF, c["id"], "And this?", "abc")
-    assert states() == ["waiting"]
-    claude.reply(REF, c["id"], "A late answer to the first message.")
-    assert states() == ["waiting"]
-    claude.attach(REF, send)
-    assert states() == ["sent"] and claude.fetch(REF, "abc")["comments"][0]["sent_count"] == 4
-    claude.reply(REF, c["id"], "Yes.")
-    assert states() == ["answered"]
 
 
 def test_kept_lists_the_pull_requests_with_a_comments_file() -> None:

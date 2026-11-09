@@ -1189,7 +1189,7 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
 
     reply = page.request.post(
         f"{server_url}/api/acme/widgets/1/claude_reply",
-        data={"id": sent["id"], "body": "Logged it."},
+        data={"id": sent["id"], "seen": 1, "body": "Logged it."},
         headers={"Origin": server_url},
     )
     assert reply.ok

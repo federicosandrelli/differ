@@ -3,7 +3,8 @@
 
 `fakeclaude --version` prints a version: FAKE_CLAUDE_VERSION, else 2.1.316. Started with `--session-id <id>` or
 `--resume <id>` and a prompt, it prints a banner, connects to the listen WebSocket the prompt names, and answers each
-`comment` or `follow_up` frame by calling the `reply_in_thread` tool of the MCP server that `--mcp-config` names, with
+`comment` or `follow_up` frame by reading its thread with the `read_thread` tool of the MCP server that `--mcp-config`
+names, then calling its `reply_in_thread` tool with
 "Fake reply to: <the reader's last message>". Meanwhile it echoes what it reads from its terminal back to it, in
 upper case, so a test can see bytes go both ways. With FAKE_CLAUDE_FAIL set to `resume`, a `--resume` start prints
 "No conversation found with session ID" and exits 1; set to `in-use`, a `--session-id` start prints "Session ID is
@@ -84,8 +85,13 @@ def listen(url: str, mcp_url: str, token: str) -> None:
         elif opcode == 0x1:
             event = json.loads(payload)
             if event.get("event") in ("comment", "follow_up"):
-                reader = [m["body"] for m in event["messages"] if m["author"] == "reader"][-1]
-                call(mcp_url, token, "reply_in_thread", {"id": event["id"], "body": f"Fake reply to: {reader}"})
+                read = call(mcp_url, token, "read_thread", {"id": event["id"]})
+                if read["result"]["isError"]:
+                    continue
+                thread = json.loads(read["result"]["content"][0]["text"])
+                reader = [m["body"] for m in thread["messages"] if m["author"] == "reader"][-1]
+                arguments = {"id": event["id"], "seen": thread["seen"], "body": f"Fake reply to: {reader}"}
+                call(mcp_url, token, "reply_in_thread", arguments)
 
 
 def call(mcp_url: str, token: str, name: str, arguments: dict) -> dict:

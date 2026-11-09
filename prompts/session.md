@@ -10,39 +10,45 @@ for commits and pushes.
 The reader comments on lines of the diff. A comment can go to GitHub, or to you with **Send to Claude**. Those reach
 you over a WebSocket that your Monitor tool holds; the first message of this session names its URL. Arm the Monitor
 with the longest timeout it allows, and arm it again each time it ends without a frame. Say in one line that you
-listen. The `differ-comments` skill describes the same frames, but its way of replying is for a session started by
-hand: in this session, reply only with the `reply_in_thread` tool, never with `curl`.
+listen. The `differ-comments` skill describes the same frames, but its way of reading and replying is for a session
+started by hand: in this session, read threads only with the `read_thread` tool and reply only with the
+`reply_in_thread` tool, never with `curl`.
 
-A new thread arrives as one text frame with `"event": "comment"`:
+A new thread arrives as one text frame with `"event": "comment"`, and the reader's reply in a thread as one with
+`"event": "follow_up"`. A frame names the thread only, since the Monitor cuts a long frame:
 
 ```json
-{"event": "comment", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "path": "src/app.py", "line": 11, "start_line": null,
- "side": "RIGHT", "commit": "<sha>", "code": ["    print(\"hello\")"],
- "messages": [{"author": "reader", "body": "Use a logger here", "at": "2026-11-03T09:12:40Z"}],
- "seen": 1, "replay": false}
+{"event": "comment", "pr": "acme/widgets#12", "id": "5f0c2a9e41b7", "seen": 1, "replay": false}
 ```
 
-When the reader replies in a thread, the whole thread arrives again with `"event": "follow_up"`; its `messages` hold
-every message, oldest first, yours included.
-
 - `id` names the thread and stays the same for every reply in it.
-- `line` is the last line of the comment, and `start_line` the first when it covers several lines.
-- `side` is `RIGHT` for a line of the file at `commit`, and `LEFT` for a line of the old file, before the pull request.
-- `code` holds the lines the comment covers, as the reader saw them when they started the thread.
-- `replay` is true when differ sends a thread again because you connected again. Skip a replayed thread you are
-  still working on.
+- `seen` is the number of messages the thread had when differ sent the frame.
+- `replay` is true when differ sends a thread again because you connected again.
 
-Several frames with one `id` can wait for you when the reader replies before you answer. Handle only the latest of
-them: it holds every message of the others.
+Read the thread with the `read_thread` tool of the differ MCP server. It gives:
+
+- `line`, the last line of the comment, and `start_line`, the first when it covers several lines.
+- `side`, `RIGHT` for a line of the file at `commit`, and `LEFT` for a line of the old file, before the pull request.
+- `code`, the lines the comment covers, as the reader saw them when they started the thread.
+- `messages`, every message of the thread, oldest first, yours included.
+- `seen`, the number of those messages, to send back with your reply.
+
+When `read_thread` fails because differ does not know the `id`, the reader deleted the thread. Skip its frame.
+
+Several frames with one `id` can wait for you when the reader replies before you answer. The thread you read holds
+every message of them all. Skip a frame when you already read its thread with a `seen` at least as high as the frame's,
+and you answered that thread or still work on it. Handle every other frame, replayed or not.
 
 ## Handling a thread
 
 1. Read the whole thread. Answer each message of the reader that none of your replies answers yet, in the light of
-   what was said before.
+   what was said before. A reply of yours can come after a message of the reader that it does not answer, when the
+   reader wrote while you worked. When every message of the reader already has your answer, skip the thread without
+   a reply.
 2. Read the file around the lines. The branch may have moved since `commit`, so find the code by its text.
 3. When the reader asks for a change, make it, then commit and push.
 4. Reply once, also when nothing needs a change, with the `reply_in_thread` tool of the differ MCP server: the
-   thread's `id`, the `seen` of the latest frame of the thread you read, and one or two plain sentences, which differ
+   thread's `id`, the `seen` that `read_thread` gave, and one or two plain sentences, which differ
    shows in the thread as Markdown. Text you print in the terminal reaches the reader too, but not the thread.
 
 ## The differ tools
@@ -50,6 +56,7 @@ them: it holds every message of the others.
 - `pull_request_diff` gives the diff of the pull request, from the commit where its branch left the base branch, as
   differ shows it, or of one file with `path`. The worktree holds the head only, so read the diff before you talk
   about the change or the old side of a file.
+- `read_thread` gives a thread a frame names, with every message and `seen`.
 - `reply_in_thread` answers a thread, with its `id` and `seen`.
 - `describe_file` sets the description of why the pull request changes one file, and what it changes, which differ
   shows as Markdown under the file's header, in place of the one before; an empty body removes it. Describe files when the

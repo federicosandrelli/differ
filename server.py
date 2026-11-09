@@ -43,6 +43,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      merge, the auto-merge request and the merge methods allowed
   /api/<owner>/<repo>/<number>/claude     GET: the comments for Claude, each placed on the head commit ?head= names,
                                      whether a Claude Code session listens, and where the embedded session stands
+  /api/<owner>/<repo>/<number>/claude_thread?id=<id>   GET: one comment for Claude: its lines, the code it is on,
+                                     every message of its thread and `seen`, the number of those messages
   /api/<owner>/<repo>/<number>/listen     a WebSocket: a Claude Code session listens for the comments for Claude,
                                      one session per pull request (refused from another origin)
   /api/<owner>/<repo>/<number>/terminal   a WebSocket: the page's terminal, relayed to the embedded session's
@@ -322,6 +324,13 @@ class Handler(BaseHTTPRequestHandler):
                 ref = PullRef.from_match(m)
                 data = claude.fetch(ref, (query.get("head") or [""])[0])
                 return self.send_json({**data, "session": session.status(ref)})
+            if (m := API.match(url.path)) and m["action"] == "claude_thread":
+                if not (thread_id := (query.get("id") or [""])[0]):
+                    return self.send_json({"error": "Bad request: claude_thread needs ?id=<thread id>"}, 400)
+                try:
+                    return self.send_json(claude.thread(PullRef.from_match(m), thread_id))
+                except claude.NoComment as exc:
+                    return self.send_json({"error": str(exc)}, 404)
             if (m := API.match(url.path)) and m["action"] == "listen":
                 return self.listen(PullRef.from_match(m))
             if (m := API.match(url.path)) and m["action"] == "terminal":
@@ -593,10 +602,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "claude_follow_up":
                 result = claude.follow_up(ref, str(body["id"]), text_of(body["body"]), str(body.get("head", "")))
             elif action == "claude_reply":
-                seen = body.get("seen")
-                result = claude.reply(
-                    ref, str(body["id"]), text_of(body["body"]), None if seen is None else count_of(seen)
-                )
+                result = claude.reply(ref, str(body["id"]), text_of(body["body"]), count_of(body["seen"]))
             elif action == "claude_delete":
                 result = claude.delete(ref, str(body["id"]), str(body.get("head", "")))
             elif action == "rebuild":
