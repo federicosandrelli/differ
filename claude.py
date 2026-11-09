@@ -3,7 +3,7 @@ the session that listens for them.
 
 A pull request's comments live in its `records.COMMENTS` record, oldest first, and the descriptions Claude gives its
 files in its `records.DESCRIPTIONS` record, until the pull request is merged or closed. Each comment is a thread on
-its lines: the reader's messages and Claude's replies, oldest first. A session listens over a WebSocket, one session
+its lines: the reader's messages and Claude's replies, oldest first. Claude can start a thread too (`start`). A session listens over a WebSocket, one session
 per pull request. While one listens, a new comment, or the reader's reply in a thread, goes to it at once as a text
 frame, and when one connects, every thread without Claude's reply to the reader's last message goes to it."""
 
@@ -220,26 +220,55 @@ def add(
     code: list[str],
     body: str,
 ) -> dict:
-    """Keep a new comment, with an id never used before, and send it to the session if one listens. Answers whether
-    a session listens, and the comments, placed on the commit the new one was written on."""
+    """Keep the reader's new comment, with an id never used before, and send it to the session if one listens.
+    Answers whether a session listens, and the comments, placed on the commit the new one was written on."""
     with lock:
         comments = read(ref)
-        c = {
-            "id": uuid.uuid4().hex[:12],
-            "path": path,
-            "line": line,
-            "start_line": start_line,
-            "side": side,
-            "commit": commit,
-            "code": code,
-            "state": "waiting",
-            "messages": [message("reader", body, now())],
-        }
+        c = new_thread("reader", path, line, start_line, side, commit, code, body)
         comments.append(c)
         deliver(ref, [c], replay=False)
         write(ref, comments)
         listening = ref in listeners
     return answer(ref, listening, comments, commit)
+
+
+def start(
+    ref: PullRef, *, path: str, line: int, start_line: int | None, side: Side, commit: str, code: list[str], body: str
+) -> dict:
+    """Keep a thread Claude starts on lines of the pull request, with an id never used before. Nothing waits for
+    Claude in it, so it is `answered` and goes to no session; the reader's reply in it goes as a `follow_up`. Answers
+    the thread as kept."""
+    with lock:
+        comments = read(ref)
+        c = new_thread("claude", path, line, start_line, side, commit, code, body)
+        comments.append(c)
+        write(ref, comments)
+        return c
+
+
+def new_thread(
+    author: Author,
+    path: str,
+    line: int,
+    start_line: int | None,
+    side: Side,
+    commit: str,
+    code: list[str],
+    body: str,
+) -> dict:
+    """A new comment whose thread holds the author's first message, with an id never used before: `waiting` for
+    Claude when the reader wrote it, `answered` when Claude did."""
+    return {
+        "id": uuid.uuid4().hex[:12],
+        "path": path,
+        "line": line,
+        "start_line": start_line,
+        "side": side,
+        "commit": commit,
+        "code": code,
+        "state": "waiting" if author == "reader" else "answered",
+        "messages": [message(author, body, now())],
+    }
 
 
 def find(comments: list[dict], comment_id: str) -> dict:
