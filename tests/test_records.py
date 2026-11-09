@@ -50,3 +50,17 @@ def test_kept_lists_each_pull_request_with_a_record_once_and_skips_files_that_ar
     assert records.COMMENTS.refs() == [REF, OTHER]
     assert records.SESSIONS.refs() == [REF, later]
     assert records.kept() == [REF, OTHER, later]
+
+
+def test_a_write_that_fails_raises_and_leaves_the_old_file_and_no_temporary_file() -> None:
+    records.COMMENTS.write(REF, [{"id": "a"}])
+
+    def full(self: Path, text: str) -> None:
+        Path.open(self, "w").close()
+        raise OSError(28, "No space left on device")
+
+    with pytest.MonkeyPatch.context() as patch, pytest.raises(OSError):
+        patch.setattr(Path, "write_text", full)
+        records.COMMENTS.write(REF, [{"id": "b"}])
+    assert records.COMMENTS.read(REF, list) == [{"id": "a"}]
+    assert [p.name for p in records.COMMENTS.path(REF).parent.iterdir()] == ["1.json"]

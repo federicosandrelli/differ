@@ -19,11 +19,16 @@ def write_json(path: Path, data: object) -> None:
     """Replace the file at path with the data as JSON, in one step: the data goes to a temporary file beside it first,
     named for the process and the thread that write it, which then takes the place of the file, so a reader sees the
     old file or the new one and never part of one, a crash mid-write leaves the old one, and two writers never share a
-    temporary file. Makes the file's folder when it has none."""
+    temporary file. Makes the file's folder when it has none. A write that fails deletes its temporary file."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data)
     tmp = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 class Record:
