@@ -361,13 +361,14 @@ def start(ref: PullRef, port: int, cols: int, rows: int, model: Model = DEFAULT_
 def install(ref: PullRef, port: int, cols: int, rows: int) -> dict:
     """Install Claude Code, or update the one a start found too old, in the session's pseudoterminal, so the reader
     sees it in the terminal and can answer it, unless a process runs or starts; once it succeeds, start the session.
-    With nothing to install, as for a page that has not seen the last start, it starts the session. Answers `status`.
+    With nothing to install, as for a page that has not seen the last start or once the reader installed Claude Code
+    by hand, it starts the session. Answers `status`.
     Raises RuntimeError when the command cannot run."""
     with lock:
         s = session_of(ref)
         if s.starting or (s.proc is not None and s.proc.poll() is None):
             return status(ref)
-        if not s.setup:
+        if not s.setup or (s.setup == "missing" and binary() is not None):
             return start(ref, port, cols, rows, s.model)
         s.size = (max(20, cols), max(5, rows))
         s.error = ""

@@ -170,7 +170,9 @@ function renderTermHead() {
   // the header's Retry then show.
   if (s.setup || s.installing) TERM.setup = true;
   else if (CL.listening || s.error) TERM.setup = false;
-  TERM.el.classList.toggle('setting-up', TERM.setup && !termSession().installing);
+  // The steps take the whole height only while they wait for the reader, when nothing has run in the screen; from the
+  // install on, the screen shows the install, then Claude Code's sign-in.
+  TERM.el.classList.toggle('setting-up', TERM.setup && !!s.setup && !s.installing);
   TERM.el.querySelector('.tnote').innerHTML = TERM.setup ? setupHtml() : s.error ? `<div class="err">${esc(s.error)}</div>` : '';
 }
 
@@ -253,7 +255,7 @@ async function openTerminal(start = true) {
 }
 // Ask the server to start the session, with the terminal's size and the model; the header shows how it goes.
 async function startSession() {
-  CL.error = '';
+  CL.error = ''; TERM.tried = false;
   const size = TERM.term ? { cols: TERM.term.cols, rows: TERM.term.rows } : { cols: 80, rows: 24 };
   const model = lsGet(CLAUDE_MODEL_KEY);
   try {

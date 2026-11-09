@@ -196,6 +196,20 @@ def test_an_install_with_nothing_missing_starts_the_session(fake: SimpleNamespac
     assert not session.status(REF)["installing"]
 
 
+def test_an_install_after_claude_was_installed_by_hand_starts_the_session(
+    fake: SimpleNamespace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installed = tmp_path / "installed"
+    monkeypatch.setattr(session, "binary", lambda: FAKE if installed.exists() else None)
+    monkeypatch.setattr(session, "INSTALL_COMMAND", ["bash", "-c", "exit 9"])
+    session.start(REF, fake.port, 80, 24)
+    wait_for(lambda: session.status(REF)["setup"] == "missing")
+    installed.touch()
+    session.install(REF, fake.port, 80, 24)
+    wait_for(running)
+    assert session.status(REF)["setup"] == ""
+
+
 def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: SimpleNamespace) -> None:
     session.config_path().parent.mkdir()
     session.config_path().write_text("{}")
