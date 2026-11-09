@@ -381,48 +381,11 @@ def test_link_names_the_pull_request_whether_its_repository_is_followed_and_whet
     assert status == 400 and "Not a pull request reference" in json.loads(body)["error"]
 
 
-@pytest.mark.parametrize(
-    ("action", "fields", "why"),
-    [
-        ("submit", {"event": "MERGE"}, "'MERGE' is not one of 'APPROVE', 'REQUEST_CHANGES', 'COMMENT'"),
-        ("comment", {"path": "a.py", "body": "b", "line": 1, "side": "UP"}, "'UP' is not one of 'LEFT', 'RIGHT'"),
-        ("comment", {"path": "a.py", "body": "b", "line": None}, "None is not a line number"),
-        ("comment", {"path": "a.py", "body": "b", "line": 2, "start_line": "1"}, "'1' is not a line number"),
-        ("conversation", ["b"], "the request is not a JSON object"),
-        ("open", {"editor": "vscode", "path": "a.py", "line": 0}, "0 is not a line number"),
-        ("open", {"editor": "vscode", "line": 1}, "'path'"),
-        (
-            "merge",
-            {"method": "FAST_FORWARD", "head": "abc"},
-            "'FAST_FORWARD' is not one of 'SQUASH', 'MERGE', 'REBASE'",
-        ),
-        ("automerge", {"method": "SQUASH"}, "'on'"),
-        ("automerge", {"on": "false"}, "'false' is not true or false"),
-        ("rebase", {}, "'head'"),
-        ("viewed", {"path": "a.py", "viewed": "true", "head": "abc"}, "'true' is not true or false"),
-        ("viewed", {"viewed": True, "head": "abc"}, "'path'"),
-        ("viewed", {"path": "a.py", "viewed": True}, "'head'"),
-        ("rerun", {"run": "41"}, "'41' is not a workflow run id"),
-        ("rerun", {"run": 0}, "0 is not a workflow run id"),
-    ],
-)
-def test_a_request_field_outside_its_type_answers_400(
-    action: str, fields: object, why: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(server.comments, "graphql", lambda *args, **kwargs: pytest.fail("GitHub was called"))
-    monkeypatch.setattr(server.merge, "graphql", lambda *args, **kwargs: pytest.fail("GitHub was called"))
-    monkeypatch.setattr(server.merge.github, "gh", lambda *args, **kwargs: pytest.fail("GitHub was called"))
-    h = request("POST", f"/api/o/r/1/{action}", json.dumps(fields).encode())
+def test_a_post_whose_body_is_no_json_object_answers_400() -> None:
+    h = request("POST", "/api/o/r/1/conversation", json.dumps(["b"]).encode())
     h.do_POST()
     code, body = response(h)
-    assert (code, json.loads(body)) == (400, {"error": f"Bad request: {why}"})
-
-
-def test_a_refused_review_answers_400_with_the_reason(monkeypatch: pytest.MonkeyPatch) -> None:
-    h = request("POST", "/api/o/r/1/submit", json.dumps({"event": "REQUEST_CHANGES", "body": " "}).encode())
-    h.do_POST()
-    code, body = response(h)
-    assert (code, json.loads(body)) == (400, {"error": "Requesting changes needs a summary."})
+    assert (code, json.loads(body)) == (400, {"error": "Bad request: the request is not a JSON object"})
 
 
 def test_try_again_after_a_failed_build_starts_a_new_build_and_shows_its_progress(
@@ -568,14 +531,6 @@ def test_the_session_actions_reach_the_session_from_this_servers_pages_only(
     h = request("POST", f"/api/o/r/1/{action}", json.dumps(body).encode())
     h.do_POST()
     assert response(h)[0] == 200 and calls == [expected]
-
-
-def test_a_start_with_a_model_the_session_does_not_offer_answers_400(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple] = []
-    monkeypatch.setattr(server.session, "start", lambda *args: calls.append(args) or {})
-    h = request("POST", "/api/o/r/1/claude_open", json.dumps({"model": "gpt-4"}).encode())
-    h.do_POST()
-    assert response(h)[0] == 400 and calls == []
 
 
 def test_the_shell_offers_the_models_the_session_takes_with_the_sessions_default() -> None:

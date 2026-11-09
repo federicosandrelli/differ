@@ -54,17 +54,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /api/<owner>/<repo>/<number>/hook       POST: a Claude Code hook of the embedded session, which says whether
                                      Claude asks the reader a question, with the same token as the mcp endpoint
   /vendor/<name>                     a vendored file a page loads on demand: xterm.js and its stylesheet and addon
-  /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: comment, reply, resolve, delete, submit, discard,
-                                     conversation, request_review (adds the viewer to the requested reviewers),
-                                     viewed (marks a file viewed or not viewed while the head is the page's),
-                                     open (opens a file in an editor, on the pull request's branch), merge,
-                                     automerge, rebase (GitHub rebases the branch onto its base branch), close,
-                                     reopen, ready, rerun (re-runs a workflow run's failed jobs), claude,
-                                     claude_follow_up, claude_reply, claude_delete (a comment for Claude, the
-                                     reader's reply in its thread, Claude's reply, its removal),
-                                     claude_open, claude_close, claude_paste (the embedded session: start it with
-                                     the terminal's cols and rows and the model, end it, paste text into
-                                     its prompt and, with submit, send it)
+  /api/<owner>/<repo>/<number>/<action>   POST with a JSON body: a page action (actions.py), such as comment,
+                                     merge or claude_open
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -87,9 +78,10 @@ import traceback
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, TextIO, get_args
+from typing import TextIO
 from urllib.parse import parse_qs, urlparse
 
+import actions
 import board
 import build
 import checkout
@@ -515,106 +507,12 @@ class Handler(BaseHTTPRequestHandler):
         if why := self.refused():
             return self.send_json({"error": f"Forbidden: {why}"}, 403)
         try:
-            body = self.json_body()
-            ref, action = PullRef.from_match(m), m["action"]
-            if action == "claude_open":
-                result = session.start(
-                    ref,
-                    self.port() or 0,
-                    count_of(body.get("cols", 80)),
-                    count_of(body.get("rows", 24)),
-                    one_of(body.get("model", session.DEFAULT_MODEL), session.Model),
-                )
-            elif action == "claude_close":
-                session.close(ref)
-                result = {}
-            elif action == "claude_paste":
-                session.paste(ref, text_of(body["text"]), body.get("submit") is True)
-                result = {}
-            elif action == "comment":
-                start_side = body.get("start_side")
-                result = comments.add_thread(
-                    ref,
-                    path=body["path"],
-                    body=body["body"],
-                    line=line_number(body["line"]),
-                    side=one_of(body.get("side", "RIGHT"), comments.Side),
-                    start_line=None if body.get("start_line") is None else line_number(body["start_line"]),
-                    start_side=None if start_side is None else one_of(start_side, comments.Side),
-                )
-            elif action == "reply":
-                result = comments.reply(body["thread"], body["body"])
-            elif action == "resolve":
-                result = comments.resolve(body["thread"], bool(body.get("resolved", True)))
-            elif action == "delete":
-                result = comments.delete_comment(body["comment"])
-            elif action == "submit":
-                result = comments.submit(ref, event=one_of(body["event"], comments.Event), body=body.get("body", ""))
-            elif action == "discard":
-                result = comments.discard(ref)
-            elif action == "conversation":
-                result = comments.add_conversation_comment(ref, body=body["body"])
-            elif action == "request_review":
-                result = comments.request_review(ref)
-            elif action == "viewed":
-                result = comments.mark_viewed(
-                    ref, path=str(body["path"]), viewed=flag(body["viewed"]), head=str(body["head"])
-                )
-            elif action == "merge":
-                result = merge.merge(
-                    ref,
-                    method=one_of(body["method"], merge.Method),
-                    head=str(body["head"]),
-                    headline=str(body.get("headline", "")),
-                    body=str(body.get("body", "")),
-                )
-            elif action == "automerge":
-                result = merge.auto_merge(
-                    ref,
-                    on=flag(body["on"]),
-                    method=one_of(body.get("method", "SQUASH"), merge.Method),
-                    head=str(body.get("head", "")),
-                    headline=str(body.get("headline", "")),
-                    body=str(body.get("body", "")),
-                )
-            elif action == "rebase":
-                result = merge.rebase(ref, head=str(body["head"]))
-            elif action in merge.MOVES:
-                result = merge.move(ref, action)
-            elif action == "rerun":
-                result = merge.rerun_failed(ref, run_id(body["run"]))
-            elif action == "claude":
-                start_line = body.get("start_line")
-                result = claude.add(
-                    ref,
-                    path=str(body["path"]),
-                    line=line_number(body["line"]),
-                    start_line=None if start_line is None else line_number(start_line),
-                    side=one_of(body.get("side", "RIGHT"), claude.Side),
-                    commit=str(body["commit"]),
-                    code=lines_of(body.get("code", [])),
-                    body=text_of(body["body"]),
-                )
-            elif action == "claude_follow_up":
-                result = claude.follow_up(ref, str(body["id"]), text_of(body["body"]), str(body.get("head", "")))
-            elif action == "claude_reply":
-                result = claude.reply(ref, str(body["id"]), text_of(body["body"]), count_of(body["seen"]))
-            elif action == "claude_delete":
-                result = claude.delete(ref, str(body["id"]), str(body.get("head", "")))
-            elif action == "rebuild":
-                result = {"state": build.rebuild(ref, shown=str(body["head"]))}
-            elif action == "open":
-                editors.open_file(ref, str(body["editor"]), str(body["path"]), line_number(body["line"]))
-                result = {}
-            else:
-                return self.send_json({"error": f"Unknown action {action}"}, 404)
-            return self.send_json(result)
-        except (KeyError, ValueError) as exc:
-            return self.send_json({"error": f"Bad request: {exc}"}, 400)
-        except (comments.ReviewRefused, editors.Refused) as exc:
-            return self.send_json({"error": str(exc)}, 400)
-        except commands.CommandError as exc:
-            return self.send_json({"error": str(exc)}, 502)
+            try:
+                body = self.json_body()
+            except ValueError as exc:
+                return self.send_json({"error": f"Bad request: {exc}"}, 400)
+            code, result = actions.answer(PullRef.from_match(m), m["action"], body, self.port() or 0)
+            return self.send_json(result, code)
         except Exception as exc:
             return self.send_failure(exc, as_json=True)
 
@@ -648,55 +546,6 @@ class Handler(BaseHTTPRequestHandler):
 def repos_in(query: dict[str, list[str]]) -> list[str]:
     """The repositories named by a query's `repo` parameters, in lower case, as `followed.json` names them."""
     return [name.strip().lower() for name in query.get("repo", [])]
-
-
-def one_of(value: object, kind: object) -> Any:
-    """The value of a request's field when the Literal type allows it; else a ValueError, which answers 400."""
-    if value not in get_args(kind):
-        raise ValueError(f"{value!r} is not one of {', '.join(map(repr, get_args(kind)))}")
-    return value
-
-
-def flag(value: object) -> bool:
-    """The yes or no a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not bool:
-        raise ValueError(f"{value!r} is not true or false")
-    return value
-
-
-def run_id(value: object) -> int:
-    """The workflow run id a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not int or value <= 0:
-        raise ValueError(f"{value!r} is not a workflow run id")
-    return value
-
-
-def line_number(value: object) -> int:
-    """The line number a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not int or value < 1:
-        raise ValueError(f"{value!r} is not a line number")
-    return value
-
-
-def count_of(value: object) -> int:
-    """The count a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not int or value < 0:
-        raise ValueError(f"{value!r} is not a count")
-    return value
-
-
-def text_of(value: object) -> str:
-    """The text a request's field holds; else a ValueError, which answers 400."""
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{value!r} is not a text")
-    return value
-
-
-def lines_of(value: object) -> list[str]:
-    """The lines of code a request's field holds; else a ValueError, which answers 400."""
-    if not isinstance(value, list) or not all(isinstance(line, str) for line in value):
-        raise ValueError(f"{value!r} is not a list of lines")
-    return value
 
 
 def port_taken(port: int) -> str | None:
