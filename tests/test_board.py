@@ -367,11 +367,12 @@ def test_load_treats_a_board_with_broken_sections_as_empty(paths: Path, sections
 
 @pytest.mark.parametrize(
     "fields",
-    [{"reason": "CI failed", "tone": "bad", "at": 0.0}, {"reasons": [], "at": 0.0}],
+    [{"reason": "CI failed", "tone": "bad", "at": 0.0}, {"reasons": [], "at": 0.0}, None],
 )
-def test_load_treats_a_board_with_rows_that_lack_a_field_as_empty(paths: Path, fields: dict) -> None:
+def test_load_treats_a_board_with_rows_that_lack_a_field_as_empty(paths: Path, fields: dict | None) -> None:
     old_row = {"owner": "acme", "repo": "widgets", "number": 1, "title": "PR 1", "status": "open", "author": ME}
-    old = {"viewer": ME, "fetched": time.time(), "repos": [], "sections": {"action": [old_row | fields]}, "full": []}
+    row = old_row | fields if fields is not None else "PR 1"
+    old = {"viewer": ME, "fetched": time.time(), "repos": [], "sections": {"action": [row]}, "full": []}
     (paths / "board.json").write_text(json.dumps(old))
     assert board.load() == board.Board(viewer="", fetched=0.0, repos=[], sections={}, full=[])
     assert board.sections_html().startswith('<div class="empty">No pull requests yet.</div>')

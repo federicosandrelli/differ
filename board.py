@@ -363,7 +363,9 @@ def load() -> Board:
     try:
         data = json.loads(PATH.read_text())
         if not isinstance(data["sections"], dict) or not all(
-            Row.__required_keys__ <= r.keys() for rows in data["sections"].values() for r in rows
+            isinstance(r, dict) and Row.__required_keys__ <= r.keys()
+            for rows in data["sections"].values()
+            for r in rows
         ):
             raise KeyError("row")
         return Board(

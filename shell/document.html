@@ -50,7 +50,10 @@ main:has(#board) { max-width: 1320px; }
 .pr .links .reason-icon { width: 14px; height: 14px; }
 .pr .age { flex: none; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .pr .reasons { flex: 0 1 auto; min-width: 0; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px 6px; }
-.card:has(.cover:hover) .reason { background: var(--bg-canvas); }
+/* A reason pill sits above the cover, so its title shows; it lights the card, and a click on it opens the card. */
+.card:has(.cover) .reason { position: relative; cursor: pointer; }
+.card:has(.reason:hover) { background: var(--bg-hover); }
+.card:has(.cover:hover) .reason, .card:has(.reason:hover) .reason { background: var(--bg-canvas); }
 .quiet .pr { gap: 2px; padding: 7px 12px; }
 .quiet .pr .t { font-weight: 400; color: var(--text-secondary); -webkit-line-clamp: 1; }
 .quiet .pr .m, .quiet .pr .age { font-size: 11px; }
