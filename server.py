@@ -25,8 +25,9 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
   /<owner>/<repo>/pull/<number>      the review page: the newest built one at once, rebuilt in the
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
-  /api/link?pr=<url or owner/repo#n> the pull request's name, its repository, the path of its page and whether the
-                                     repository is followed; a 400 for text that names no pull request
+  /api/link?pr=<url or owner/repo#n> the pull request's name, its repository, the path of its page, whether the
+                                     repository is followed and whether the pull request comes from a fork; a 400
+                                     for text that names no pull request (refused cross-site, as the page is)
                                      (the page, /open and /status refuse a request a browser marks
                                      Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
   /image?src=<link>                  the image a link to a file of a GitHub repository names, read with gh, since
@@ -84,6 +85,7 @@ from urllib.parse import parse_qs, urlparse
 
 import board
 import build
+import checkout
 import claude
 import commands
 import comments
@@ -251,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, board.sections_html(repos_in(query)).encode())
             if url.path == "/settings":
                 return self.send(200, settings.settings_html().encode())
-            if url.path in ("/open", "/image") or STATUS.match(url.path) or PAGE.match(url.path):
+            if url.path in ("/open", "/image", LINK) or STATUS.match(url.path) or PAGE.match(url.path):
                 if why := self.cross_site():
                     return self.send(403, error_page(f"Forbidden: {why}"))
             if url.path == "/open":
@@ -265,7 +267,13 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return self.send_json({"error": str(exc)}, 400)
                 return self.send_json(
-                    {"name": str(ref), "repo": ref.slug, "path": ref.path, "followed": ref.slug in followed.load()}
+                    {
+                        "name": str(ref),
+                        "repo": ref.slug,
+                        "path": ref.path,
+                        "followed": ref.slug in followed.load(),
+                        "fork": checkout.branch_of(ref)[1],
+                    }
                 )
             if url.path == "/image":
                 src = (query.get("src") or [""])[0]

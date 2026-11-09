@@ -52,8 +52,9 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 - Cmd+, opens the settings: the theme, Auto start for the Claude session, and
   the repositories you follow.
 - A `differ://open?pr=<pull request URL>` link opens the pull request in a tab
-  of the desktop app. For a repository you don't follow, the app asks first,
-  since the page can start a Claude session.
+  of the desktop app. With Auto start on, the app asks first for a pull request
+  from a fork or of a repository you don't follow, since the page starts a
+  Claude session that runs the pull request's hooks.
 
 ## Claude in the page
 

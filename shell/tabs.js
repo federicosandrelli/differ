@@ -341,15 +341,17 @@
   activate(byKey(saved.active) || home);
 
   // The desktop app holds the pull requests that differ:// links name, and sends 'links' when one arrives. Any app
-  // or site can send such a link, and opening a page can start a Claude session that runs the repository's hooks,
-  // so a pull request of a repository the reader does not follow opens only once they agree.
+  // or site can send such a link, and with Auto start on, opening a page starts a Claude session that runs the hooks
+  // of the pull request's head commit. So a pull request from a fork, or of a repository the reader does not follow,
+  // opens only once they agree.
   function openLink(pr) {
-    const query = 'pr=' + encodeURIComponent(pr);
-    fetch('/api/link?' + query).then((r) => {
-      if (r.status === 400) return open('/open?' + query);
-      if (!r.ok) return;
-      return r.json().then(link => (link.followed ? Promise.resolve(true) : invoke('confirm', { message: `A link asks to open ${link.name}. You don't follow ${link.repo}, and its page can start a Claude session that runs the repository's hooks. Open it?` }))
-        .then(ok => { if (ok) open(link.path); }));
+    fetch('/api/link?pr=' + encodeURIComponent(pr)).then(r => r.ok ? r.json() : null).then((link) => {
+      if (!link) return;
+      const why = !link.followed ? `You don't follow ${link.repo}` : link.fork ? 'It comes from a fork' : '';
+      const asked = why && isOn('dr:claudeStart')
+        ? invoke('confirm', { message: `A link asks to open ${link.name}. ${why}, and with Auto start on, its page starts a Claude session that runs the pull request's hooks. Open it?` })
+        : Promise.resolve(true);
+      return asked.then(ok => { if (ok) open(link.path); });
     }).catch(() => {});
   }
   function openLinks() {
