@@ -22,7 +22,7 @@ const TERM_MIN_HEIGHT = 160, TERM_MIN_WIDTH = 320;
 const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt]';
 // The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter.
 const QUICK_PROMPTS = [
-  { label: 'Describe the files', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, and call describe_file once for each file." },
+  { label: 'Describe file changes', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, and call describe_file once for each file." },
   { label: `Rebase onto ${PR.base_ref}`, text: `Rebase this pull request's branch onto the latest \`${PR.base_ref}\`: run \`git fetch origin ${PR.base_ref}\`, then \`git rebase origin/${PR.base_ref}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${PR.base_ref}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${PR.base_ref}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` },
 ];
 const ARROW_RIGHT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 7h8M7.5 3.5L11 7l-3.5 3.5"/><path d="M12.5 2.5v9" stroke-opacity=".5"/></svg>';
