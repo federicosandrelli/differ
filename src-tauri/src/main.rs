@@ -238,18 +238,29 @@ fn take_links(links: State<Links>) -> Vec<String> {
     std::mem::take(&mut *links.0.lock().unwrap())
 }
 
-// differ://open?pr=<a pull request URL or owner/repo#123> opens the pull request in a tab. The app keeps the pull
-// request and tells the shell, which takes it with take_links.
-fn open_links(app: &AppHandle, urls: &[Url]) {
-    let prs: Vec<String> = urls
-        .iter()
+// The pull requests that differ://open?pr=<a pull request URL or owner/repo#123> links name.
+fn link_prs(urls: &[Url]) -> Vec<String> {
+    urls.iter()
         .filter(|url| url.scheme() == "differ" && url.host_str() == Some("open"))
         .filter_map(|url| {
-            url.query_pairs()
-                .find(|(key, _)| key == "pr")
-                .map(|(_, pr)| pr.into_owned())
+            let pr = url
+                .query_pairs()
+                .find(|(key, _)| key == "pr")?
+                .1
+                .into_owned();
+            // The # of an unencoded owner/repo#123 starts the URL's fragment.
+            Some(match url.fragment() {
+                Some(fragment) => format!("{pr}#{fragment}"),
+                None => pr,
+            })
         })
-        .collect();
+        .collect()
+}
+
+// A differ:// link opens its pull request in a tab. The app keeps the pull request and tells the shell, which takes
+// it with take_links.
+fn open_links(app: &AppHandle, urls: &[Url]) {
+    let prs = link_prs(urls);
     if prs.is_empty() {
         return;
     }
@@ -419,8 +430,28 @@ fn end_server(child: &mut Child) {
 
 #[cfg(test)]
 mod tests {
-    use super::answers;
+    use super::{answers, link_prs};
     use std::net::TcpListener;
+    use tauri::Url;
+
+    #[test]
+    fn takes_the_pull_requests_of_differ_open_links() {
+        let urls: Vec<Url> = [
+            "differ://open?pr=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1",
+            "differ://open?pr=o/r#2",
+            "differ://open?pr=o/r%233",
+            "differ://settings?pr=o/r%234",
+            "other://open?pr=o/r%235",
+            "differ://open",
+        ]
+        .iter()
+        .map(|url| url.parse().unwrap())
+        .collect();
+        assert_eq!(
+            link_prs(&urls),
+            ["https://github.com/o/r/pull/1", "o/r#2", "o/r#3"]
+        );
+    }
 
     #[test]
     fn sees_a_server_that_listens_on_ipv6_only() {

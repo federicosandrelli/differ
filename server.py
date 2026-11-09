@@ -26,8 +26,9 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      background when the head commit has moved
   /open?pr=<url or owner/repo#n>     redirects to the page above
   /api/link?pr=<url or owner/repo#n> the pull request's name, its repository, the path of its page, whether the
-                                     repository is followed and whether the pull request comes from a fork; a 400
-                                     for text that names no pull request (refused cross-site, as the page is)
+                                     repository is followed and, for a followed one, whether the pull request comes
+                                     from a fork (null when unasked or when GitHub can't answer); a 400 for text
+                                     that names no pull request (refused cross-site, as the page is)
                                      (the page, /open and /status refuse a request a browser marks
                                      Sec-Fetch-Site: cross-site, so no web page can start a clone or a build)
   /image?src=<link>                  the image a link to a file of a GitHub repository names, read with gh, since
@@ -266,14 +267,14 @@ class Handler(BaseHTTPRequestHandler):
                     ref = PullRef.parse((query.get("pr") or [""])[0])
                 except ValueError as exc:
                     return self.send_json({"error": str(exc)}, 400)
+                is_followed, fork = ref.slug in followed.load(), None
+                if is_followed:
+                    try:
+                        fork = checkout.branch_of(ref)[1]
+                    except commands.CommandError:
+                        pass
                 return self.send_json(
-                    {
-                        "name": str(ref),
-                        "repo": ref.slug,
-                        "path": ref.path,
-                        "followed": ref.slug in followed.load(),
-                        "fork": checkout.branch_of(ref)[1],
-                    }
+                    {"name": str(ref), "repo": ref.slug, "path": ref.path, "followed": is_followed, "fork": fork}
                 )
             if url.path == "/image":
                 src = (query.get("src") or [""])[0]

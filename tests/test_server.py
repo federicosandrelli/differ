@@ -355,7 +355,13 @@ def test_link_names_the_pull_request_whether_its_repository_is_followed_and_whet
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(server.followed, "PATH", tmp_path / "followed.json")
-    monkeypatch.setattr(server.checkout, "branch_of", lambda ref: ("b", ref.number == 3))
+
+    def branch_of(ref: PullRef) -> tuple[str, bool]:
+        if ref.number == 9:
+            raise commands.CommandError("gh failed")
+        return "b", ref.number == 3
+
+    monkeypatch.setattr(server.checkout, "branch_of", branch_of)
     server.followed.save(["acme/widgets"])
     status, body = get("/api/link?pr=" + quote("https://github.com/Acme/Widgets/pull/7"))
     assert status == 200
@@ -366,8 +372,10 @@ def test_link_names_the_pull_request_whether_its_repository_is_followed_and_whet
         "followed": True,
         "fork": False,
     }
+    assert json.loads(get("/api/link?pr=" + quote("acme/widgets#3"))[1])["fork"] is True
+    assert json.loads(get("/api/link?pr=" + quote("acme/widgets#9"))[1])["fork"] is None
     status, body = get("/api/link?pr=" + quote("acme/tools#3"))
-    assert status == 200 and json.loads(body)["followed"] is False and json.loads(body)["fork"] is True
+    assert status == 200 and json.loads(body)["followed"] is False and json.loads(body)["fork"] is None
     status, body = get("/api/link?pr=junk")
     assert status == 400 and "Not a pull request reference" in json.loads(body)["error"]
 

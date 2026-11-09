@@ -128,9 +128,7 @@
     if (m.type === 'settings') { openSettings(m.section); return; }
     if (m.type === 'external') { if (APP) location.href = m.url; else window.open(m.url, '_blank', 'noopener'); return; }
     if (m.type === 'ask') {
-      // The desktop app's webview answers window.confirm with false at once and shows no dialog, so the app asks.
-      const asked = invoke ? invoke('confirm', { message: String(m.message) }).catch(() => false) : Promise.resolve(confirm(m.message));
-      asked.then(ok => e.source.postMessage({ type: 'answer', id: m.id, ok }, location.origin));
+      askReader(m.message).then(ok => e.source.postMessage({ type: 'answer', id: m.id, ok }, location.origin));
       return;
     }
     const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
@@ -265,6 +263,9 @@
   // checks on request. Update and Relaunch quits the app, and a page's unsent text would go with it, so the button
   // waits while a tab holds a draft.
   const invoke = APP && window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+  // Asks the reader to confirm `message`. The desktop app's webview answers window.confirm with false at once and
+  // shows no dialog, so the app asks.
+  const askReader = (message) => invoke ? invoke('confirm', { message: String(message) }).catch(() => false) : Promise.resolve(confirm(message));
   const updateBar = document.getElementById('update'), updateSection = settings.querySelector('.update-section');
   // Only the answer to the newest check counts, so an hourly check that ends late never undoes a forced one.
   let update = null, checks = 0, answered = 0, updating = false, updateError = '';
@@ -341,16 +342,14 @@
   activate(byKey(saved.active) || home);
 
   // The desktop app holds the pull requests that differ:// links name, and sends 'links' when one arrives. Any app
-  // or site can send such a link, and with Auto start on, opening a page starts a Claude session that runs the hooks
-  // of the pull request's head commit. So a pull request from a fork, or of a repository the reader does not follow,
-  // opens only once they agree.
+  // or site can send such a link, and a Claude session started from the page runs the hooks of the pull request's
+  // head commit. So a pull request from a fork, or of a repository the reader does not follow, opens only once they
+  // agree. A null fork means GitHub did not say.
   function openLink(pr) {
     fetch('/api/link?pr=' + encodeURIComponent(pr)).then(r => r.ok ? r.json() : null).then((link) => {
       if (!link) return;
-      const why = !link.followed ? `You don't follow ${link.repo}` : link.fork ? 'It comes from a fork' : '';
-      const asked = why && isOn('dr:claudeStart')
-        ? invoke('confirm', { message: `A link asks to open ${link.name}. ${why}, and with Auto start on, its page starts a Claude session that runs the pull request's hooks. Open it?` })
-        : Promise.resolve(true);
+      const why = !link.followed ? `You don't follow ${link.repo}` : link.fork === null ? "differ can't tell whether it comes from a fork" : link.fork ? 'It comes from a fork' : '';
+      const asked = why ? askReader(`A link asks to open ${link.name}. ${why}, and a Claude session on its page runs the pull request's hooks. Open it?`) : Promise.resolve(true);
       return asked.then(ok => { if (ok) open(link.path); });
     }).catch(() => {});
   }
