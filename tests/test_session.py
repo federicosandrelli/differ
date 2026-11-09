@@ -159,7 +159,15 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
     saved = json.loads(session.path_of(REF).read_text())
     assert saved == {"id": session_id, "resume": False, "pid": start["pid"]}
     status = session.status(REF)
-    assert status == {"starting": False, "running": True, "error": "", "branch": "greeting", "head": "c" * 40}
+    assert status == {
+        "starting": False,
+        "running": True,
+        "error": "",
+        "branch": "greeting",
+        "head": "c" * 40,
+        "working": False,
+        "task": "",
+    }
     trusted = json.loads(session.config_path().read_text())["projects"]
     assert trusted == {os.path.realpath(build.mirror_of(REF)): {"hasTrustDialogAccepted": True}}
 
@@ -184,6 +192,47 @@ def test_what_the_terminal_types_comes_back_and_a_paste_is_bracketed(fake: Simpl
     wait_for(lambda: b"\x1b[200~@SRC/APP.PY#L11 \x1b[201~" in b"".join(frames))
     assert "HI" in output()
     session.detach(REF, frames.append)
+
+
+def test_the_terminal_title_says_whether_claude_works_and_on_what_task(fake: SimpleNamespace) -> None:
+    session.start(REF, fake.port, 80, 24)
+    wait_for(running)
+    wait_for(lambda: "fake claude" in output())
+    # The fake claude echoes what the terminal types, so a title typed into it comes back as the process's title. The
+    # first half comes back before the second goes in, so the title arrives in two reads.
+    session.write(REF, "\x1b]0;\u25d0 fix".encode())
+    wait_for(lambda: "FIX" in output())
+    assert not session.status(REF)["working"]
+    session.write(REF, b" the login\x07")
+    wait_for(lambda: session.status(REF)["working"])
+    assert session.status(REF)["task"] == "FIX THE LOGIN"
+    session.write(REF, "\x1b]2;\u2733 fix the login\x1b\\".encode())
+    wait_for(lambda: not session.status(REF)["working"])
+    assert session.status(REF)["task"] == "FIX THE LOGIN"
+    session.write(REF, "\x1b]0;\u25d0 fix the login\x07".encode())
+    wait_for(lambda: session.status(REF)["working"])
+    session.close(REF)
+    assert not session.status(REF)["working"]
+    # A new process starts without the title of the last one.
+    session.start(REF, fake.port, 80, 24)
+    wait_for(running)
+    assert (session.status(REF)["working"], session.status(REF)["task"]) == (False, "")
+
+
+@pytest.mark.parametrize(
+    ("title", "state"),
+    [
+        ("\u25d0 fix the login", (True, "fix the login")),
+        ("\u2733 fix the login", (False, "fix the login")),
+        ("\u25d1 Claude Code", (True, "")),
+        ("\u2733 Claude Code", (False, "")),
+        ("\u25d0", (True, "")),
+        ("Claude Code", (False, "")),
+        ("", (False, "")),
+    ],
+)
+def test_a_title_says_whether_claude_works_and_its_task(title: str, state: tuple[bool, str]) -> None:
+    assert session.title_state(title) == state
 
 
 def test_a_terminal_that_connects_later_gets_what_the_session_printed(fake: SimpleNamespace) -> None:
@@ -338,7 +387,15 @@ def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypat
     session.close(REF)
     closed.set()
     time.sleep(0.5)
-    assert session.status(REF) == {"starting": False, "running": False, "error": "", "branch": "", "head": ""}
+    assert session.status(REF) == {
+        "starting": False,
+        "running": False,
+        "error": "",
+        "branch": "",
+        "head": "",
+        "working": False,
+        "task": "",
+    }
     assert starts(fake.log) == [] and fake.removed == [REF]
 
 

@@ -55,9 +55,13 @@ html.framed #side .foot { padding-left: 44px; }
 /* Inside the shell, the Claude button mirrors the settings gear: as far from the right edge. */
 html.framed #side .foot .claude-pick { margin-right: -5px; }
 #side .foot .session .reason-icon { width: 16px; height: var(--control-line); }
-/* The dot next to the bot: lit while the session listens for the comments, dim while it does not. */
+/* The dot next to the bot, in the state claudeDot() in page/52-claude.js picks. */
 .dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--text-muted); opacity: var(--dim); flex: none; }
-.dot.on { background: var(--add-fg); opacity: 1; }
+.dot.on, .dot.wait { background: var(--add-fg); opacity: 1; }
+.dot.wait { animation: fade 1.2s ease-in-out infinite; }
+.dot.work { background: var(--mod-fg); opacity: 1; box-shadow: 0 0 0 3px var(--mod-bg); animation: glow 1.6s ease-in-out infinite; }
+@keyframes glow { 50% { box-shadow: 0 0 0 1px var(--mod-bg); } }
+@media (prefers-reduced-motion: reduce) { .dot.wait { animation: none; opacity: var(--dim); } .dot.work { animation: none; } }
 #side .foot .hint { flex-basis: 100%; overflow-wrap: anywhere; user-select: text; }
 
 /* The terminal of the Claude session (page/53-terminal.js): docked under the tree in the sidebar, above a grip that

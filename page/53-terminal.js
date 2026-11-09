@@ -89,15 +89,16 @@ function mountTerminal() {
 }
 function termHeadHtml() {
   const s = termSession();
-  let text, action = '';
+  let text, action = '', tone = '';
   if (s.error) { text = 'could not start'; action = '<button data-term-start>Retry</button>'; }
+  else if (s.working) { text = claudeWork(s); tone = ' tone-warn'; }
   else if (s.starting) text = 'starting…';
   else if (s.running && CL.listening) text = `listening on ${esc(PR.repo)}#${PR.number}`;
   else if (s.running) text = 'running, not listening yet';
   else { text = 'not running'; action = '<button data-term-start>Start</button>'; }
   const where = s.head ? `<span class="hint mono" title="${esc(s.branch)} at ${esc(s.head)}">${esc(s.head.slice(0, 7))}</span>` : '';
   const hide = `<button class="ghost chev-hide" data-term-close title="Hide the terminal">${TERM.dock === 'side' ? CHEVRON_DOWN : CHEVRON_LEFT}</button>`;
-  return `<span class="dot${CL.listening ? ' on' : ''}"></span><b>Claude</b><span class="state">${text}</span>${action}<span class="spacer"></span>${where}${hide}`;
+  return `${claudeDot()}<b>Claude</b><span class="state${tone}">${text}</span>${action}<span class="spacer"></span>${where}${hide}`;
 }
 // Draw the header, and under it the note that says why the session did not start, while it did not.
 function renderTermHead() {

@@ -7,8 +7,8 @@
 // actions as LOADS does for the comments, so a load that answers after a later load or action changes nothing.
 const CL = { loaded: false, listening: false, comments: [], session: null, error: '', timer: 0, started: 0, applied: 0 };
 const CLAUDE_POLL_MS = 5000;
-// The poll while the session starts, so the terminal's header follows the start.
-const CLAUDE_STARTING_POLL_MS = 1000;
+// The poll while the session starts or Claude works, so the dot and the terminal's header follow them.
+const CLAUDE_BUSY_POLL_MS = 1000;
 const CLAUDE_KEY = 'dr:claude';
 // The words of the tag the reader's last message shows while it waits for Claude's reply.
 const CLAUDE_TAGS = { waiting: 'waiting for Claude', sent: 'sent to Claude' };
@@ -32,7 +32,7 @@ async function loadClaude() {
 // planned before.
 function pollClaude() {
   clearTimeout(CL.timer);
-  const ms = CL.session && CL.session.starting ? CLAUDE_STARTING_POLL_MS : CLAUDE_POLL_MS;
+  const ms = CL.session && (CL.session.starting || CL.session.working) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
   CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
 // Show the server's answer: the threads when the comments changed, else the footer when the session came or went,
@@ -120,15 +120,25 @@ function claudeOrphansHtml() {
   if (!threads.length) return '';
   return `<h2>Comments for Claude on files outside this diff</h2>${threads.map(t => `<p class="hint mono">${esc(t.path)}${t.line == null || threadHead(t) ? '' : `:${t.line}`}</p>${claudeThreadHtml(null, t)}`).join('')}`;
 }
-// The footer's buttons: the bot button, whose dot is lit while the session listens, shows and hides the terminal;
-// the arrow next to it moves the terminal between the sidebar and its own column.
+// The session's dot: glowing in --mod-fg while Claude works, lit while a session listens, pulsing while the session starts
+// or runs without listening yet, dim otherwise.
+function claudeDot() {
+  const s = CL.session || {};
+  return `<span class="dot${s.working ? ' work' : CL.listening ? ' on' : s.starting || s.running ? ' wait' : ''}"></span>`;
+}
+// What Claude does, for the bot's tooltip and the terminal's header: "working on" its task, or "working" without one.
+const claudeWork = (s) => `working${s.task ? ` on ${esc(s.task)}` : ''}`;
+// The footer's buttons: the bot button, with the session's dot, shows and hides the terminal; the arrow before it
+// moves the terminal between the sidebar and its own column, and comes on the left so the bot keeps its place when it
+// shows.
 function claudeFootHtml() {
   if (!termAvailable()) return '';
   const s = CL.session || {}, waiting = CL.comments.filter(c => c.state === 'waiting').length;
-  const standing = CL.listening ? 'Claude is listening' : s.starting ? 'Claude is starting' : s.running ? 'Claude runs, but does not listen yet'
+  const standing = s.working ? `Claude is ${claudeWork(s)}` : CL.listening ? 'Claude is listening' : s.starting ? 'Claude is starting' : s.running ? 'Claude runs, but does not listen yet'
     : `${s.error ? esc(s.error) : 'No Claude session'}${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
   const dock = TERM.open ? `<button class="ghost" data-term-dock title="${TERM.dock === 'side' ? 'Move the terminal to its own column' : 'Move the terminal into this pane'}">${TERM.dock === 'side' ? ARROW_RIGHT : ARROW_LEFT}</button>` : '';
-  return `<div class="foot claude"><span class="claude-pick"><button class="ghost session${TERM.open ? ' on' : ''}" data-term-toggle title="${standing} · ${TERM.open ? 'hide' : 'show'} the terminal">${iconHtml('bot')}<span class="dot${CL.listening ? ' on' : ''}"></span></button>${dock}</span>
+  const bot = `<button class="ghost session${TERM.open ? ' on' : ''}" data-term-toggle title="${standing} · ${TERM.open ? 'hide' : 'show'} the terminal">${iconHtml('bot')}${claudeDot()}</button>`;
+  return `<div class="foot claude"><span class="claude-pick">${dock}${bot}</span>
     ${CL.error ? `<div class="hint err">${esc(CL.error)}</div>` : ''}</div>`;
 }
 

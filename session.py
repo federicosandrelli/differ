@@ -5,7 +5,8 @@ when the server exits.
 
 A pull request's session file, sessions/<owner>/<repo>/<number>.json in the cache, holds the session id, the pid of
 the last process and whether the id has a conversation to resume. The process's output is kept in a buffer of
-BUFFER_MAX bytes, replayed to a terminal that connects, so a reloaded page shows what the session showed.
+BUFFER_MAX bytes, replayed to a terminal that connects, so a reloaded page shows what the session showed. The last
+terminal title the process set says whether Claude works and on what task.
 
 Before a start, `trust` records the repository's bare mirror as trusted in Claude Code's config file, so the process
 starts without the folder trust dialog: Claude Code keys the trust of a worktree on its repository, which for the
@@ -65,6 +66,13 @@ DROPPED_PREFIXES = ("CLAUDE_AGENT_SDK",)
 # Sends bytes of the process's output to one terminal. Raises OSError once the terminal has gone.
 Send = Callable[[bytes], None]
 NO_CONVERSATION = "No conversation found"
+# Claude Code sets the terminal's title to a mark, a space and the task, with NO_TASK in place of the task before it
+# has one. The mark is IDLE_MARK while it waits, and a spinner glyph that changes while it works. Claude Code does not
+# document the format.
+TITLE = re.compile(rb"\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)")
+TITLE_MAX = 1024
+IDLE_MARK = "\u2733"
+NO_TASK = "Claude Code"
 IN_USE = "already in use"
 
 
@@ -86,6 +94,7 @@ class Session:
     error: str = ""
     generation: int = 0
     output: bytearray = field(default_factory=bytearray)
+    title: str = ""
     clients: set[Send] = field(default_factory=set)
     size: tuple[int, int] = (80, 24)
     branch: str = ""
@@ -260,16 +269,29 @@ def listen_prompt(ref: PullRef, port: int, branch: str, head: str) -> str:
 
 def status(ref: PullRef) -> dict:
     """Where the pull request's session stands, for the page: `starting`, `running`, `error`, the branch and the head
-    the worktree is on."""
+    the worktree is on, and from the terminal title, whether Claude is `working` and its `task`, empty without one."""
     with lock:
         s = session_of(ref)
+        running = s.proc is not None and s.proc.poll() is None
+        working, task = title_state(s.title) if running else (False, "")
         return {
             "starting": s.starting,
-            "running": s.proc is not None and s.proc.poll() is None,
+            "running": running,
             "error": s.error,
             "branch": s.branch,
             "head": s.head,
+            "working": working,
+            "task": task,
         }
+
+
+def title_state(title: str) -> tuple[bool, str]:
+    """Whether Claude works, and its task or an empty string, from a terminal title Claude Code set. A title without
+    a mark of one symbol, such as one of a later Claude Code that changed the format, reads as waiting without a task."""
+    mark, _, task = title.partition(" ")
+    if len(mark) != 1 or mark.isalnum():
+        return False, ""
+    return mark != IDLE_MARK, "" if task == NO_TASK else task
 
 
 def start(ref: PullRef, port: int, cols: int, rows: int) -> dict:
@@ -361,6 +383,7 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
         os.close(slave)
     s.proc, s.fd, s.started_at, s.starting = proc, master, time.time(), False
     s.output.clear()
+    s.title = ""
     write_file(s.ref, {"id": s.id, "resume": s.resume, "pid": proc.pid})
     threading.Thread(target=_read, args=(s, proc, master, port, s.generation), daemon=True).start()
 
@@ -382,6 +405,9 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
             s.output += data
             if len(s.output) > BUFFER_MAX:
                 del s.output[: len(s.output) - BUFFER_MAX]
+            # A title can arrive split across two reads, so the search reaches back into what came before.
+            if titles := TITLE.findall(s.output, max(0, len(s.output) - len(data) - TITLE_MAX)):
+                s.title = titles[-1].decode(errors="replace")
             clients = list(s.clients)
             if not s.resume and time.time() - s.started_at > QUICK_EXIT:
                 s.resume = True
