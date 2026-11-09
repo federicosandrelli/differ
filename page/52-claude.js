@@ -43,11 +43,14 @@ function applyClaude(d) {
   const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
   const descriptions = JSON.stringify(d.descriptions) !== JSON.stringify(CL.descriptions);
   const session = JSON.stringify(d.session) !== JSON.stringify(CL.session);
+  const worked = CL.session?.working && !d.session?.working;
   const ids = new Set(d.comments.map(c => claudeKey(c.id)));
   for (const key of state.replyOpen.keys()) if (key.startsWith(claudeKey('')) && !ids.has(key)) state.replyOpen.delete(key);
   Object.assign(CL, d, { loaded: true });
   if (threads) threadsChanged();
   if (threads || descriptions) render(); else if (footer || session) renderSide();
+  // Claude may have pushed the branch, so the merge state loads again once Claude's work ends.
+  if (worked) loadMerge();
 }
 // Show the server's answer to the load or action with that number, unless the answer to a later one shows already.
 function showClaude(load, d) {

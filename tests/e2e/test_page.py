@@ -2380,10 +2380,10 @@ def test_the_start_pages_repository_toggles_filter_the_board_and_survive_a_reloa
             followed.write_text(before)
 
 
-def mine(add_pr: AddPr, gh_state: Path, merge: dict | None = None, **meta: object) -> str:
+def mine(add_pr: AddPr, gh_state: Path, merge: dict | None = None, branch: str | None = None, **meta: object) -> str:
     """Open a pull request by the viewer, with the fields of meta over its metadata and merge as its merge<n>.json,
-    and return the path of its page."""
-    path = add_pr({"a.py": "x = 1\n"}, {"a.py": "x = 2\n"})
+    and return the path of its page. With `branch`, a Claude session can check out its head branch."""
+    path = add_pr({"a.py": "x = 1\n"}, {"a.py": "x = 2\n"}, branch)
     number = path.rsplit("/", 1)[1]
     pr = gh_state / f"pr{number}.json"
     pr.write_text(json.dumps(json.loads(pr.read_text()) | {"author": {"login": "tester"}} | meta))
@@ -2562,6 +2562,39 @@ def test_a_declined_rebase_sends_nothing(page: Page, server_url: str, add_pr: Ad
     page.click("button[data-merge-do='rebase']")
     expect(page.locator("button[data-merge-do='rebase']")).to_be_enabled()
     assert len(sent(gh_state, "updatePullRequestBranch")) == before
+
+
+def test_a_branch_that_conflicts_is_rebased_by_claude_once_the_session_listens(
+    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
+) -> None:
+    conflicting = {"pullRequest": {"mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY"}}
+    pr = mine(add_pr, gh_state, conflicting, branch="claude-rebase")
+    open_pr(page, server_url, pr)
+    try:
+        page.click("#side button[data-merge-panel]")
+        button = page.locator("button[data-merge-do='claude-rebase']")
+        expect(button).to_be_disabled()
+        expect(button).to_have_attribute("title", re.compile("."))
+
+        page.click("#side .foot [data-term-toggle]")
+        expect(button).to_be_enabled(timeout=60000)
+        expect(button).not_to_have_attribute("title", re.compile("."))
+        asked: list[str] = []
+
+        def accept(dialog: Dialog) -> None:
+            asked.append(dialog.message)
+            dialog.accept()
+
+        page.on("dialog", accept)
+        button.click()
+        assert asked == [
+            f"Have Claude rebase #{page.evaluate('PR.number')} onto {page.evaluate('M.base')}, "
+            "resolve the conflicts and force-push?"
+        ]
+        prompt = page.evaluate("rebasePrompt(M.base).text").upper()
+        page.wait_for_function(f"({TERM_TEXT})().includes({json.dumps(prompt)})")
+    finally:
+        close_session(page, server_url, pr)
 
 
 def test_a_running_check_github_does_not_wait_for_leaves_the_merge_to_go_out_now(

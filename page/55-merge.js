@@ -1,6 +1,6 @@
 // The merge state of the viewer's own pull request, the merge button that names where it stands, and the merge
-// panel: its checks, its review, and the actions that merge, turn auto-merge on or off, rebase the branch, reopen or
-// mark ready.
+// panel: its checks, its review, and the actions that merge, turn auto-merge on or off, rebase the branch (on GitHub, or
+// with Claude while it conflicts), reopen or mark ready.
 
 // M holds GitHub's answer to /merge once it has loaded; `error` holds why the last load or action failed. `started`
 // and `applied` count the loads as LOADS does for the comments, and `rerunAt` is when the reader last re-ran a check.
@@ -71,7 +71,7 @@ function mergeStanding() {
   const status = prStatus();
   if (status === 'merged') return null;
   if (status === 'closed') return ['Closed', 'x-circle', ''];
-  if (status === 'draft') return ['Draft', 'pencil', ''];
+  if (status === 'draft' && M.mergeable !== 'CONFLICTING') return ['Draft', 'pencil', ''];
   if (M.auto_merge) return ['Auto-merge on', 'clock', 'accent'];
   if (M.mergeable === 'CONFLICTING') return ['Conflicts', 'warning', 'warn'];
   if (failedChecks().length) return ['Checks failed', 'x-circle', 'bad'];
@@ -87,7 +87,7 @@ function mergeButton() {
   const standing = M.loaded && mergeStanding();
   if (!standing) return '';
   const [label, kind, tone] = standing;
-  return `<button data-merge-panel class="merge ${state.mergePanel ? 'on' : tone ? 'tone-' + tone : ''}">${iconHtml(kind)}${label}</button>`;
+  return `<button data-merge-panel class="merge${tone ? ' tone-' + tone : ''}${state.mergePanel ? ' on' : ''}">${iconHtml(kind)}${label}</button>`;
 }
 // Why the merge state failed to load, while the merge button waits for it.
 function mergeNotice() {
@@ -187,16 +187,26 @@ function rebaseButton() {
   if (!M.can_update_branch || M.mergeable === 'CONFLICTING' || !['open', 'draft'].includes(prStatus())) return '';
   return `<button data-merge-do="rebase" ${state.busy ? 'disabled' : ''}>Rebase onto ${esc(M.base)}</button>`;
 }
+// Why the Claude session can't take the rebase prompt now, or '' when it can. While Claude works, it may be rebasing
+// already.
+const claudeRebaseBlock = () => quickBlock() || (termSession().working ? 'Claude is working.' : '');
+// The button that has the Claude session rebase the branch while it conflicts with the base branch, which GitHub
+// can't do. While the session can't take the prompt, the button shows disabled, with the reason as its tooltip.
+function claudeRebaseButton() {
+  if (M.mergeable !== 'CONFLICTING' || !['open', 'draft'].includes(prStatus())) return '';
+  const block = claudeRebaseBlock();
+  return `<button data-merge-do="claude-rebase"${block ? ` title="${esc(block)}"` : ''} ${state.busy || block ? 'disabled' : ''}>Rebase with Claude</button>`;
+}
 function mergePanelHtml() {
   const status = prStatus();
   if (!M.loaded || status === 'merged') return '';
   const method = mergeMethod(), base = esc(M.base), auto = M.auto_merge;
   const { buttons, hint } = mergeActions();
   const banner = auto ? `<div class="banner">Auto-merge is on: GitHub ${METHODS[auto.method].auto} ${base} once the checks pass. Turned on by ${esc(auto.by === C.viewer ? 'you' : auto.by)} ${ago(auto.at)}.</div>`
-    : M.mergeable === 'CONFLICTING' && status === 'open' ? `<div class="banner">This branch conflicts with ${base}. Rebase it onto ${base} to merge.</div>` : '';
+    : M.mergeable === 'CONFLICTING' && status !== 'closed' ? `<div class="banner">This branch conflicts with ${base}. Rebase it onto ${base} to merge.</div>` : '';
   const box = status === 'open' && !auto && method !== 'REBASE' ? `<textarea data-merge-text="${method}" placeholder="Commit message: empty for GitHub's default" spellcheck="false"></textarea>` : '';
   return `<div class="form card merge">${checksHtml()}${reviewLine()}${banner}${box}
-    <div class="actions">${buttons}${rebaseButton()}</div>${hint ? `<div class="hint">${hint}</div>` : ''}${M.error ? `<div class="hint err">${esc(M.error)}</div>` : ''}</div>`;
+    <div class="actions">${buttons}${rebaseButton()}${claudeRebaseButton()}</div>${hint ? `<div class="hint">${hint}</div>` : ''}${M.error ? `<div class="hint err">${esc(M.error)}</div>` : ''}</div>`;
 }
 
 // ---------- actions
@@ -221,6 +231,13 @@ async function mergeClick(t) {
       if (!await ask(`Rebase #${PR.number} onto ${M.base} on GitHub?`)) return;
       await mergeSend('rebase', { head: PR.head });
       break;
+    case 'claude-rebase': {
+      if (!await ask(`Have Claude rebase #${PR.number} onto ${M.base}, resolve the conflicts and force-push?`)) return;
+      const block = claudeRebaseBlock();
+      if (block) { M.error = block; renderSide(); return; }
+      await sendQuickPrompt(rebasePrompt(M.base));
+      break;
+    }
     case 'reopen': case 'ready': await mergeSend(d.mergeDo, {}); break;
   }
 }

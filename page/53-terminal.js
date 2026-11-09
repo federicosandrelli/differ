@@ -22,10 +22,12 @@ const TERM_FRAME_MAX = 16384;
 const TERM_FILES = { css: '/vendor/xterm.css', js: ['/vendor/xterm.js', '/vendor/xterm-addon-fit.js'] };
 const TERM_MIN_HEIGHT = 160, TERM_MIN_WIDTH = 320;
 const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt]';
+// The quick prompt that has Claude rebase the pull request's branch onto the latest `base` and push it.
+const rebasePrompt = (base) => ({ label: `Rebase onto ${base}`, text: `Rebase this pull request's branch onto the latest \`${base}\`: run \`git fetch origin ${base}\`, then \`git rebase origin/${base}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${base}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${base}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` });
 // The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter.
 const QUICK_PROMPTS = [
   { label: 'Describe file changes', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, and call describe_file once for each file." },
-  { label: `Rebase onto ${PR.base_ref}`, text: `Rebase this pull request's branch onto the latest \`${PR.base_ref}\`: run \`git fetch origin ${PR.base_ref}\`, then \`git rebase origin/${PR.base_ref}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${PR.base_ref}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${PR.base_ref}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` },
+  rebasePrompt(PR.base_ref),
 ];
 const ARROW_RIGHT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 7h8M7.5 3.5L11 7l-3.5 3.5"/><path d="M12.5 2.5v9" stroke-opacity=".5"/></svg>';
 const ARROW_LEFT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.5 7h-8M6.5 3.5L3 7l3.5 3.5"/><path d="M1.5 2.5v9" stroke-opacity=".5"/></svg>';
@@ -113,6 +115,11 @@ function termHeadHtml() {
 // Whether the session can take a quick prompt. A session that listens has passed the dialogs Claude Code may show at a
 // start, where the prompt's Enter would pick an answer.
 const quickReady = () => termSession().running && CL.listening;
+// Why the session can't take a quick prompt now, or '' when it can.
+function quickBlock() {
+  if (!claudeOn()) return 'Claude is off. Turn it on in the settings.';
+  return quickReady() ? '' : 'Claude is not listening yet.';
+}
 // The menu of quick prompts, while it is open.
 function quickMenuHtml() {
   if (!TERM.menu) return '';

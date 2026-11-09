@@ -246,9 +246,12 @@ tr.notes > td > div.notes > :last-child { margin-bottom: 9px; }
 .form.reply textarea { min-height: 60px; }
 .outdated { padding: 6px 20px 2px; font-size: 12px; } .outdated .thread { margin: 6px 0; }
 /* The Review button names the viewer's verdict in the verdict's colour; the merge button names where the viewer's own
-   pull request stands, in its tone. */
+   pull request stands, in its tone, which it keeps while its panel is open. */
 #side .head .meta .acts { margin-left: auto; flex: none; display: inline-flex; gap: 6px; }
 #side .head .meta button.review.approved { color: var(--add-fg); } #side .head .meta button.review.changes { color: var(--del-fg); }
+#side .head .meta button.merge.on.tone-ok { background: var(--add-bg); border-color: var(--add-fg); color: var(--add-fg); }
+#side .head .meta button.merge.on.tone-warn { background: var(--mod-bg); border-color: var(--mod-fg); color: var(--mod-fg); }
+#side .head .meta button.merge.on.tone-bad { background: var(--del-bg); border-color: var(--del-fg); color: var(--del-fg); }
 #side .form.review, #side .form.merge { margin: 8px 12px; }
 #side .form.review textarea, #side .form.merge textarea { min-height: 64px; }
 /* The merge panel: a line for the checks and one for the review, the list of checks, and the merge button with the ⋮
