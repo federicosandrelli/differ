@@ -93,8 +93,16 @@ DEFAULT_MODEL: Model = "claude-opus-5-5"
 # fix it (`install`).
 Setup = Literal["", "missing", "old"]
 # The command that installs Claude Code where `binary` looks first after the PATH, ~/.local/bin: the native installer
-# Claude Code's docs give. A `claude` that is too old updates itself with `claude update`.
+# Claude Code's docs give. A `claude` that is too old updates itself with UPDATE_ARGS.
 INSTALL_COMMAND = ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]
+UPDATE_ARGS = ["update"]
+
+
+def setup_command(setup: Setup) -> str:
+    """The command the reader can run by hand to fix what a start found missing; empty when nothing is."""
+    if setup == "missing":
+        return INSTALL_COMMAND[-1]
+    return " ".join(["claude", *UPDATE_ARGS]) if setup == "old" else ""
 
 
 class SetupNeeded(RuntimeError):
@@ -111,8 +119,8 @@ class Session:
     show it. `starting` is set from a start until the process runs or the start fails; `error` says why the last start
     failed or the last process ended, until the next start. `asking` is set while Claude waits for the reader's
     answer to a question. `setup` says what the last start found missing, until a start gets past it, and
-    `installing` is set while `proc` installs or updates Claude Code instead of running it. `generation` counts the starts, so a start that finishes after a close or a later start is
-    dropped. `writes` is held around every write to the pseudoterminal and its close, `sends` around every send to the
+    `installing` is set while `proc` installs or updates Claude Code instead of running it. `generation` counts the
+    starts, so a start that finishes after a close or a later start is dropped. `writes` is held around every write to the pseudoterminal and its close, `sends` around every send to the
     terminals, and `pastes` around a paste and its Enter, so two pastes never mix; all three outside the module lock."""
 
     ref: PullRef
@@ -282,8 +290,9 @@ def listen_prompt(ref: PullRef, port: int, branch: str, head: str) -> str:
 def status(ref: PullRef) -> dict:
     """Where the pull request's session stands, for the page: `starting`, `running`, `error`, the branch and the head
     the worktree is on, from the terminal title, whether Claude is `working` and its `task`, empty without one, and
-    whether Claude is `asking` the reader a question; `setup`, what the last start found missing, and `installing`,
-    while the terminal installs or updates Claude Code, which is not `running`."""
+    whether Claude is `asking` the reader a question; `setup`, what the last start found missing, with the `command`
+    that fixes it by hand, and `installing`, while the terminal installs or updates Claude Code, which is not
+    `running`."""
     with lock:
         s = session_of(ref)
         alive = s.proc is not None and s.proc.poll() is None
@@ -299,6 +308,7 @@ def status(ref: PullRef) -> dict:
             "task": task,
             "asking": running and s.asking,
             "setup": s.setup,
+            "command": setup_command(s.setup),
             "installing": alive and s.installing,
         }
 
@@ -351,21 +361,23 @@ def start(ref: PullRef, port: int, cols: int, rows: int, model: Model = DEFAULT_
 def install(ref: PullRef, port: int, cols: int, rows: int) -> dict:
     """Install Claude Code, or update the one a start found too old, in the session's pseudoterminal, so the reader
     sees it in the terminal and can answer it, unless a process runs or starts; once it succeeds, start the session.
-    Answers `status`."""
+    With nothing to install, as for a page that has not seen the last start, it starts the session. Answers `status`.
+    Raises RuntimeError when the command cannot run."""
     with lock:
         s = session_of(ref)
         if s.starting or (s.proc is not None and s.proc.poll() is None):
             return status(ref)
+        if not s.setup:
+            return start(ref, port, cols, rows, s.model)
         s.size = (max(20, cols), max(5, rows))
         s.error = ""
         s.generation += 1
         claude_bin = binary()
-        args = [str(claude_bin), "update"] if claude_bin is not None and s.setup == "old" else INSTALL_COMMAND
+        args = [str(claude_bin), *UPDATE_ARGS] if claude_bin is not None and s.setup == "old" else INSTALL_COMMAND
         try:
             proc, master = _open(s, args, Path.home())
         except OSError as exc:
-            s.error = f"Could not run {args[0]}: {exc}"
-            return status(ref)
+            raise RuntimeError(f"Could not run {args[0]}: {exc}") from exc
         s.installing = True
         threading.Thread(target=_read_install, args=(s, proc, master, port, s.generation), daemon=True).start()
         return status(ref)
@@ -478,6 +490,9 @@ def _open(s: Session, args: list[str], folder: Path) -> tuple[subprocess.Popen[b
             # this one makes one ioctl and takes no lock.
             preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),
         )
+    except OSError:
+        os.close(master)
+        raise
     finally:
         os.close(slave)
     s.proc, s.fd, s.started_at, s.starting = proc, master, time.time(), False

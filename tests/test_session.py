@@ -149,6 +149,7 @@ def test_a_start_without_claude_needs_an_install_which_starts_the_session_once_i
     wait_for(lambda: not session.status(REF)["starting"])
     status = session.status(REF)
     assert status["setup"] == "missing" and "not installed" in status["error"] and not status["running"]
+    assert status["command"] == session.INSTALL_COMMAND[-1]
     session.install(REF, fake.port, 80, 24)
     wait_for(running)
     status = session.status(REF)
@@ -183,8 +184,16 @@ def test_a_too_old_claude_updates_itself(fake: SimpleNamespace, monkeypatch: pyt
         raise OSError("x")
 
     monkeypatch.setattr(session, "_open", refuse)
+    assert session.status(REF)["command"] == "claude update"
+    with pytest.raises(RuntimeError, match=f"Could not run {FAKE}: x"):
+        session.install(REF, fake.port, 80, 24)
+    assert opened == [[str(FAKE), "update"]]
+
+
+def test_an_install_with_nothing_missing_starts_the_session(fake: SimpleNamespace) -> None:
     session.install(REF, fake.port, 80, 24)
-    assert opened == [[str(FAKE), "update"]] and session.status(REF)["error"] == f"Could not run {FAKE}: x"
+    wait_for(running)
+    assert not session.status(REF)["installing"]
 
 
 def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: SimpleNamespace) -> None:
@@ -221,6 +230,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
         "task": "",
         "asking": False,
         "setup": "",
+        "command": "",
         "installing": False,
     }
     trusted = json.loads(session.config_path().read_text())["projects"]
@@ -574,6 +584,7 @@ def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypat
         "task": "",
         "asking": False,
         "setup": "",
+        "command": "",
         "installing": False,
     }
     assert starts(fake.log) == [] and fake.removed == [REF]

@@ -24,9 +24,6 @@ const TERM_FRAME_MAX = 16384;
 const TERM_FILES = { css: '/vendor/xterm.css', js: ['/vendor/xterm.js', '/vendor/xterm-addon-fit.js'] };
 const TERM_MIN_HEIGHT = 160, TERM_MIN_WIDTH = 320;
 const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt],[data-term-install],[data-term-copy]';
-// The command that installs Claude Code by hand, the one the server's Install runs, and the one that updates it.
-const INSTALL_COMMAND = 'curl -fsSL https://claude.ai/install.sh | bash';
-const UPDATE_COMMAND = 'claude update';
 // The quick prompt that has Claude rebase the pull request's branch onto the latest `base` and push it.
 const rebasePrompt = (base) => ({ label: `Rebase onto ${base}`, text: `Rebase this pull request's branch onto the latest \`${base}\`: run \`git fetch origin ${base}\`, then \`git rebase origin/${base}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${base}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${base}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` });
 // The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter. The rebase
@@ -54,7 +51,7 @@ function savePane() {
   lsSet(PANE_KEY, JSON.stringify({ dock: TERM.dock, height: TERM.height, width: TERM.width }));
   lsSet(TERM_OPEN_KEY, TERM.open ? 'open' : null);
 }
-const termSession = () => CL.session || { starting: false, running: false, error: '', branch: '', head: '', setup: '', installing: false };
+const termSession = () => CL.session || { starting: false, running: false, error: '', branch: '', head: '', setup: '', command: '', installing: false };
 // Whether the reader can show the terminal: the page is served, the setting is on and the pull request is still
 // open, since the server ends the session of a merged or closed one as soon as it sees the status.
 const termAvailable = () => claudeOn() && !CLAUDE_ENDED.includes(prStatus());
@@ -140,7 +137,7 @@ function quickMenuHtml() {
 // terminal with one click or by hand with the command, sign in, and connect, which differ does itself. They show
 // from the start that found Claude Code missing until the session listens.
 function setupHtml() {
-  const s = termSession(), old = s.setup === 'old', command = old ? UPDATE_COMMAND : INSTALL_COMMAND;
+  const s = termSession(), old = s.setup === 'old', command = s.command;
   const installed = !s.setup && !s.installing, listening = CL.listening;
   // The error of a start that found Claude Code missing says what the header says already; an install that failed,
   // or the versions of one too old, say more.
@@ -169,8 +166,10 @@ function renderTermHead() {
   if (!TERM.el || !TERM.el.isConnected) return;
   TERM.el.querySelector('.thead').innerHTML = termHeadHtml();
   const s = termSession();
+  // The steps go once the session listens, or once a start past them fails for another reason, which the note and
+  // the header's Retry then show.
   if (s.setup || s.installing) TERM.setup = true;
-  else if (CL.listening) TERM.setup = false;
+  else if (CL.listening || s.error) TERM.setup = false;
   TERM.el.classList.toggle('setting-up', TERM.setup && !termSession().installing);
   TERM.el.querySelector('.tnote').innerHTML = TERM.setup ? setupHtml() : s.error ? `<div class="err">${esc(s.error)}</div>` : '';
 }

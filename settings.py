@@ -10,6 +10,7 @@ from pathlib import Path
 
 import build
 import classify
+import commands
 import editors
 import file_types
 import followed
@@ -128,16 +129,14 @@ def claude_code_line() -> str:
     if claude_bin is None:
         return (
             "Claude Code is not installed. Show the terminal of a pull request to install it with one click, or run "
-            f"{code(session.INSTALL_COMMAND[-1])} in a terminal."
+            f"{code(session.setup_command('missing'))} in a terminal."
         )
     try:
         version = session.version_of(claude_bin)
-    except Exception:  # noqa: BLE001 - any failure reads as a version differ cannot tell
+    except (commands.CommandError, OSError):
         version = ()
     if problem := session.too_old(version):
-        return (
-            f"{html.escape(problem)} Show the terminal of a pull request to update it, or run {code('claude update')}."
-        )
+        return f"{html.escape(problem)} Show the terminal of a pull request to update it, or run {code(session.setup_command('old'))}."
     return f"Sessions run Claude Code {'.'.join(map(str, version))}, at {code(str(claude_bin))}."
 
 
