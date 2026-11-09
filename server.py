@@ -84,7 +84,6 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -390,9 +389,9 @@ class Handler(BaseHTTPRequestHandler):
         """The origins of the pages this server serves."""
         return {f"http://{host}:{self.port()}" for host in LOOPBACK_HOSTS}
 
-    def upgrade(self, from_page: bool) -> Callable[[bytes], None] | None:
-        """Answer a WebSocket handshake and give the function that sends one frame to the client, or answer why the
-        request is refused and give None.
+    def upgrade(self, from_page: bool) -> websocket.Connection | None:
+        """Answer a WebSocket handshake and give the connection to the client, or answer why the request is refused
+        and give None.
 
         A browser sends an Origin header with every handshake, so a page from another origin is refused, as it is
         for a POST. A handshake `from_page` must carry this server's Origin, as a POST must; one from a session's
@@ -414,40 +413,26 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Sec-WebSocket-Accept", websocket.accept_key(key))
         self.end_headers()
         self.close_connection = True
-        out = threading.Lock()
-
-        def send(data: bytes) -> None:
-            with out:
-                self.wfile.write(data)
-                self.wfile.flush()
-
-        return send
+        return websocket.Connection(self.rfile, self.wfile)
 
     def listen(self, ref: PullRef) -> None:
         """Answer the WebSocket handshake of a Claude Code session that listens for the comments for Claude on the
         pull request, then hold the connection until either side closes it: claude sends each comment as a text
         frame, and this answers pings. A second session gets a close frame with the reason while one listens."""
-        if not (send := self.upgrade(from_page=False)):
+        if not (ws := self.upgrade(from_page=False)):
             return
 
         def send_text(text: str) -> None:
-            send(websocket.frame(websocket.TEXT, text.encode()))
+            ws.send(websocket.TEXT, text.encode())
 
         try:
             claude.attach(ref, send_text)
         except claude.Busy as exc:
-            send(websocket.close_frame(4000, str(exc)))
+            ws.close(4000, str(exc))
             return
         try:
-            while True:
-                opcode, payload = websocket.read_frame(self.rfile)
-                if opcode == websocket.CLOSE:
-                    send(websocket.frame(websocket.CLOSE, payload[:2]))
-                    return
-                if opcode == websocket.PING:
-                    send(websocket.frame(websocket.PONG, payload))
-        except (EOFError, OSError):
-            pass
+            for _ in ws.messages():
+                pass
         finally:
             claude.detach(ref, send_text)
 
@@ -456,27 +441,21 @@ class Handler(BaseHTTPRequestHandler):
         side closes the connection: what the session prints goes to the page as binary frames, what the reader types
         comes back the same way, and a text frame `{"cols": n, "rows": n}` sets the terminal's size. Only a page of
         this server may connect: the session runs with permissions bypassed, so typing into it runs code."""
-        if not (send := self.upgrade(from_page=True)):
+        if not (ws := self.upgrade(from_page=True)):
             return
 
         def send_bytes(data: bytes) -> None:
-            send(websocket.frame(websocket.BINARY, data))
+            ws.send(websocket.BINARY, data)
 
         session.attach(ref, send_bytes)
         try:
-            while True:
-                opcode, payload = websocket.read_frame(self.rfile)
-                if opcode == websocket.CLOSE:
-                    send(websocket.frame(websocket.CLOSE, payload[:2]))
-                    return
-                if opcode == websocket.PING:
-                    send(websocket.frame(websocket.PONG, payload))
-                elif opcode == websocket.BINARY:
+            for opcode, payload in ws.messages():
+                if opcode == websocket.BINARY:
                     session.write(ref, payload)
                 elif opcode == websocket.TEXT:
                     size = json.loads(payload)
                     session.resize(ref, int(size["cols"]), int(size["rows"]))
-        except (EOFError, OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError):
             pass
         finally:
             session.detach(ref, send_bytes)

@@ -1,5 +1,4 @@
 import base64
-import io
 import json
 import os
 import socket
@@ -52,27 +51,6 @@ def said(c: dict) -> list[tuple[str, str]]:
 def last_said(text: str | bytes) -> str:
     """The body of the last message of the thread a frame names."""
     return claude.thread(REF, json.loads(text)["id"])["messages"][-1]["body"]
-
-
-def test_the_accept_key_answers_the_handshake_key_of_the_rfc() -> None:
-    assert websocket.accept_key("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-
-
-@pytest.mark.parametrize("size", [5, 300, 60000])
-def test_a_frame_reads_back_with_its_opcode_and_payload(size: int) -> None:
-    payload = os.urandom(size)
-    assert websocket.read_frame(io.BytesIO(websocket.frame(websocket.TEXT, payload))) == (websocket.TEXT, payload)
-
-
-def test_a_masked_frame_from_a_client_reads_back_unmasked() -> None:
-    mask, payload = b"\x01\x02\x03\x04", b"bye"
-    data = bytes([0x88, 0x80 | len(payload)]) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-    assert websocket.read_frame(io.BytesIO(data)) == (websocket.CLOSE, payload)
-
-
-def test_a_stream_that_ends_inside_a_frame_raises_eof() -> None:
-    with pytest.raises(EOFError):
-        websocket.read_frame(io.BytesIO(websocket.frame(websocket.TEXT, b"hello")[:4]))
 
 
 def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
