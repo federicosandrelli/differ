@@ -1,12 +1,11 @@
 """The comments the reader sends to the Claude Code session that works on a pull request, instead of to GitHub, and
 the session that listens for them.
 
-A pull request's comments live in claude/<owner>/<repo>/<number>.json in the cache, oldest first, and the
-descriptions Claude gives its files in descriptions/<owner>/<repo>/<number>.json, until the pull request is merged or
-closed. Each comment is a thread on its lines: the reader's messages and Claude's replies, oldest first. A session
-listens over a WebSocket, one session per pull request. While one listens, a new comment, or the reader's reply in a
-thread, goes to it at once as a text frame, and when one connects, every thread without Claude's reply to the
-reader's last message goes to it."""
+A pull request's comments live in its `records.COMMENTS` record, oldest first, and the descriptions Claude gives its
+files in its `records.DESCRIPTIONS` record, until the pull request is merged or closed. Each comment is a thread on
+its lines: the reader's messages and Claude's replies, oldest first. A session listens over a WebSocket, one session
+per pull request. While one listens, a new comment, or the reader's reply in a thread, goes to it at once as a text
+frame, and when one connects, every thread without Claude's reply to the reader's last message goes to it."""
 
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ from typing import Literal
 import build
 import classify
 import commands
-import github
+import records
 from github import PullRef
 
 Side = Literal["LEFT", "RIGHT"]
@@ -56,17 +55,9 @@ class NoComment(ValueError):
     """The pull request has no Claude comment with that id."""
 
 
-def path_of(ref: PullRef) -> Path:
-    return build.CACHE / "claude" / ref.owner / ref.repo / f"{ref.number}.json"
-
-
 def read(ref: PullRef) -> list[dict]:
     """The pull request's comments; empty when it has none, or when the file is broken."""
-    try:
-        data = json.loads(path_of(ref).read_text())
-    except (OSError, ValueError):
-        return []
-    return [with_messages(c) for c in data if isinstance(c, dict)] if isinstance(data, list) else []
+    return [with_messages(c) for c in records.COMMENTS.read(ref, list) if isinstance(c, dict)]
 
 
 def with_messages(c: dict) -> dict:
@@ -82,30 +73,14 @@ def with_messages(c: dict) -> dict:
 
 
 def write(ref: PullRef, comments: list[dict]) -> None:
-    """Replace the pull request's file with the comments. Call it with the lock held."""
-    save(path_of(ref), comments)
-
-
-def save(path: Path, data: object) -> None:
-    """Replace the file with the data as JSON, through a temporary file, so a crash mid-write leaves the old data."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, path)
-
-
-def descriptions_path(ref: PullRef) -> Path:
-    return build.CACHE / "descriptions" / ref.owner / ref.repo / f"{ref.number}.json"
+    """Replace the pull request's comments. Call it with the lock held."""
+    records.COMMENTS.write(ref, comments)
 
 
 def descriptions(ref: PullRef) -> dict[str, str]:
     """The descriptions Claude gave the pull request's files, by path; empty when it has none, or when the file is
     broken."""
-    try:
-        data = json.loads(descriptions_path(ref).read_text())
-    except (OSError, ValueError):
-        return {}
-    return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+    return {k: v for k, v in records.DESCRIPTIONS.read(ref, dict).items() if isinstance(v, str)}
 
 
 def describe(ref: PullRef, path: str, body: str) -> None:
@@ -116,7 +91,7 @@ def describe(ref: PullRef, path: str, body: str) -> None:
             described[path] = body
         else:
             described.pop(path, None)
-        save(descriptions_path(ref), described)
+        records.DESCRIPTIONS.write(ref, described)
 
 
 def now() -> str:
@@ -316,8 +291,8 @@ def delete(ref: PullRef, comment_id: str, head: str) -> dict:
 def expire(ref: PullRef) -> None:
     """Delete all of the pull request's comments and file descriptions."""
     with lock:
-        path_of(ref).unlink(missing_ok=True)
-        descriptions_path(ref).unlink(missing_ok=True)
+        records.COMMENTS.delete(ref)
+        records.DESCRIPTIONS.delete(ref)
 
 
 def skill_marker(text: str) -> str:
@@ -340,23 +315,6 @@ def install_skills() -> None:
             path.write_text(f"{text.rstrip()}\n\n{marker}\n")
         except OSError as e:
             sys.stderr.write(f"Could not install the {shipped.stem} skill in {path.parent}: {e}\n")
-
-
-def kept() -> list[PullRef]:
-    """The pull requests with a comments file or a descriptions file in the cache."""
-    folders = [build.CACHE / "claude", build.CACHE / "descriptions"]
-    files = sorted(f for folder in folders for f in folder.glob("*/*/*.json"))
-    refs = [PullRef(f.parent.parent.name, f.parent.name, int(f.stem)) for f in files if f.stem.isdigit()]
-    return list(dict.fromkeys(refs))
-
-
-def sweep(expire: Callable[[PullRef], None] = expire, refs: list[PullRef] | None = None) -> None:
-    """Expire every pull request among `refs`, by default those with a comments file or a descriptions file, that
-    GitHub reports merged or closed, with `expire`, which deletes its comments and descriptions by default. A pull
-    request GitHub can't return keeps them."""
-    for ref, standing in github.pr_standings(kept() if refs is None else refs).items():
-        if standing.status in ENDED:
-            expire(ref)
 
 
 def attach(ref: PullRef, send: Send) -> None:

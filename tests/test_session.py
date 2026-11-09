@@ -19,6 +19,7 @@ import build
 import checkout
 import claude
 import github
+import records
 import server
 import session
 from github import PullRef
@@ -159,7 +160,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
     assert "acme/widgets#1" in prompt and "ann" in prompt and "tester" in prompt and "greeting" in prompt
     assert f"ws://127.0.0.1:{fake.port}/api/acme/widgets/1/listen" in args[-1] and "greeting" in args[-1]
     assert start["env"]["TERM"] == "xterm-256color" and "CLAUDECODE" not in start["env"]
-    saved = json.loads(session.path_of(REF).read_text())
+    saved = records.SESSIONS.read(REF, dict)
     assert saved == {"id": session_id, "resume": False, "pid": start["pid"]}
     status = session.status(REF)
     assert status == {
@@ -352,18 +353,18 @@ def test_a_terminal_that_connects_later_gets_what_the_session_printed(fake: Simp
 def test_a_close_ends_the_process_and_removes_the_worktree(fake: SimpleNamespace) -> None:
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
-    pid = json.loads(session.path_of(REF).read_text())["pid"]
+    pid = records.SESSIONS.read(REF, dict)["pid"]
     assert alive(pid)
     session.close(REF)
     assert not alive(pid) and not running() and fake.removed == [REF]
-    saved = json.loads(session.path_of(REF).read_text())
+    saved = records.SESSIONS.read(REF, dict)
     assert saved["pid"] == 0 and len(saved["id"]) == 36
 
 
 def test_stop_all_ends_the_sessions_and_keeps_the_worktrees(fake: SimpleNamespace) -> None:
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
-    pid = json.loads(session.path_of(REF).read_text())["pid"]
+    pid = records.SESSIONS.read(REF, dict)["pid"]
     session.stop_all()
     assert not alive(pid) and fake.removed == []
 
@@ -373,8 +374,34 @@ def test_expire_ends_the_session_and_deletes_its_file_and_the_comments(fake: Sim
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
     session.expire(REF)
-    assert not running() and not session.path_of(REF).exists() and fake.removed == [REF]
+    assert not running() and records.SESSIONS.refs() == [] and fake.removed == [REF]
     assert claude.fetch(REF, "abc")["comments"] == []
+
+
+def test_a_sweep_expires_the_merged_and_closed_pull_requests_with_a_record_and_keeps_the_rest(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    statuses: list[github.Status] = ["open", "merged", "closed", "draft"]
+    refs: dict[github.Status, PullRef] = {status: PullRef("acme", "widgets", n) for n, status in enumerate(statuses, 1)}
+    gone, described, idle = (PullRef("acme", "widgets", n) for n in (7, 8, 9))
+    for ref in [*refs.values(), gone]:
+        claude.add(ref, path="a.py", line=1, start_line=None, side="RIGHT", commit="abc", code=[], body="b")
+    claude.describe(described, "a.py", "A helper.")
+    records.SESSIONS.write(idle, {"id": "d" * 32, "resume": True, "pid": 0})
+    asked: list[PullRef] = []
+
+    reported: dict[PullRef, github.Status] = {ref: status for status, ref in refs.items()}
+    reported |= {described: "merged", idle: "closed"}
+
+    def standings(asked_for: list[PullRef]) -> dict[PullRef, github.Standing]:
+        asked.extend(asked_for)
+        return {ref: github.Standing(status, "me") for ref, status in reported.items()}
+
+    monkeypatch.setattr(github, "pr_standings", standings)
+    session.sweep()
+    assert sorted(asked, key=lambda r: r.number) == [*refs.values(), gone, described, idle]
+    assert records.kept() == [refs["open"], refs["draft"], gone]
+    assert sorted(fake.removed, key=lambda r: r.number) == [refs["merged"], refs["closed"], described, idle]
 
 
 def test_a_thread_reaches_the_session_which_replies_through_the_mcp_server(fake: SimpleNamespace) -> None:
@@ -395,14 +422,14 @@ def test_a_thread_reaches_the_session_which_replies_through_the_mcp_server(fake:
 def test_a_resume_of_a_lost_conversation_starts_again_with_a_new_id(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session.write_file(REF, {"id": "a" * 32, "resume": True, "pid": 0})
+    records.SESSIONS.write(REF, {"id": "a" * 32, "resume": True, "pid": 0})
     monkeypatch.setenv("FAKE_CLAUDE_FAIL", "resume")
     session.start(REF, fake.port, 80, 24)
     wait_for(lambda: len(starts(fake.log)) == 2 and running())
     first, second = [s["args"] for s in starts(fake.log)]
     assert first[:2] == ["--resume", "a" * 32]
     assert second[0] == "--session-id" and len(second[1]) == 36 and second[1] != "a" * 32
-    assert json.loads(session.path_of(REF).read_text())["id"] == second[1]
+    assert records.SESSIONS.read(REF, dict)["id"] == second[1]
 
 
 def test_a_start_with_its_id_in_use_resumes_it_with_the_same_model(
@@ -421,7 +448,7 @@ def test_the_next_start_resumes_once_the_first_process_lived_past_the_quick_exit
     wait_for(running)
     time.sleep(session.QUICK_EXIT + 0.1)
     session.write(REF, b"x")
-    wait_for(lambda: session.read_file(REF).get("resume") is True)
+    wait_for(lambda: records.SESSIONS.read(REF, dict).get("resume") is True)
     session.close(REF)
     session.start(REF, fake.port, 80, 24)
     wait_for(lambda: len(starts(fake.log)) == 2 and running())
@@ -433,7 +460,7 @@ def test_a_process_that_ends_on_its_own_leaves_an_error_and_the_next_open_starts
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
     time.sleep(session.QUICK_EXIT + 0.1)
-    pid = json.loads(session.path_of(REF).read_text())["pid"]
+    pid = records.SESSIONS.read(REF, dict)["pid"]
     os.kill(pid, 15)
     wait_for(lambda: not running() and session.status(REF)["error"] != "")
     assert session.status(REF)["error"].startswith("Claude Code exited with code")
@@ -454,8 +481,8 @@ def test_reap_orphans_ends_a_claude_with_the_session_id_whose_parent_is_gone_and
     orphan_pid = int(subprocess.run([sys.executable, "-c", starter, *sleeper, "d" * 32], capture_output=True).stdout)
     bystander = subprocess.Popen([sys.executable, *sleeper, "e" * 32], start_new_session=True)
     try:
-        session.write_file(REF, {"id": "d" * 32, "resume": True, "pid": orphan_pid})
-        session.write_file(other, {"id": "e" * 32, "resume": True, "pid": bystander.pid})
+        records.SESSIONS.write(REF, {"id": "d" * 32, "resume": True, "pid": orphan_pid})
+        records.SESSIONS.write(other, {"id": "e" * 32, "resume": True, "pid": bystander.pid})
         wait_for(
             lambda: subprocess.run(["ps", "-o", "ppid=", "-p", str(orphan_pid)], capture_output=True).stdout.strip()
             == b"1"
@@ -463,7 +490,7 @@ def test_reap_orphans_ends_a_claude_with_the_session_id_whose_parent_is_gone_and
         session.reap_orphans()
         wait_for(lambda: not alive(orphan_pid))
         assert bystander.poll() is None
-        assert session.read_file(REF)["pid"] == 0 and session.read_file(other)["pid"] == 0
+        assert records.SESSIONS.read(REF, dict)["pid"] == 0 and records.SESSIONS.read(other, dict)["pid"] == 0
     finally:
         try:
             os.killpg(orphan_pid, 9)
@@ -471,14 +498,6 @@ def test_reap_orphans_ends_a_claude_with_the_session_id_whose_parent_is_gone_and
             pass
         bystander.kill()
         bystander.wait()
-
-
-def test_kept_lists_the_pull_requests_with_a_session_file(fake: SimpleNamespace) -> None:
-    other = PullRef("acme", "widgets", 2)
-    session.write_file(other, {"id": "e" * 32, "resume": True, "pid": 0})
-    session.write_file(REF, {"id": "d" * 32, "resume": True, "pid": 0})
-    (session.path_of(REF).parent / "notes.json").write_text("{}")
-    assert session.kept() == [REF, other]
 
 
 def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -15,7 +15,7 @@ import pytest
 
 import build
 import claude
-import github
+import records
 import server
 import websocket
 from github import PullRef
@@ -446,25 +446,6 @@ def test_a_comment_is_outdated_when_git_cannot_compare_the_commits(pushes: Pushe
     assert placed(pushes.written, "f" * 40, line=5)["line"] is None
 
 
-def test_a_sweep_deletes_the_comments_of_merged_and_closed_pull_requests(monkeypatch: pytest.MonkeyPatch) -> None:
-    statuses: list[github.Status] = ["open", "merged", "closed", "draft"]
-    refs: dict[github.Status, PullRef] = {status: PullRef("acme", "widgets", n) for n, status in enumerate(statuses)}
-    gone = PullRef("acme", "widgets", 9)
-    for ref in [*refs.values(), gone]:
-        claude.add(ref, path="a.py", line=1, start_line=None, side="RIGHT", commit="abc", code=[], body="b")
-    asked = []
-
-    def standings(asked_for: list[PullRef]) -> dict[PullRef, github.Standing]:
-        asked.extend(asked_for)
-        return {ref: github.Standing(status, "me") for status, ref in refs.items()}
-
-    monkeypatch.setattr(github, "pr_standings", standings)
-    claude.sweep()
-    assert sorted(asked, key=lambda r: r.number) == [*refs.values(), gone]
-    kept = [ref for ref in [*refs.values(), gone] if claude.fetch(ref, "abc")["comments"]]
-    assert kept == [refs["open"], refs["draft"], gone]
-
-
 @pytest.fixture
 def skills(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(claude, "SKILLS", tmp_path / "skills")
@@ -502,22 +483,6 @@ def test_install_skills_reports_a_folder_it_cannot_write(skills: Path, capsys: p
     assert "Could not install the differ-comments skill" in capsys.readouterr().err
 
 
-def test_kept_lists_the_pull_requests_with_a_comments_file() -> None:
-    add()
-    other = PullRef("acme", "widgets", 2)
-    claude.write(other, [])
-    (claude.path_of(other).parent / "notes.json").write_text("{}")
-    assert claude.kept() == [REF, other]
-
-
-def test_kept_lists_a_pull_request_with_file_descriptions_once() -> None:
-    add()
-    claude.describe(REF, "src/app.py", "The entry point.")
-    other = PullRef("acme", "widgets", 2)
-    claude.describe(other, "a.py", "A helper.")
-    assert claude.kept() == [REF, other]
-
-
 def test_a_description_replaces_the_one_before_and_a_blank_one_drops_it() -> None:
     claude.describe(REF, "a.py", "One.")
     claude.describe(REF, "b.py", "Two.")
@@ -532,21 +497,4 @@ def test_expire_deletes_the_file_descriptions_with_the_comments() -> None:
     claude.describe(REF, "a.py", "One.")
     claude.expire(REF)
     assert claude.fetch(REF, "abc") == {"listening": False, "comments": [], "descriptions": {}}
-    assert claude.kept() == []
-
-
-def test_a_sweep_expires_with_the_function_given_among_the_pull_requests_given(monkeypatch: pytest.MonkeyPatch) -> None:
-    add()
-    other = PullRef("acme", "widgets", 2)
-    asked: list[list[PullRef]] = []
-
-    def standings(refs: list[PullRef]) -> dict[PullRef, github.Standing]:
-        asked.append(refs)
-        return {ref: github.Standing("merged", "me") for ref in refs}
-
-    monkeypatch.setattr(github, "pr_standings", standings)
-    expired: list[PullRef] = []
-    claude.sweep(expired.append)
-    assert expired == [REF] and ids() != []
-    claude.sweep(expired.append, [other])
-    assert asked == [[REF], [other]] and expired == [REF, other]
+    assert records.kept() == []

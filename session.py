@@ -3,11 +3,11 @@ the pull request's worktree with a prompt that makes it listen for the pull requ
 starts, shown in the page's terminal over a WebSocket, and ended when the tab closes, when the pull request ends and
 when the server exits.
 
-A pull request's session file, sessions/<owner>/<repo>/<number>.json in the cache, holds the session id, the pid of
-the last process and whether the id has a conversation to resume. The process's output is kept in a buffer of
-BUFFER_MAX bytes, replayed to a terminal that connects, so a reloaded page shows what the session showed. The last
-terminal title the process set says whether Claude works and on what task. Claude Code's hooks, which the process
-posts to the pull request's `hook` endpoint, say whether Claude asks the reader a question.
+A pull request's session file, its `records.SESSIONS` record, holds the session id, the pid of the last process and
+whether the id has a conversation to resume. The process's output is kept in a buffer of BUFFER_MAX bytes, replayed
+to a terminal that connects, so a reloaded page shows what the session showed. The last terminal title the process
+set says whether Claude works and on what task. Claude Code's hooks, which the process posts to the pull request's
+`hook` endpoint, say whether Claude asks the reader a question.
 
 Before a start, `trust` records the repository's bare mirror as trusted in Claude Code's config file, so the process
 starts without the folder trust dialog: Claude Code keys the trust of a worktree on its repository, which for the
@@ -46,6 +46,7 @@ import claude
 import commands
 import github
 import mcp
+import records
 from github import PullRef
 
 ROOT = Path(__file__).resolve().parent
@@ -125,34 +126,10 @@ lock = threading.RLock()
 sessions: dict[PullRef, Session] = {}
 
 
-def path_of(ref: PullRef) -> Path:
-    return build.CACHE / "sessions" / ref.owner / ref.repo / f"{ref.number}.json"
-
-
-def kept() -> list[PullRef]:
-    """The pull requests with a session file in the cache."""
-    files = sorted((build.CACHE / "sessions").glob("*/*/*.json"))
-    return [PullRef(f.parent.parent.name, f.parent.name, int(f.stem)) for f in files if f.stem.isdigit()]
-
-
-def read_file(ref: PullRef) -> dict:
-    try:
-        data = json.loads(path_of(ref).read_text())
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def write_file(ref: PullRef, data: dict) -> None:
-    path = path_of(ref)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data))
-
-
 def session_of(ref: PullRef) -> Session:
     """The pull request's session, loaded from its file the first time. Call it with the lock held."""
     if ref not in sessions:
-        saved = read_file(ref)
+        saved = records.SESSIONS.read(ref, dict)
         sessions[ref] = Session(ref, id=str(saved.get("id") or ""), resume=bool(saved.get("resume")))
     return sessions[ref]
 
@@ -429,7 +406,7 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
     s.proc, s.fd, s.started_at, s.starting = proc, master, time.time(), False
     s.output.clear()
     s.title, s.asking = "", False
-    write_file(s.ref, {"id": s.id, "resume": s.resume, "pid": proc.pid})
+    records.SESSIONS.write(s.ref, {"id": s.id, "resume": s.resume, "pid": proc.pid})
     threading.Thread(target=_read, args=(s, proc, master, port, s.generation), daemon=True).start()
 
 
@@ -462,7 +439,7 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
             clients = list(s.clients)
             if not s.resume and time.time() - s.started_at > QUICK_EXIT:
                 s.resume = True
-                write_file(s.ref, {"id": s.id, "resume": True, "pid": proc.pid})
+                records.SESSIONS.write(s.ref, {"id": s.id, "resume": True, "pid": proc.pid})
         _send(s, clients, data)
     code = proc.wait()
     # The descriptor goes once no write holds it, and the session forgets it first, so no write starts on a closed
@@ -489,12 +466,12 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
         if again is None:
             s.resume = s.resume or not quick
             s.error = f"Claude Code exited with code {code}."
-            write_file(s.ref, {"id": s.id, "resume": s.resume, "pid": 0})
+            records.SESSIONS.write(s.ref, {"id": s.id, "resume": s.resume, "pid": 0})
             return
         s.starting, s.error = True, ""
         s.generation += 1
         generation = s.generation
-        write_file(s.ref, {"id": s.id, "resume": s.resume, "pid": 0})
+        records.SESSIONS.write(s.ref, {"id": s.id, "resume": s.resume, "pid": 0})
     sys.stderr.write(f"The session of {s.ref} did not start; trying again with {again}.\n")
     threading.Thread(target=_start, args=(s.ref, port, generation), daemon=True).start()
 
@@ -633,7 +610,7 @@ def _forget(s: Session) -> subprocess.Popen[bytes] | None:
     proc = s.proc
     s.proc, s.fd = None, None
     if proc is not None:
-        write_file(s.ref, {"id": s.id, "resume": s.resume, "pid": 0})
+        records.SESSIONS.write(s.ref, {"id": s.id, "resume": s.resume, "pid": 0})
     return proc
 
 
@@ -643,14 +620,16 @@ def expire(ref: PullRef) -> None:
     close(ref)
     with lock:
         sessions.pop(ref, None)
-        path_of(ref).unlink(missing_ok=True)
+        records.SESSIONS.delete(ref)
     claude.expire(ref)
 
 
 def sweep() -> None:
-    """Expire every pull request with a session file, comments or file descriptions that GitHub reports merged or
-    closed."""
-    claude.sweep(expire, list(dict.fromkeys(claude.kept() + kept())))
+    """Expire every pull request with a record in the cache, a session file, comments or file descriptions, that
+    GitHub reports merged or closed. A pull request GitHub can't return keeps them."""
+    for ref, standing in github.pr_standings(records.kept()).items():
+        if standing.status in claude.ENDED:
+            expire(ref)
 
 
 def stop_all() -> None:
@@ -664,8 +643,8 @@ def reap_orphans() -> None:
     """End the processes of sessions a server that died left behind: a pid a session file names counts only while
     `ps` shows a `claude` with that session id running under it with no parent left, so a pid the system gave to
     another process since, and a session of another server on the same cache, are left alone."""
-    for ref in kept():
-        saved = read_file(ref)
+    for ref in records.SESSIONS.refs():
+        saved = records.SESSIONS.read(ref, dict)
         pid, session_id = saved.get("pid"), saved.get("id")
         if not isinstance(pid, int) or pid <= 0 or not session_id:
             continue
@@ -679,4 +658,4 @@ def reap_orphans() -> None:
                 except OSError:
                     break
                 time.sleep(1)
-        write_file(ref, {**saved, "pid": 0})
+        records.SESSIONS.write(ref, {**saved, "pid": 0})
