@@ -34,7 +34,7 @@ async function loadClaude() {
 // planned before.
 function pollClaude() {
   clearTimeout(CL.timer);
-  const ms = CL.session && (CL.session.starting || CL.session.working || CL.session.asking) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
+  const ms = CL.session && (CL.session.starting || CL.session.installing || CL.session.working || CL.session.asking) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
   CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
 // Show the server's answer: the threads when the comments changed, the files when their descriptions changed or the
@@ -140,11 +140,11 @@ function claudeOrphansHtml() {
   return `<h2>Comments for Claude on files outside this diff</h2>${threads.map(t => `<p class="hint mono">${esc(t.path)}${t.line == null || threadHead(t) ? '' : `:${t.line}`}</p>${claudeThreadHtml(null, t)}`).join('')}`;
 }
 // Where the session stands, as the class of its dot: `ask` while Claude waits for the reader's answer to a question,
-// `work` while Claude works, `on` while a session listens, `wait` while the session starts or runs without listening
-// yet, and empty otherwise.
+// `work` while Claude works, `on` while a session listens, `wait` while the session starts, Claude Code installs or
+// the session runs without listening yet, and empty otherwise.
 function claudeState() {
   const s = CL.session || {};
-  return s.asking ? 'ask' : s.working ? 'work' : CL.listening ? 'on' : s.starting || s.running ? 'wait' : '';
+  return s.asking ? 'ask' : s.working ? 'work' : CL.listening ? 'on' : s.starting || s.installing || s.running ? 'wait' : '';
 }
 const claudeDot = () => `<span class="dot ${claudeState()}"></span>`;
 // Tell the shell where the session stands, for the dot on the page's tab.
@@ -159,8 +159,8 @@ const claudeWork = (s) => `working${s.task ? ` on ${s.task}` : ''}`;
 function claudeStanding() {
   const s = CL.session || {}, waiting = CL.comments.filter(c => c.state === 'waiting').length;
   return s.asking ? 'Claude is waiting for your answer' : s.working ? `Claude is ${claudeWork(s)}` : CL.listening ? 'Claude is listening'
-    : s.starting ? 'Claude is starting' : s.running ? 'Claude runs, but does not listen yet'
-    : `${s.error || 'No Claude session'}${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
+    : s.installing ? `${s.setup === 'old' ? 'Updating' : 'Installing'} Claude Code` : s.starting ? 'Claude is starting' : s.running ? 'Claude runs, but does not listen yet'
+    : `${s.error || 'No Claude session'}${s.setup ? ' Show the terminal to set it up.' : ''}${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
 }
 // The footer's buttons: the bot button, with the session's dot, shows and hides the terminal; the burger next to it
 // opens the quick prompts; the arrow before them moves the terminal between the sidebar and its own column, and comes

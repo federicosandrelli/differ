@@ -18,6 +18,8 @@
   claude_open, claude_close, claude_paste
                                        the embedded session: start it with the terminal's cols and rows and the
                                        model, end it, paste text into its prompt and, with submit, send it
+  claude_install                       install Claude Code, or update one too old, in the session's terminal, then
+                                       start the session
 
 `answer` reads the fields an action needs, each of its type, runs the action and gives the status of its answer: 404
 for an action it does not know; 400 for a field that is missing or of another type, and for a review or an editor
@@ -77,6 +79,11 @@ def _claude_open(ref: PullRef, body: dict, port: int) -> dict:
         count_of(body.get("rows", 24)),
         one_of(body.get("model", session.DEFAULT_MODEL), session.Model),
     )
+
+
+@action("claude_install")
+def _claude_install(ref: PullRef, body: dict, port: int) -> dict:
+    return session.install(ref, port, count_of(body.get("cols", 80)), count_of(body.get("rows", 24)))
 
 
 @action("claude_close")

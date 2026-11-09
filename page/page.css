@@ -82,6 +82,13 @@ html.framed #side .foot .claude-pick { margin-right: -4px; }
 .term .thead .state { overflow: hidden; text-overflow: ellipsis; }
 .term .thead .hint { font-size: 11.5px; }
 .term .tnote:not(:empty) { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; user-select: text; }
+/* The setup steps, while Claude Code needs installing or updating: each a count, or a tick once done, beside its title,
+   its hint and its controls. They scroll on their own past half the terminal, so the screen keeps its room. */
+.term .tnote:has(.setup) { max-height: 50%; overflow-y: auto; }
+.setup { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.setup li { display: flex; gap: 8px; align-items: flex-start; }
+.setup li > div { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.setup .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .term .screen { flex: 1; min-height: 0; background: var(--bg-canvas); }
 /* The padding goes on .xterm, not on .screen: xterm.js's fit addon subtracts the padding of .xterm from the height of
    its parent, so padding on the parent gives the terminal more rows than fit. */

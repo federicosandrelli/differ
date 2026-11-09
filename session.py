@@ -89,6 +89,20 @@ HOOK_TIMEOUT = 5
 # The models a session can start with, as `--model` takes them.
 Model = Literal["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
 DEFAULT_MODEL: Model = "claude-opus-5-5"
+# What a start found missing for the session to run: no `claude`, or one older than MIN_VERSION. The terminal offers to
+# fix it (`install`).
+Setup = Literal["", "missing", "old"]
+# The command that installs Claude Code where `binary` looks first after the PATH, ~/.local/bin: the native installer
+# Claude Code's docs give. A `claude` that is too old updates itself with `claude update`.
+INSTALL_COMMAND = ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]
+
+
+class SetupNeeded(RuntimeError):
+    """A start that cannot run until the reader installs or updates Claude Code."""
+
+    def __init__(self, setup: Setup, message: str) -> None:
+        super().__init__(message)
+        self.setup: Setup = setup
 
 
 @dataclass
@@ -96,7 +110,8 @@ class Session:
     """A pull request's session: its id, its process while one runs, what the process printed, and the terminals that
     show it. `starting` is set from a start until the process runs or the start fails; `error` says why the last start
     failed or the last process ended, until the next start. `asking` is set while Claude waits for the reader's
-    answer to a question. `generation` counts the starts, so a start that finishes after a close or a later start is
+    answer to a question. `setup` says what the last start found missing, until a start gets past it, and
+    `installing` is set while `proc` installs or updates Claude Code instead of running it. `generation` counts the starts, so a start that finishes after a close or a later start is
     dropped. `writes` is held around every write to the pseudoterminal and its close, `sends` around every send to the
     terminals, and `pastes` around a paste and its Enter, so two pastes never mix; all three outside the module lock."""
 
@@ -109,6 +124,8 @@ class Session:
     started_at: float = 0.0
     starting: bool = False
     error: str = ""
+    setup: Setup = ""
+    installing: bool = False
     generation: int = 0
     output: bytearray = field(default_factory=bytearray)
     title: str = ""
@@ -265,10 +282,12 @@ def listen_prompt(ref: PullRef, port: int, branch: str, head: str) -> str:
 def status(ref: PullRef) -> dict:
     """Where the pull request's session stands, for the page: `starting`, `running`, `error`, the branch and the head
     the worktree is on, from the terminal title, whether Claude is `working` and its `task`, empty without one, and
-    whether Claude is `asking` the reader a question."""
+    whether Claude is `asking` the reader a question; `setup`, what the last start found missing, and `installing`,
+    while the terminal installs or updates Claude Code, which is not `running`."""
     with lock:
         s = session_of(ref)
-        running = s.proc is not None and s.proc.poll() is None
+        alive = s.proc is not None and s.proc.poll() is None
+        running = alive and not s.installing
         working, task = title_state(s.title) if running else (False, "")
         return {
             "starting": s.starting,
@@ -279,6 +298,8 @@ def status(ref: PullRef) -> dict:
             "working": working,
             "task": task,
             "asking": running and s.asking,
+            "setup": s.setup,
+            "installing": alive and s.installing,
         }
 
 
@@ -327,13 +348,57 @@ def start(ref: PullRef, port: int, cols: int, rows: int, model: Model = DEFAULT_
     return status(ref)
 
 
+def install(ref: PullRef, port: int, cols: int, rows: int) -> dict:
+    """Install Claude Code, or update the one a start found too old, in the session's pseudoterminal, so the reader
+    sees it in the terminal and can answer it, unless a process runs or starts; once it succeeds, start the session.
+    Answers `status`."""
+    with lock:
+        s = session_of(ref)
+        if s.starting or (s.proc is not None and s.proc.poll() is None):
+            return status(ref)
+        s.size = (max(20, cols), max(5, rows))
+        s.error = ""
+        s.generation += 1
+        claude_bin = binary()
+        args = [str(claude_bin), "update"] if claude_bin is not None and s.setup == "old" else INSTALL_COMMAND
+        try:
+            proc, master = _open(s, args, Path.home())
+        except OSError as exc:
+            s.error = f"Could not run {args[0]}: {exc}"
+            return status(ref)
+        s.installing = True
+        threading.Thread(target=_read_install, args=(s, proc, master, port, s.generation), daemon=True).start()
+        return status(ref)
+
+
+def _read_install(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generation: int) -> None:
+    """Relay the install to the terminals until it ends, then start the session, or say that it failed: its output
+    in the terminal says why."""
+    code = _relay(s, proc, fd, claude_code=False)
+    with lock:
+        if s.generation != generation or s.proc is not proc:
+            return
+        s.proc, s.installing = None, False
+        if code != 0:
+            s.error = (
+                f"The {'update' if s.setup == 'old' else 'install'} ended with code {code}. The terminal shows why."
+            )
+            return
+        s.starting, s.error = True, ""
+        s.generation += 1
+        generation = s.generation
+    threading.Thread(target=_start, args=(s.ref, port, generation), daemon=True).start()
+
+
 def _start(ref: PullRef, port: int, generation: int) -> None:
     try:
         claude_bin = binary()
         if claude_bin is None:
-            raise RuntimeError("claude is not installed, or not on the PATH. Install Claude Code and try again.")
+            raise SetupNeeded("missing", "Claude Code is not installed, or not on the PATH.")
         if problem := too_old(version_of(claude_bin)):
-            raise RuntimeError(problem)
+            raise SetupNeeded("old", problem)
+        with lock:
+            session_of(ref).setup = ""
         pr = github.pull_request(ref)
         if pr.status in claude.ENDED:
             raise RuntimeError(f"The pull request is {pr.status}, so it gets no session.")
@@ -357,16 +422,12 @@ def _start(ref: PullRef, port: int, generation: int) -> None:
             s = session_of(ref)
             if s.generation == generation:
                 s.starting, s.error = False, str(exc) or type(exc).__name__
+                if isinstance(exc, SetupNeeded):
+                    s.setup = exc.setup
 
 
 def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.PullRequest, viewer: str) -> None:
-    """Run the process in a new pseudoterminal and read it in a thread. Call it with the lock held."""
-    rows, cols = s.size[1], s.size[0]
-    master, slave = os.openpty()
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-    # The master never blocks: the reader waits for output with select, and a write the process does not read yet
-    # waits in short steps, so it can stop when the process is gone instead of hanging on to the descriptor.
-    os.set_blocking(master, False)
+    """Run Claude Code in a new pseudoterminal and read it in a thread. Call it with the lock held."""
     session_flag = ["--resume", s.id] if s.resume else ["--session-id", s.id]
     args = [
         str(claude_bin),
@@ -388,6 +449,22 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
         system_prompt(s.ref, pr, viewer),
         listen_prompt(s.ref, port, pr.head_ref, pr.head),
     ]
+    proc, master = _open(s, args, folder)
+    s.installing = False
+    records.SESSIONS.write(s.ref, {"id": s.id, "resume": s.resume, "pid": proc.pid})
+    threading.Thread(target=_read, args=(s, proc, master, port, s.generation), daemon=True).start()
+
+
+def _open(s: Session, args: list[str], folder: Path) -> tuple[subprocess.Popen[bytes], int]:
+    """Run the command in a new pseudoterminal of the session's size, as the session's process, with a clean screen
+    for the terminals that connect later. Answers the process and the pseudoterminal's master. Call it with the lock
+    held."""
+    rows, cols = s.size[1], s.size[0]
+    master, slave = os.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+    # The master never blocks: the reader waits for output with select, and a write the process does not read yet
+    # waits in short steps, so it can stop when the process is gone instead of hanging on to the descriptor.
+    os.set_blocking(master, False)
     try:
         proc = subprocess.Popen(
             args,
@@ -406,13 +483,12 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
     s.proc, s.fd, s.started_at, s.starting = proc, master, time.time(), False
     s.output.clear()
     s.title, s.asking = "", False
-    records.SESSIONS.write(s.ref, {"id": s.id, "resume": s.resume, "pid": proc.pid})
-    threading.Thread(target=_read, args=(s, proc, master, port, s.generation), daemon=True).start()
+    return proc, master
 
 
-def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generation: int) -> None:
-    """Pass the process's output to the buffer and the terminals until the process ends, then tell why it ended. A
-    start whose id has no conversation gets a new id and starts again; one whose id is in use already resumes it."""
+def _relay(s: Session, proc: subprocess.Popen[bytes], fd: int, claude_code: bool) -> int:
+    """Pass the process's output to the buffer and the terminals until the process ends, and answer its exit code.
+    Only Claude Code's output sets the title, and keeps its conversation for a resume once it has run QUICK_EXIT."""
     while True:
         try:
             select.select([fd], [], [])
@@ -431,13 +507,13 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
             # A title that turns from waiting to working ends a question, as a backstop for a way out of it that posts
             # no hook. Only the turn counts, since the hook that starts a question can arrive before the last title of
             # the work that led to it.
-            if titles := TITLE.findall(s.output, max(0, len(s.output) - len(data) - TITLE_MAX)):
+            if claude_code and (titles := TITLE.findall(s.output, max(0, len(s.output) - len(data) - TITLE_MAX))):
                 title = titles[-1].decode(errors="replace")
                 if title_state(title)[0] and not title_state(s.title)[0]:
                     s.asking = False
                 s.title = title
             clients = list(s.clients)
-            if not s.resume and time.time() - s.started_at > QUICK_EXIT:
+            if claude_code and not s.resume and time.time() - s.started_at > QUICK_EXIT:
                 s.resume = True
                 records.SESSIONS.write(s.ref, {"id": s.id, "resume": True, "pid": proc.pid})
         _send(s, clients, data)
@@ -452,6 +528,13 @@ def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generat
             os.close(fd)
         except OSError:
             pass
+    return code
+
+
+def _read(s: Session, proc: subprocess.Popen[bytes], fd: int, port: int, generation: int) -> None:
+    """Pass the process's output to the buffer and the terminals until the process ends, then tell why it ended. A
+    start whose id has no conversation gets a new id and starts again; one whose id is in use already resumes it."""
+    code = _relay(s, proc, fd, claude_code=True)
     with lock:
         if s.generation != generation or s.proc is not proc:
             return

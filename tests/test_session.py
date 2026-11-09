@@ -139,6 +139,54 @@ def test_a_too_old_claude_does_not_start_and_the_status_says_why(
     assert "too old" in status["error"] and not status["running"] and starts(fake.log) == []
 
 
+def test_a_start_without_claude_needs_an_install_which_starts_the_session_once_it_succeeds(
+    fake: SimpleNamespace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installed = tmp_path / "installed"
+    monkeypatch.setattr(session, "binary", lambda: FAKE if installed.exists() else None)
+    monkeypatch.setattr(session, "INSTALL_COMMAND", ["bash", "-c", f"echo installing; touch {installed}"])
+    session.start(REF, fake.port, 80, 24)
+    wait_for(lambda: not session.status(REF)["starting"])
+    status = session.status(REF)
+    assert status["setup"] == "missing" and "not installed" in status["error"] and not status["running"]
+    session.install(REF, fake.port, 80, 24)
+    wait_for(running)
+    status = session.status(REF)
+    assert status["setup"] == "" and status["error"] == "" and not status["installing"]
+    wait_for(lambda: len(starts(fake.log)) == 1)
+
+
+def test_an_install_that_fails_says_so_and_starts_nothing(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(session, "binary", lambda: None)
+    monkeypatch.setattr(session, "INSTALL_COMMAND", ["bash", "-c", "read -r answer; echo no network; exit 3"])
+    session.start(REF, fake.port, 80, 24)
+    wait_for(lambda: session.status(REF)["setup"] == "missing")
+    assert session.install(REF, fake.port, 80, 24)["installing"]
+    assert not running() and session.start(REF, fake.port, 80, 24)["installing"]
+    session.write(REF, b"y\r")
+    wait_for(lambda: not session.status(REF)["installing"])
+    status = session.status(REF)
+    assert status["error"] == "The install ended with code 3. The terminal shows why." and status["setup"] == "missing"
+    assert "no network" in output() and not status["running"] and starts(fake.log) == []
+
+
+def test_a_too_old_claude_updates_itself(fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL", "old")
+    session.start(REF, fake.port, 80, 24)
+    wait_for(lambda: session.status(REF)["setup"] == "old")
+    opened: list[list[str]] = []
+
+    def refuse(s: session.Session, args: list[str], folder: Path) -> tuple[subprocess.Popen[bytes], int]:
+        opened.append(args)
+        raise OSError("x")
+
+    monkeypatch.setattr(session, "_open", refuse)
+    session.install(REF, fake.port, 80, 24)
+    assert opened == [[str(FAKE), "update"]] and session.status(REF)["error"] == f"Could not run {FAKE}: x"
+
+
 def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: SimpleNamespace) -> None:
     session.config_path().parent.mkdir()
     session.config_path().write_text("{}")
@@ -172,6 +220,8 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
         "working": False,
         "task": "",
         "asking": False,
+        "setup": "",
+        "installing": False,
     }
     trusted = json.loads(session.config_path().read_text())["projects"]
     assert trusted == {os.path.realpath(build.mirror_of(REF)): {"hasTrustDialogAccepted": True}}
@@ -523,6 +573,8 @@ def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypat
         "working": False,
         "task": "",
         "asking": False,
+        "setup": "",
+        "installing": False,
     }
     assert starts(fake.log) == [] and fake.removed == [REF]
 

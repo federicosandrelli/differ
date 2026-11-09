@@ -65,6 +65,11 @@ file tree, and the arrow next to it moves the terminal to a column of its own
 between the tree and the code. differ starts `claude` in a worktree of the
 repository, on the pull request's branch, kept in `~/.cache/differ/worktrees`.
 The session needs Claude Code 2.1.319 or later, and runs on your own login.
+Without Claude Code, or with one that is too old, the terminal shows the setup
+steps: one click installs it with the official installer (or updates it), right
+in the terminal, and starts the session. Claude Code asks you to sign in the
+first time. differ connects the session to its MCP server for the pull request
+itself, so there is nothing to configure.
 It starts with Opus 5.5 unless you pick another model in the settings.
 
 - "Send to Claude" in a comment box sends the comment to the session instead of

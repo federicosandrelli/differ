@@ -9,8 +9,9 @@
 // saved per pull request, so a terminal left open comes back with its own page only; the element the terminal lives
 // in, which moves between the docks and survives the sidebar's re-renders; the xterm.js terminal and its fit addon
 // once the library has loaded; the relay WebSocket; `lib`, the promise that loads the library once; whether the
-// menu of quick prompts is open; and whether a quick prompt is on its way to the session.
-const TERM = { open: false, dock: 'side', height: 320, width: 520, el: null, term: null, fit: null, ws: null, lib: null, menu: false, pasting: false };
+// menu of quick prompts is open; whether a quick prompt is on its way to the session; and `setup`, whether this page
+// has seen a start that needs Claude Code installed or updated, so the setup steps stay until the session listens.
+const TERM = { open: false, dock: 'side', height: 320, width: 520, el: null, term: null, fit: null, ws: null, lib: null, menu: false, pasting: false, setup: false };
 const PANE_KEY = 'dr:pane';
 const TERM_OPEN_KEY = `dr:term:${PR.repo}#${PR.number}`;
 // Auto start in the settings: 'off', or nothing for on.
@@ -21,7 +22,10 @@ const CLAUDE_MODEL_KEY = 'dr:claudeModel';
 const TERM_FRAME_MAX = 16384;
 const TERM_FILES = { css: '/vendor/xterm.css', js: ['/vendor/xterm.js', '/vendor/xterm-addon-fit.js'] };
 const TERM_MIN_HEIGHT = 160, TERM_MIN_WIDTH = 320;
-const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt]';
+const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt],[data-term-install],[data-term-copy]';
+// The command that installs Claude Code by hand, the one the server's Install runs, and the one that updates it.
+const INSTALL_COMMAND = 'curl -fsSL https://claude.ai/install.sh | bash';
+const UPDATE_COMMAND = 'claude update';
 // The quick prompt that has Claude rebase the pull request's branch onto the latest `base` and push it.
 const rebasePrompt = (base) => ({ label: `Rebase onto ${base}`, text: `Rebase this pull request's branch onto the latest \`${base}\`: run \`git fetch origin ${base}\`, then \`git rebase origin/${base}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${base}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${base}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` });
 // The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter. The rebase
@@ -49,7 +53,7 @@ function savePane() {
   lsSet(PANE_KEY, JSON.stringify({ dock: TERM.dock, height: TERM.height, width: TERM.width }));
   lsSet(TERM_OPEN_KEY, TERM.open ? 'open' : null);
 }
-const termSession = () => CL.session || { starting: false, running: false, error: '', branch: '', head: '' };
+const termSession = () => CL.session || { starting: false, running: false, error: '', branch: '', head: '', setup: '', installing: false };
 // Whether the reader can show the terminal: the page is served, the setting is on and the pull request is still
 // open, since the server ends the session of a merged or closed one as soon as it sees the status.
 const termAvailable = () => claudeOn() && !CLAUDE_ENDED.includes(prStatus());
@@ -103,7 +107,9 @@ function mountTerminal() {
 function termHeadHtml() {
   const s = termSession();
   let text, action = '', tone = '';
-  if (s.error) { text = 'could not start'; action = '<button data-term-start>Retry</button>'; }
+  if (s.installing) { text = `${s.setup === 'old' ? 'updating' : 'installing'} Claude Code…`; tone = ' tone-accent'; }
+  else if (s.setup && s.error) text = s.setup === 'old' ? 'Claude Code is too old' : 'Claude Code is not installed';
+  else if (s.error) { text = 'could not start'; action = '<button data-term-start>Retry</button>'; }
   else if (s.asking) { text = 'waiting for your answer'; tone = ' tone-warn'; }
   else if (s.working) { text = esc(claudeWork(s)); tone = ' tone-accent'; }
   else if (s.starting) text = 'starting…';
@@ -129,12 +135,38 @@ function quickMenuHtml() {
   const off = quickReady() ? '' : ' disabled';
   return `<div class="menu" role="menu">${quickPrompts().map((p, i) => `<button role="menuitem" data-term-prompt="${i}"${off}>${esc(p.label)}</button>`).join('')}</div>`;
 }
-// Draw the header, and under it the note that says why the session did not start, while it did not.
+// The steps that get a session going when Claude Code is missing or too old: install or update it, here in the
+// terminal with one click or by hand with the command, sign in, and connect, which differ does itself. They show
+// from the start that found Claude Code missing until the session listens.
+function setupHtml() {
+  const s = termSession(), old = s.setup === 'old', command = old ? UPDATE_COMMAND : INSTALL_COMMAND;
+  const installed = !s.setup && !s.installing;
+  const mark = (done, n) => done ? `<span class="tone-ok">${TICK}</span>` : `<span class="count">${n}</span>`;
+  let first;
+  if (installed) first = '<span class="hint">Claude Code is ready.</span>';
+  else if (s.installing) first = `<span class="hint">${old ? 'Updating' : 'Installing'} in the terminal below. Answer it there if it asks anything.</span>`;
+  else {
+    first = `${s.error ? `<span class="err">${esc(s.error)}</span>` : ''}
+      <span class="row"><button class="primary" data-term-install>${old ? 'Update' : 'Install'} Claude Code</button><button data-term-start>Check again</button></span>
+      <span class="hint">Or run it yourself in a terminal, then click Check again:</span>
+      <span class="row"><code>${esc(command)}</code><button class="ghost copy" data-term-copy="${esc(command)}" title="Copy the command">${COPY}</button></span>`;
+  }
+  const listening = CL.listening;
+  return `<ol class="setup">
+    <li>${mark(installed, 1)}<div><b>${old ? 'Update' : 'Install'} Claude Code</b>${first}</div></li>
+    <li>${mark(listening, 2)}<div><b>Sign in</b><span class="hint">The first time it starts, Claude Code asks you to sign in to your Claude account, in the terminal below.</span></div></li>
+    <li>${mark(listening, 3)}<div><b>Connect to differ</b><span class="hint">differ gives the session its MCP server for this pull request, with the tools that read and answer your comments and describe files. There is nothing to set up.</span></div></li>
+  </ol>`;
+}
+// Draw the header, and under it the setup steps while Claude Code needs them, or the note that says why the session
+// did not start, while it did not.
 function renderTermHead() {
   if (!TERM.el || !TERM.el.isConnected) return;
   TERM.el.querySelector('.thead').innerHTML = termHeadHtml();
-  const error = termSession().error;
-  TERM.el.querySelector('.tnote').innerHTML = error ? `<div class="err">${esc(error)}</div>` : '';
+  const s = termSession();
+  if (s.setup || s.installing) TERM.setup = true;
+  else if (CL.listening) TERM.setup = false;
+  TERM.el.querySelector('.tnote').innerHTML = TERM.setup ? setupHtml() : s.error ? `<div class="err">${esc(s.error)}</div>` : '';
 }
 
 // ---------- xterm.js
@@ -226,6 +258,22 @@ async function startSession() {
   } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); }
   loadClaude();
 }
+// Install Claude Code, or update it, in the session's terminal; the server starts the session once it succeeds.
+async function installClaude() {
+  const size = TERM.term ? { cols: TERM.term.cols, rows: TERM.term.rows } : { cols: 80, rows: 24 };
+  try {
+    CL.session = await api('claude_install', size); renderTermHead(); renderSide();
+    if (TERM.term) TERM.term.focus();
+  } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); }
+  loadClaude();
+}
+// Copy a setup command, and show a tick on its button for a moment, as the link's copy button does.
+function copyCommand(button) {
+  navigator.clipboard.writeText(button.dataset.termCopy).then(() => {
+    button.innerHTML = TICK; button.classList.add('copied');
+    setTimeout(() => { button.innerHTML = COPY; button.classList.remove('copied'); }, 1500);
+  });
+}
 // Hide the terminal. The session goes on, and its output waits in the server until the terminal shows again.
 function hideTerminal() {
   TERM.open = false; savePane();
@@ -257,6 +305,8 @@ async function termClick(t) {
   if (d.termToggle !== undefined) { TERM.open ? hideTerminal() : await openTerminal(); return; }
   if (d.termClose !== undefined) { hideTerminal(); return; }
   if (d.termDock !== undefined) { toggleTermDock(); return; }
+  if (d.termInstall !== undefined) { await installClaude(); return; }
+  if (d.termCopy !== undefined) { copyCommand(t); return; }
   if (d.termStart !== undefined) { await startSession(); }
 }
 // The grips: the sidebar's sets the terminal's height, the column's its width. A release outside the window never

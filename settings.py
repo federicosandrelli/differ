@@ -15,6 +15,7 @@ import file_types
 import followed
 import languages
 import render
+import session
 
 REPOSITORY = "https://github.com/federicosandrelli/differ"
 CACHE_FOLDERS = (
@@ -121,6 +122,25 @@ def commit_line() -> str:
     return f"commit {link}{' with uncommitted changes' if info['dirty'] else ''} · "
 
 
+def claude_code_line() -> str:
+    """Which Claude Code the sessions run, or what to do when there is none or it is too old."""
+    claude_bin = session.binary()
+    if claude_bin is None:
+        return (
+            "Claude Code is not installed. Show the terminal of a pull request to install it with one click, or run "
+            f"{code(session.INSTALL_COMMAND[-1])} in a terminal."
+        )
+    try:
+        version = session.version_of(claude_bin)
+    except Exception:  # noqa: BLE001 - any failure reads as a version differ cannot tell
+        version = ()
+    if problem := session.too_old(version):
+        return (
+            f"{html.escape(problem)} Show the terminal of a pull request to update it, or run {code('claude update')}."
+        )
+    return f"Sessions run Claude Code {'.'.join(map(str, version))}, at {code(str(claude_bin))}."
+
+
 def settings_html() -> str:
     return render.fill(
         (render.SHELL_DIR / "settings.html").read_text(),
@@ -132,4 +152,5 @@ def settings_html() -> str:
         CACHE=html.escape(str(build.CACHE)),
         CACHE_ROWS=cache_rows(),
         COMMIT=commit_line(),
+        CLAUDE_CODE=claude_code_line(),
     )
