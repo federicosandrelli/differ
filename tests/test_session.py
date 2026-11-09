@@ -180,7 +180,17 @@ def test_a_second_open_while_the_session_runs_starts_nothing(fake: SimpleNamespa
     assert len(starts(fake.log)) == 1
 
 
-def test_what_the_terminal_types_comes_back_and_a_paste_is_bracketed(fake: SimpleNamespace) -> None:
+def test_a_submit_presses_enter_in_a_write_of_its_own_after_the_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(session, "write", lambda ref, data: calls.append(data))
+    monkeypatch.setattr(session.time, "sleep", calls.append)
+    session.paste(REF, "rebase it", submit=True)
+    assert calls == [b"\x1b[200~rebase it\x1b[201~", session.SUBMIT_WAIT, b"\r"]
+
+
+def test_what_the_terminal_types_comes_back_a_paste_is_bracketed_and_a_submit_presses_enter(
+    fake: SimpleNamespace,
+) -> None:
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
     frames: list[bytes] = []
@@ -190,6 +200,8 @@ def test_what_the_terminal_types_comes_back_and_a_paste_is_bracketed(fake: Simpl
     wait_for(lambda: b"HI" in b"".join(frames))
     session.paste(REF, "@src/app.py#L11 ")
     wait_for(lambda: b"\x1b[200~@SRC/APP.PY#L11 \x1b[201~" in b"".join(frames))
+    session.paste(REF, "rebase it", submit=True)
+    wait_for(lambda: b"\x1b[200~REBASE IT\x1b[201~\r" in b"".join(frames))
     assert "HI" in output()
     session.detach(REF, frames.append)
 

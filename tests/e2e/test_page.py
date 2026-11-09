@@ -1241,6 +1241,14 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
     worktree = cache_dir / "worktrees" / "acme" / "widgets" / number
     open_pr(page, server_url, pr)
     try:
+        # The quick prompts wait for a session that listens.
+        page.click("#side .foot [data-term-menu]")
+        expect(page.locator("#side .foot [data-term-prompt]")).to_have_count(2)
+        for item in page.locator("#side .foot [data-term-prompt]").all():
+            expect(item).to_be_disabled()
+        page.keyboard.press("Escape")
+        expect(page.locator("#side .foot .menu")).to_have_count(0)
+
         page.click("#side .foot [data-term-toggle]")
         expect(page.locator("#termslot .term .xterm")).to_be_visible()
         expect(page.locator(".term .thead .state")).to_have_text(
@@ -1270,6 +1278,16 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
         expect(page.locator("#termslot")).to_have_count(0)
         page.click("#side .foot [data-term-dock]")
         expect(page.locator("#termslot .term .xterm")).to_be_visible()
+
+        # A quick prompt brings the hidden terminal back and sends its prompt.
+        page.click("#side .foot [data-term-toggle]")
+        expect(page.locator(".term")).to_have_count(0)
+        page.click("#side .foot [data-term-menu]")
+        page.click("#side .foot [data-term-prompt='1']")
+        expect(page.locator("#side .foot .menu")).to_have_count(0)
+        expect(page.locator("#termslot .term .xterm")).to_be_visible()
+        prompt = page.evaluate("QUICK_PROMPTS[1].text").upper()
+        page.wait_for_function(f"({TERM_TEXT})().includes({json.dumps(prompt)})")
 
         # The terminal comes back on its own pull request only.
         open_pr(page, server_url, PR)

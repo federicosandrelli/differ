@@ -507,10 +507,19 @@ def write(ref: PullRef, data: bytes) -> None:
             pass
 
 
-def paste(ref: PullRef, text: str) -> None:
+# How long a submit waits after its paste before it presses Enter. Claude Code takes an Enter that arrives soon after
+# the paste as part of the paste; 0.1 seconds was not always enough. A Claude Code that stalls for longer still can.
+SUBMIT_WAIT = 0.5
+
+
+def paste(ref: PullRef, text: str, submit: bool = False) -> None:
     """Paste the text into the session's prompt as one bracketed paste, so that it lands where the cursor is and
-    nothing in it counts as a key."""
+    nothing in it counts as a key. With `submit`, press Enter `SUBMIT_WAIT` seconds after it, which sends the prompt
+    with whatever the prompt held before, and return after the Enter."""
     write(ref, b"\x1b[200~" + text.encode() + b"\x1b[201~")
+    if submit:
+        time.sleep(SUBMIT_WAIT)
+        write(ref, b"\r")
 
 
 def resize(ref: PullRef, cols: int, rows: int) -> None:

@@ -545,7 +545,8 @@ def test_a_comments_load_expires_the_comments_for_claude_of_an_ended_pull_reques
     [
         ("claude_open", {"cols": 100, "rows": 30}, "start", (PullRef("o", "r", 1), 8765, 100, 30)),
         ("claude_close", {}, "close", (PullRef("o", "r", 1),)),
-        ("claude_paste", {"text": "@a.py#L1 "}, "paste", (PullRef("o", "r", 1), "@a.py#L1 ")),
+        ("claude_paste", {"text": "@a.py#L1 "}, "paste", (PullRef("o", "r", 1), "@a.py#L1 ", False)),
+        ("claude_paste", {"text": "Rebase it", "submit": True}, "paste", (PullRef("o", "r", 1), "Rebase it", True)),
     ],
 )
 def test_the_session_actions_reach_the_session_from_this_servers_pages_only(

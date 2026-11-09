@@ -140,9 +140,9 @@ function claudeDot() {
 }
 // What Claude does, for the bot's tooltip and the terminal's header: "working on" its task, or "working" without one.
 const claudeWork = (s) => `working${s.task ? ` on ${esc(s.task)}` : ''}`;
-// The footer's buttons: the bot button, with the session's dot, shows and hides the terminal; the arrow before it
-// moves the terminal between the sidebar and its own column, and comes on the left so the bot keeps its place when it
-// shows.
+// The footer's buttons: the bot button, with the session's dot, shows and hides the terminal; the burger next to it
+// opens the quick prompts; the arrow before them moves the terminal between the sidebar and its own column, and comes
+// on the left so the bot keeps its place when it shows.
 function claudeFootHtml() {
   if (!termAvailable()) return '';
   const s = CL.session || {}, waiting = CL.comments.filter(c => c.state === 'waiting').length;
@@ -150,7 +150,8 @@ function claudeFootHtml() {
     : `${s.error ? esc(s.error) : 'No Claude session'}${waiting ? ` · ${plural(waiting, 'comment')} waiting` : ''}`;
   const dock = TERM.open ? `<button class="ghost" data-term-dock title="${TERM.dock === 'side' ? 'Move the terminal to its own column' : 'Move the terminal into this pane'}">${TERM.dock === 'side' ? ARROW_RIGHT : ARROW_LEFT}</button>` : '';
   const bot = `<button class="ghost session${TERM.open ? ' on' : ''}" data-term-toggle title="${standing} · ${TERM.open ? 'hide' : 'show'} the terminal">${iconHtml('bot')}${claudeDot()}</button>`;
-  return `<div class="foot claude"><span class="claude-pick">${dock}${bot}</span>
+  const more = `<button class="ghost claude-more" data-term-menu aria-label="Quick prompts" aria-haspopup="menu" aria-expanded="${TERM.menu}">${BURGER}</button>`;
+  return `<div class="foot claude"><span class="claude-pick">${dock}<span class="seg">${bot}${more}</span>${quickMenuHtml()}</span>
     ${CL.error ? `<div class="hint err">${esc(CL.error)}</div>` : ''}</div>`;
 }
 

@@ -57,7 +57,8 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      jobs), claude, claude_follow_up, claude_reply, claude_delete (a comment for
                                      Claude, the reader's reply in its thread, Claude's reply, its removal),
                                      claude_open, claude_close, claude_paste (the embedded session: start it with
-                                     the terminal's cols and rows, end it, paste text into its prompt)
+                                     the terminal's cols and rows, end it, paste text into its prompt
+                                     and, with submit, send it)
                                      (only from a page this server served: the Origin must be this server
                                      on a loopback host, and the Content-Type application/json)
 
@@ -514,7 +515,7 @@ class Handler(BaseHTTPRequestHandler):
                 session.close(ref)
                 result = {}
             elif action == "claude_paste":
-                session.paste(ref, text_of(body["text"]))
+                session.paste(ref, text_of(body["text"]), body.get("submit") is True)
                 result = {}
             elif action == "comment":
                 start_side = body.get("start_side")

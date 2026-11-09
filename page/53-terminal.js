@@ -2,13 +2,15 @@
 // relays it over a WebSocket; the page draws it with xterm.js, loaded from /vendor when the terminal first opens. The
 // terminal has two docks: under the file tree in the sidebar, with a grip that sets its height, or a column of its own
 // between the sidebar and the code, with a grip that sets its width. The bot button in the sidebar footer shows and
-// hides it, and the arrow next to the button moves it between the docks.
+// hides it, the arrow next to the button moves it between the docks, and the burger opens the quick prompts, which
+// send a prompt to the session.
 
 // TERM holds the dock and the sizes, saved together as dr:pane for every pull request; whether the terminal shows,
 // saved per pull request, so a terminal left open comes back with its own page only; the element the terminal lives
 // in, which moves between the docks and survives the sidebar's re-renders; the xterm.js terminal and its fit addon
-// once the library has loaded; the relay WebSocket; and `lib`, the promise that loads the library once.
-const TERM = { open: false, dock: 'side', height: 320, width: 520, el: null, term: null, fit: null, ws: null, lib: null };
+// once the library has loaded; the relay WebSocket; `lib`, the promise that loads the library once; and whether the
+// menu of quick prompts is open.
+const TERM = { open: false, dock: 'side', height: 320, width: 520, el: null, term: null, fit: null, ws: null, lib: null, menu: false };
 const PANE_KEY = 'dr:pane';
 const TERM_OPEN_KEY = `dr:term:${PR.repo}#${PR.number}`;
 // Auto start in the settings: 'off', or nothing for on.
@@ -17,10 +19,16 @@ const CLAUDE_START_KEY = 'dr:claudeStart';
 const TERM_FRAME_MAX = 16384;
 const TERM_FILES = { css: '/vendor/xterm.css', js: ['/vendor/xterm.js', '/vendor/xterm-addon-fit.js'] };
 const TERM_MIN_HEIGHT = 160, TERM_MIN_WIDTH = 320;
-const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start]';
+const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-term-start],[data-term-menu],[data-term-prompt]';
+// The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter.
+const QUICK_PROMPTS = [
+  { label: 'Describe the files', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, and call describe_file once for each file." },
+  { label: `Rebase onto ${PR.base_ref}`, text: `Rebase this pull request's branch onto the latest \`${PR.base_ref}\`: run \`git fetch origin ${PR.base_ref}\`, then \`git rebase origin/${PR.base_ref}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${PR.base_ref}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${PR.base_ref}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` },
+];
 const ARROW_RIGHT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 7h8M7.5 3.5L11 7l-3.5 3.5"/><path d="M12.5 2.5v9" stroke-opacity=".5"/></svg>';
 const ARROW_LEFT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.5 7h-8M6.5 3.5L3 7l3.5 3.5"/><path d="M1.5 2.5v9" stroke-opacity=".5"/></svg>';
 const CHEVRON_LEFT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3L5 7l4 4"/></svg>';
+const BURGER = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>';
 const CHEVRON_DOWN = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5l4 4 4-4"/></svg>';
 
 (function loadPane() {
@@ -99,6 +107,15 @@ function termHeadHtml() {
   const where = s.head ? `<span class="hint mono" title="${esc(s.branch)} at ${esc(s.head)}">${esc(s.head.slice(0, 7))}</span>` : '';
   const hide = `<button class="ghost chev-hide" data-term-close title="Hide the terminal">${TERM.dock === 'side' ? CHEVRON_DOWN : CHEVRON_LEFT}</button>`;
   return `${claudeDot()}<b>Claude</b><span class="state${tone}">${text}</span>${action}<span class="spacer"></span>${where}${hide}`;
+}
+// Whether the session can take a quick prompt. A session that listens has passed the dialogs Claude Code may show at a
+// start, where the prompt's Enter would pick an answer.
+const quickReady = () => termSession().running && CL.listening;
+// The menu of quick prompts, while it is open.
+function quickMenuHtml() {
+  if (!TERM.menu) return '';
+  const off = quickReady() ? '' : ' disabled';
+  return `<div class="menu" role="menu">${QUICK_PROMPTS.map((p, i) => `<button role="menuitem" data-term-prompt="${i}"${off}>${esc(p.label)}</button>`).join('')}</div>`;
 }
 // Draw the header, and under it the note that says why the session did not start, while it did not.
 function renderTermHead() {
@@ -213,8 +230,20 @@ async function mentionInTerminal(c) {
   try { await api('claude_paste', { text }); } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); return; }
   if (TERM.term) TERM.term.focus();
 }
+// Send a quick prompt to the session, and bring the terminal up with the cursor in it, to show the answer.
+async function sendQuickPrompt(prompt) {
+  TERM.menu = false;
+  if (!quickReady()) { renderSide(); return; }
+  if (TERM.open) renderSide(); else await openTerminal(false);
+  if (TERM.term) TERM.term.focus();
+  try { await api('claude_paste', { text: prompt.text, submit: true }); } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); }
+}
 async function termClick(t) {
   const d = t.dataset;
+  // A click on a button leaves the focus where it was in WebKit, so the terminal would keep the Escape that closes
+  // the menu, and send it to Claude.
+  if (d.termMenu !== undefined) { TERM.menu = !TERM.menu; if (TERM.menu) document.activeElement.blur(); renderSide(); return; }
+  if (d.termPrompt !== undefined) { await sendQuickPrompt(QUICK_PROMPTS[d.termPrompt]); return; }
   if (d.termToggle !== undefined) { TERM.open ? hideTerminal() : await openTerminal(); return; }
   if (d.termClose !== undefined) { hideTerminal(); return; }
   if (d.termDock !== undefined) { toggleTermDock(); return; }

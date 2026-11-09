@@ -52,8 +52,11 @@ table.diff tr.pop mark { animation: fade .25s ease-in-out; }
 /* Inside the shell, its settings gear sits over the bottom left corner of the footer, so the footer starts to its right. */
 html.framed #side .foot { padding-left: 44px; }
 #side .foot .claude-pick { position: relative; display: inline-flex; gap: 2px; margin-left: auto; }
-/* Inside the shell, the Claude button mirrors the settings gear: as far from the right edge. */
-html.framed #side .foot .claude-pick { margin-right: -5px; }
+/* Inside the shell, the Claude buttons mirror the settings gear: as far from the right edge. */
+html.framed #side .foot .claude-pick { margin-right: -4px; }
+#side .foot .claude-more { padding: 1px 3px; }
+#side .foot .claude-more[aria-expanded="true"] { color: var(--accent); }
+#side .foot .claude-pick .menu { position: absolute; bottom: calc(100% + 4px); right: 0; z-index: 8; }
 #side .foot .session .reason-icon { width: 16px; height: var(--control-line); }
 /* The dot next to the bot, in the state claudeDot() in page/52-claude.js picks. */
 .dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--text-muted); opacity: var(--dim); flex: none; }
