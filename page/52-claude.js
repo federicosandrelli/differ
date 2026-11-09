@@ -1,6 +1,6 @@
 // The comments the reader sends to the Claude Code session that works on the pull request instead of to GitHub, the
-// threads they show as, and the sidebar footer's button that says whether the session listens for them and shows
-// its terminal (page/53-terminal.js).
+// threads they show as, the sidebar footer's button that says whether the session listens for them and shows its
+// terminal (page/53-terminal.js), and where the session stands, for the shell's tab.
 
 // CL holds the server's answer to /claude, with `descriptions`, the descriptions Claude gave the files by path,
 // `session`, where the embedded session stands, and `error`, why the reader's last action on it failed, until the
@@ -8,7 +8,8 @@
 // actions as LOADS does for the comments, so a load that answers after a later load or action changes nothing.
 const CL = { loaded: false, listening: false, comments: [], descriptions: {}, session: null, error: '', timer: 0, started: 0, applied: 0 };
 const CLAUDE_POLL_MS = 5000;
-// The poll while the session starts or Claude works, so the dot and the terminal's header follow them.
+// The poll while the session starts, Claude works or Claude asks a question, so the dot and the terminal's header follow
+// them.
 const CLAUDE_BUSY_POLL_MS = 1000;
 const CLAUDE_KEY = 'dr:claude';
 // The words of the tag the reader's last message shows while it waits for Claude's reply.
@@ -33,7 +34,7 @@ async function loadClaude() {
 // planned before.
 function pollClaude() {
   clearTimeout(CL.timer);
-  const ms = CL.session && (CL.session.starting || CL.session.working) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
+  const ms = CL.session && (CL.session.starting || CL.session.working || CL.session.asking) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
   CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
 // Show the server's answer: the threads when the comments changed, the files when their descriptions changed or the
@@ -65,9 +66,9 @@ async function postClaude(action, body) {
   const load = ++CL.started;
   showClaude(load, await api(action, { ...body, head: PR.head }));
 }
-// The setting changed in the settings of the shell, which share this page's storage.
 // A hidden window loads nothing, so a window that shows again loads at once, for the dot on the tab.
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadClaude(); });
+// The setting changed in the settings of the shell, which share this page's storage.
 window.addEventListener('storage', (e) => {
   if (e.key !== CLAUDE_KEY) return;
   loadClaude(); threadsChanged(); render(); tellShellClaude();
@@ -148,9 +149,11 @@ function claudeState() {
 const claudeDot = () => `<span class="dot ${claudeState()}"></span>`;
 // Tell the shell where the session stands, for the dot on the page's tab.
 function tellShellClaude() {
-  if (SHELL) SHELL.claude(termAvailable() ? claudeState() : '', claudeStanding());
+  if (!SHELL) return;
+  const state = termAvailable() ? claudeState() : '';
+  SHELL.claude(state, state ? claudeStanding() : '');
 }
-// What Claude does, for the bot's tooltip and the terminal's header: "working on" its task, or "working" without one.
+// What Claude does: "working on" its task, or "working" without one.
 const claudeWork = (s) => `working${s.task ? ` on ${s.task}` : ''}`;
 // Where the session stands, in words.
 function claudeStanding() {

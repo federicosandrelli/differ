@@ -78,10 +78,11 @@ IDLE_MARK = "\u2733"
 NO_TASK = "Claude Code"
 IN_USE = "already in use"
 # The tool Claude Code shows the reader a question with. Its PreToolUse hook fires as the question shows and its
-# PostToolUse hook once the reader answers. No hook fires when the reader cancels the question with one of
-# CANCEL_KEYS, and Claude then waits at its prompt.
+# PostToolUse hook once the reader answers. No hook fires when the reader cancels the question with CANCEL_KEY,
+# Escape, which the terminal sends as this byte alone, and Claude then waits at its prompt. Ctrl+C leaves the question
+# open.
 QUESTION_TOOL = "AskUserQuestion"
-CANCEL_KEYS = (b"\x1b", b"\x03")
+CANCEL_KEY = b"\x1b"
 # The seconds Claude Code waits for the server to answer a hook before it goes on without it.
 HOOK_TIMEOUT = 5
 # The models a session can start with, as `--model` takes them.
@@ -535,11 +536,11 @@ WRITE_WAIT = 0.2
 
 
 def write(ref: PullRef, data: bytes) -> None:
-    """Type the bytes into the session, if a process runs, and end a question when they are one of CANCEL_KEYS.
+    """Type the bytes into the session, if a process runs, and end a question when they are CANCEL_KEY.
     Waits while the process has not read what was typed before, and stops once the process is gone."""
     with lock:
         s = session_of(ref)
-        if data in CANCEL_KEYS:
+        if data == CANCEL_KEY:
             s.asking = False
     left = memoryview(bytes(data))
     while left:

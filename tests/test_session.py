@@ -312,9 +312,10 @@ def test_the_question_tools_hooks_say_whether_claude_asks_the_reader(fake: Simpl
     assert not asking()
 
     # A reader who cancels the question gets no hook: the Escape key ends the question, and an arrow key, which
-    # starts with the same byte, keeps it.
+    # starts with the same byte, and Ctrl+C, which leaves the question open, keep it.
     post_hook(pre["hooks"][0], "PreToolUse")
     session.write(REF, b"\x1b[B")
+    session.write(REF, b"\x03")
     assert asking()
     session.write(REF, b"\x1b")
     assert not asking()

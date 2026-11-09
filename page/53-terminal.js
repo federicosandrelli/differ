@@ -115,11 +115,12 @@ function termHeadHtml() {
   return `${claudeDot()}<b>Claude</b><span class="state${tone}">${text}</span>${action}<span class="spacer"></span>${where}${hide}`;
 }
 // Whether the session can take a quick prompt. A session that listens has passed the dialogs Claude Code may show at a
-// start, where the prompt's Enter would pick an answer.
-const quickReady = () => termSession().running && CL.listening;
+// start, where the prompt's Enter would pick an answer, as it would in a question Claude asks.
+const quickReady = () => termSession().running && CL.listening && !termSession().asking;
 // Why the session can't take a quick prompt now, or '' when it can.
 function quickBlock() {
   if (!claudeOn()) return 'Claude is off. Turn it on in the settings.';
+  if (termSession().asking) return 'Claude is waiting for your answer.';
   return quickReady() ? '' : 'Claude is not listening yet.';
 }
 // The menu of quick prompts, while it is open.
