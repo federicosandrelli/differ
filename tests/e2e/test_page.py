@@ -2373,7 +2373,7 @@ def test_the_start_pages_repository_toggles_filter_the_board_and_survive_a_reloa
         expect(cards).to_have_count(2)
         home.locator('[data-repo="acme/tools"]').click()
         expect(cards).to_have_count(1)
-        expect(cards.first).to_have_attribute("href", "/acme/tools/pull/2")
+        expect(cards.first.locator(".cover")).to_have_attribute("href", "/acme/tools/pull/2")
         expect(home.locator('[data-repo="acme/tools"] .count')).to_have_text("1")
         page.reload()
         home = page.frame_locator("#panes iframe.on")

@@ -114,7 +114,7 @@ def flat(placed: tuple[str, list[board.Reason]] | None) -> tuple[str, list[tuple
         ({"ci": "EXPECTED"}, ("ci", [("Checks running", "", "clock")])),
         ({"decision": "CHANGES_REQUESTED"}, ("review", [("Changes requested", "", "pencil")])),
         ({"requested": ("ann", "core")}, ("review", [("Review requested from ann, core", "", "person")])),
-        ({}, ("review", [("No reviewer yet", "", "person-plus")])),
+        ({}, ("action", [("No reviewer yet", "", "person-plus")])),
         ({"draft": True}, ("draft", [])),
         ({"draft": True, "mergeable": "CONFLICTING"}, ("draft", [("Conflicts", "warn", "warning")])),
         ({"draft": True, "ci": "FAILURE"}, ("draft", [("CI failed", "bad", "x-circle")])),
@@ -263,7 +263,11 @@ def test_other_keeps_a_pull_request_the_viewer_reviewed_long_ago_and_names_the_l
 
 
 def test_classify_puts_each_pull_request_in_one_section_newest_first() -> None:
-    mine = [pr(1, updated="2026-10-20T00:00:00Z"), pr(2, updated="2026-10-22T00:00:00Z"), pr(3, draft=True)]
+    mine = [
+        pr(1, requested=("bob",), updated="2026-10-20T00:00:00Z"),
+        pr(2, requested=("bob",), updated="2026-10-22T00:00:00Z"),
+        pr(3, draft=True),
+    ]
     merged = [pr(4, state="MERGED", merged="2026-10-21T00:00:00Z")]
     asked = [pr(5, author="ann")]
     involved = [pr(5, author="ann"), pr(6, author="ann", reviews=(by(ME, "2026-10-20T00:00:00Z", state="COMMENTED"),))]
@@ -313,7 +317,8 @@ def column_counts(page: str) -> list[str]:
 
 def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -> None:
     assert board.sections_html().startswith('<div class="empty">No pull requests yet.</div><footer')
-    save(board.classify(ME, [[pr(1, ci="FAILURE"), pr(2)], [], [pr(3, author="ann", repo="acme/tools")], [], []], []))
+    mine = [pr(1, ci="FAILURE"), pr(2, requested=("bob",))]
+    save(board.classify(ME, [mine, [], [pr(3, author="ann", repo="acme/tools")], [], []], []))
     page = board.sections_html()
     assert re.findall(r'<section class="sub" data-key="(\w+)">', page) == [
         "action",
@@ -324,7 +329,7 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
         "merged",
     ]
     assert column_counts(page) == ["1", "1", "0", "1", "0", "0"]
-    mine, theirs, _ = re.findall(r'<a class="card.*?</a>', page)
+    mine, theirs, _ = re.findall(r'<div class="card.*?</div>', page)
     assert 'href="/acme/widgets/pull/1"' in mine and '<span class="reason tone-bad" title="CI failed">' in mine
     assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
     assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
@@ -333,7 +338,7 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
 
 def test_html_lists_a_column_most_urgent_section_first_and_each_section_newest_first() -> None:
     mine = [
-        pr(1, updated="2026-10-24T00:00:00Z"),
+        pr(1, requested=("bob",), updated="2026-10-24T00:00:00Z"),
         pr(2, ci="PENDING", updated="2026-10-25T00:00:00Z"),
         pr(3, ci="FAILURE", updated="2026-10-20T00:00:00Z"),
         pr(4, ci="FAILURE", updated="2026-10-21T00:00:00Z"),
@@ -360,13 +365,49 @@ def test_load_treats_a_board_with_broken_sections_as_empty(paths: Path, sections
     assert board.load()["sections"] == {}
 
 
-def test_load_treats_a_board_with_rows_without_reasons_as_empty(paths: Path) -> None:
+@pytest.mark.parametrize(
+    "fields",
+    [{"reason": "CI failed", "tone": "bad", "at": 0.0}, {"reasons": [], "at": 0.0}, None],
+)
+def test_load_treats_a_board_with_rows_that_lack_a_field_as_empty(paths: Path, fields: dict | None) -> None:
     old_row = {"owner": "acme", "repo": "widgets", "number": 1, "title": "PR 1", "status": "open", "author": ME}
-    old_row |= {"reason": "CI failed", "tone": "bad", "at": 0.0}
-    old = {"viewer": ME, "fetched": time.time(), "repos": [], "sections": {"action": [old_row]}, "full": []}
+    row = old_row | fields if fields is not None else "PR 1"
+    old = {"viewer": ME, "fetched": time.time(), "repos": [], "sections": {"action": [row]}, "full": []}
     (paths / "board.json").write_text(json.dumps(old))
     assert board.load() == board.Board(viewer="", fetched=0.0, repos=[], sections={}, full=[])
     assert board.sections_html().startswith('<div class="empty">No pull requests yet.</div>')
+
+
+def linkback(issue: str) -> dict:
+    return {
+        "body": f'<!-- linear-linkback -->\n<details>\n<summary><a href="https://linear.app/acme/issue/{issue}/fix-it">'
+    }
+
+
+def test_a_row_links_the_issue_of_linears_linkback_comment_only() -> None:
+    mention = {"body": "See https://linear.app/acme/issue/GE-1/other"}
+    found = pr(1) | {"additions": 1200, "deletions": 3, "linear": {"nodes": [mention, linkback("GE-42")]}}
+    row = board.row(found, [])
+    assert row["linear"] == "https://linear.app/acme/issue/GE-42" and (row["additions"], row["deletions"]) == (1200, 3)
+    assert board.row(pr(2) | {"linear": {"nodes": [mention]}}, [])["linear"] == ""
+
+
+def test_a_card_links_the_linear_issue_and_the_claude_code_session_of_its_own_pull_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = board.claude_desktop.Session("claude://code/continue?session=local_a", "Fix <it>", 1.0)
+    monkeypatch.setattr(board.claude_desktop, "sessions", lambda: {PullRef("acme", "widgets", 1): session})
+    linked = pr(1) | {"linear": {"nodes": [linkback("GE-42")]}}
+    save(board.classify(ME, [[linked, pr(2, updated="2026-10-01T00:00:00Z")], [], [], [], []], []))
+    first, second = re.findall(r'<div class="card.*?</div>', board.sections_html())
+    assert (
+        '<a class="linear" href="https://linear.app/acme/issue/GE-42" target="_blank"' in first
+        and 'title="GE-42 in Linear"' in first
+    )
+    assert (
+        '<a class="claude" href="claude://code/continue?session=local_a" title="Claude Code: Fix &lt;it&gt;"' in first
+    )
+    assert "linear.app" not in second and "claude://" not in second
 
 
 def test_footer_names_the_viewer_only_once_github_has_answered() -> None:
@@ -381,7 +422,7 @@ def test_html_names_a_deleted_author_ghost() -> None:
 
 
 def test_html_keeps_an_empty_column_with_none() -> None:
-    save(board.classify(ME, [[pr(1)], [], [], [], []], []))
+    save(board.classify(ME, [[pr(1, requested=("bob",))], [], [], [], []], []))
     page = board.sections_html()
     for key in ("action", "reviewing", "draft"):
         assert board.NONE_HTML in sub(page, key)
@@ -392,7 +433,7 @@ def test_html_keeps_an_empty_column_with_none() -> None:
 def test_html_shows_the_first_rows_of_a_section_and_a_button_for_the_rest() -> None:
     save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 9)], [], [], [], []], []))
     drafts = sub(board.sections_html(), "draft")
-    assert drafts.count("<a class=") == 8 and drafts.count(" hidden>") == 3
+    assert drafts.count('<div class="card') == 8 and drafts.count(" hidden>") == 3
     assert '<button class="ghost more">Show 3 more</button>' in drafts
     save(board.classify(ME, [[pr(n, draft=True) for n in range(1, 6)], [], [], [], []], []))
     assert "more</button>" not in sub(board.sections_html(), "draft")
@@ -416,12 +457,9 @@ def test_full_names_every_section_a_search_with_as_many_answers_as_it_reads_feed
 def test_html_counts_the_columns_of_each_row_and_folds_both_merges_under_the_second() -> None:
     merged = [pr(2, state="MERGED", merged="2026-10-20T00:00:00Z")]
     merged_others = [pr(3, author="ann", state="MERGED", merged="2026-10-21T00:00:00Z")]
-    save(board.classify(ME, [[pr(1)], merged, [], [], [], [], merged_others], ["acme/widgets"]))
+    save(board.classify(ME, [[pr(1, requested=("bob",))], merged, [], [], [], [], merged_others], ["acme/widgets"]))
     page = board.sections_html()
-    assert re.findall(r'<section class="group">(<h2>[^<]*</h2>)?<div class="columns" style="--n: (\d+)">', page) == [
-        ("<h2>Need you</h2>", "2"),
-        ("", "3"),
-    ]
+    assert re.findall(r'<section class="group"><div class="columns" style="--n: (\d+)">', page) == ["2", "3"]
     assert re.findall(r'<details class="folded" data-key="(\w+)"><summary><svg class="chev"', page) == ["merged"]
     folded = page[page.index('<details class="folded" data-key="merged">') : page.index("</details>")]
     assert "<h3>Merged today" in folded
@@ -431,7 +469,7 @@ def test_html_counts_the_columns_of_each_row_and_folds_both_merges_under_the_sec
 
 
 def test_html_adds_a_plus_to_the_count_of_a_column_with_a_full_section() -> None:
-    save(board.classify(ME, [[pr(1), pr(2, ci="PENDING")], [], [], [], []], []), full=("review",))
+    save(board.classify(ME, [[pr(1, requested=("bob",)), pr(2, ci="PENDING")], [], [], [], []], []), full=("review",))
     page = board.sections_html()
     assert column_counts(page)[3] == "2+"
 
@@ -444,7 +482,13 @@ def save_two_repos(full: tuple[str, ...] = ()) -> None:
     acme/tools, which the viewer does not follow."""
     drafts = [pr(n, draft=True, repo="acme/web") for n in range(1, 8)] + [pr(8, draft=True, repo="acme/api")]
     merged = pr(11, repo="acme/api", state="MERGED", merged="2026-10-22T00:00:00Z")
-    found = [[*drafts, pr(9, repo="acme/api")], [merged], [pr(10, author="ann", repo="acme/tools")], [], []]
+    found = [
+        [*drafts, pr(9, repo="acme/api", requested=("bob",))],
+        [merged],
+        [pr(10, author="ann", repo="acme/tools")],
+        [],
+        [],
+    ]
     save(board.classify(ME, found, list(FOLLOWED)), full=full, repos=FOLLOWED)
 
 
@@ -524,7 +568,7 @@ def answer(*found: list[dict]) -> tuple[str, list[list[dict]]]:
 
 
 def test_refresh_saves_the_sections_and_keeps_them_when_github_cannot_answer(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(board.github, "search_prs", lambda queries: answer([pr(1)]))
+    monkeypatch.setattr(board.github, "search_prs", lambda queries: answer([pr(1, requested=("bob",))]))
     assert board.refresh()
     saved = board.load()
     assert saved["viewer"] == ME and [r["number"] for r in saved["sections"]["review"]] == [1]
@@ -565,7 +609,7 @@ def test_a_refresh_that_starts_during_another_waits_and_uses_its_answer(monkeypa
         asked.append(queries)
         started.set()
         release.wait(5)
-        return answer([pr(1)])
+        return answer([pr(1, requested=("bob",))])
 
     monkeypatch.setattr(board.github, "search_prs", slow)
     first = threading.Thread(target=board.refresh)

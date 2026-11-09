@@ -14,10 +14,10 @@ header.start form { flex: 1 1 420px; display: flex; flex-direction: column; gap:
 header.start .row { display: flex; gap: 8px; }
 input { flex: 1; }
 main:has(#board) { max-width: 1320px; }
-.group > h2 { display: flex; align-items: center; gap: 8px; font-size: 20px; margin: 32px 0 14px; }
-.group.opened > h2 { margin-bottom: 8px; }
+.group > h2 { display: flex; align-items: center; gap: 8px; font-size: 20px; margin: 32px 0 8px; }
 /* A group without a title is set apart from the one above by space alone. */
-.group:not(:has(> h2)) { margin-top: 56px; }
+.group:not(:has(> h2)) { margin-top: 32px; }
+.group:not(:has(> h2)) + .group:not(:has(> h2)) { margin-top: 56px; }
 /* A row of --n columns: side by side in equal widths while each has --column-min, otherwise all stacked. Below the
    threshold the flex basis turns huge and each column takes a line; above it, the basis is 0 and they share it. */
 .columns { --column-min: 400px; --gap: 20px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--gap); }
@@ -43,9 +43,17 @@ main:has(#board) { max-width: 1320px; }
 .pr .m { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .pr .m .by, .pr .m .ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pr .m .ref { flex: 0 100 auto; font-family: var(--mono); }
+.pr .m .split { flex: none; }
+.pr .links { flex: none; display: flex; align-items: center; gap: 6px; }
+.pr .links a { display: flex; }
+.pr .links .linear { color: var(--linear-fg); } .pr .links .claude { color: var(--claude-fg); }
+.pr .links .reason-icon { width: 14px; height: 14px; }
 .pr .age { flex: none; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .pr .reasons { flex: 0 1 auto; min-width: 0; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px 6px; }
-a.card:hover .reason { background: var(--bg-canvas); }
+/* A reason pill sits above the cover, so its title shows; it lights the card, and a click on it opens the card. */
+.card:has(.cover) .reason { position: relative; cursor: pointer; }
+.card:has(.reason:hover) { background: var(--bg-hover); }
+.card:has(.cover:hover) .reason, .card:has(.reason:hover) .reason { background: var(--bg-canvas); }
 .quiet .pr { gap: 2px; padding: 7px 12px; }
 .quiet .pr .t { font-weight: 400; color: var(--text-secondary); -webkit-line-clamp: 1; }
 .quiet .pr .m, .quiet .pr .age { font-size: 11px; }

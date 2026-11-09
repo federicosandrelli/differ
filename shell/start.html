@@ -39,6 +39,8 @@ board.addEventListener('click', (e) => {
     loadBoard(true);
     return;
   }
+  const pill = e.target.closest('.card .reason');
+  if (pill) { pill.closest('.card').querySelector('.cover').click(); return; }
   const more = e.target.closest('.sub > .more');
   if (!more) return;
   opened.add(more.parentElement.dataset.key);

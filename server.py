@@ -90,6 +90,7 @@ import board
 import build
 import checkout
 import claude
+import claude_desktop
 import commands
 import comments
 import editors
@@ -765,6 +766,7 @@ def main() -> None:
     claude.install_skills()
     session.reap_orphans()
     threading.Thread(target=session.sweep, daemon=True).start()
+    threading.Thread(target=claude_desktop.sessions, daemon=True).start()
     if problem := gh_problem():
         sys.stderr.write(f"{problem} Run `gh auth login`; the start page checks again once a minute.\n")
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
