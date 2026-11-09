@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 from typing import TypedDict
 
 import build
 import github
+import records
 from github import PullRef
 
 PATH = build.CACHE / "recent.json"
@@ -56,13 +56,9 @@ def load() -> Recent:
 
 
 def save(recent: Recent) -> None:
-    """Replace recent.json in one step, so a reader sees the old list or the new one and never part of one. The
-    list goes to recent.json.tmp first and is renamed over recent.json, so a crash mid-write leaves the old list.
-    The list keeps its newest KEPT pull requests; the older ones leave it."""
-    PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = PATH.with_name(PATH.name + ".tmp")
-    tmp.write_text(json.dumps(Recent(pages=recent["pages"][:KEPT])))
-    os.replace(tmp, PATH)
+    """Replace recent.json in one step (`records.write_json`). The list keeps its newest KEPT pull requests; the older
+    ones leave it."""
+    records.write_json(PATH, Recent(pages=recent["pages"][:KEPT]))
 
 
 def note_opened(ref: PullRef, title: str | None, status: str, author: str) -> None:

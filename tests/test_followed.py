@@ -110,7 +110,7 @@ def test_save_keeps_each_name_once_in_order_and_load_reads_it_back(followed_path
     assert saved == ["acme/widgets", "acme/tools"]
     assert followed.load() == saved
     assert json.loads(followed_path.read_text()) == saved
-    assert not followed_path.with_name("followed.json.tmp").exists()
+    assert [p.name for p in followed_path.parent.iterdir()] == ["followed.json"]
 
 
 def test_save_refuses_a_text_that_names_no_repository_and_keeps_the_old_list() -> None:

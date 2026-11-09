@@ -7,7 +7,6 @@ from __future__ import annotations
 import html
 import itertools
 import json
-import os
 import re
 import threading
 import time
@@ -18,6 +17,7 @@ import build
 import followed
 import github
 import recent
+import records
 import render
 from github import PullRef
 
@@ -378,13 +378,9 @@ def load() -> Board:
 
 
 def save(board: Board) -> None:
-    """Replace board.json in one step: the board goes to board.json.tmp first, which then takes the place of
-    board.json, so a crash mid-write leaves the old board."""
+    """Replace board.json in one step (`records.write_json`)."""
     with lock:
-        PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = PATH.with_name(PATH.name + ".tmp")
-        tmp.write_text(json.dumps(board))
-        os.replace(tmp, PATH)
+        records.write_json(PATH, board)
 
 
 def refresh(force: bool = False) -> bool:

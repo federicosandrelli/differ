@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import threading
 from datetime import date, timedelta
 
 import build
 import github
+import records
 from github import OWNER, REPO
 
 PATH = build.CACHE / "followed.json"
@@ -49,12 +49,8 @@ def read() -> list[str] | None:
 
 
 def write(repos: list[str]) -> None:
-    """Replace followed.json with the list. The list goes to followed.json.tmp first, which then takes the place
-    of followed.json, so a crash mid-write leaves the old list. Call it with the lock held."""
-    PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = PATH.with_name(PATH.name + ".tmp")
-    tmp.write_text(json.dumps(repos))
-    os.replace(tmp, PATH)
+    """Replace followed.json with the list, in one step (`records.write_json`). Call it with the lock held."""
+    records.write_json(PATH, repos)
 
 
 def load() -> list[str]:

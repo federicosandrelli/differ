@@ -2,9 +2,7 @@
 <folder>/<owner>/<repo>/<number>.json in the cache, until the pull request is merged or closed.
 
 A record reads as an empty list or dict when its file is missing, broken or of another shape, and is replaced in one
-step: the data goes to a temporary file beside it first, named for the process and the thread that write it, which
-then takes the place of the record, so a reader sees the old record or the new one and never part of one, a crash
-mid-write leaves the old one, and two writers never share a temporary file."""
+step by `write_json`, which also writes the cache's other JSON files: recent.json, followed.json and board.json."""
 
 from __future__ import annotations
 
@@ -15,6 +13,17 @@ from pathlib import Path
 
 import build
 from github import PullRef
+
+
+def write_json(path: Path, data: object) -> None:
+    """Replace the file at path with the data as JSON, in one step: the data goes to a temporary file beside it first,
+    named for the process and the thread that write it, which then takes the place of the file, so a reader sees the
+    old file or the new one and never part of one, a crash mid-write leaves the old one, and two writers never share a
+    temporary file. Makes the file's folder when it has none."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, path)
 
 
 class Record:
@@ -37,11 +46,7 @@ class Record:
 
     def write(self, ref: PullRef, data: list | dict) -> None:
         """Replace the pull request's record with the data, in one step."""
-        path = self.path(ref)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.tmp")
-        tmp.write_text(json.dumps(data))
-        os.replace(tmp, path)
+        write_json(self.path(ref), data)
 
     def delete(self, ref: PullRef) -> None:
         """Delete the pull request's record, if it has one."""
