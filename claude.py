@@ -31,7 +31,7 @@ from github import PullRef
 Side = Literal["LEFT", "RIGHT"]
 Author = Literal["reader", "claude"]
 # Where the reader's last message stands. waiting: no session has it yet; sent: a listening session has it;
-# answered: Claude replied to it.
+# answered: Claude replied to it, or Claude started the thread and the reader has not written in it.
 State = Literal["waiting", "sent", "answered"]
 # Sends one text frame to a listening session. Raises OSError once the session has gone.
 Send = Callable[[str], None]

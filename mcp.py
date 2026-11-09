@@ -13,11 +13,13 @@ import hmac
 import json
 import secrets
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any
 
 import build
+import classify
 import claude
 import github
+from fields import count_of, line_number, one_of, text_of
 from github import PullRef
 
 PROTOCOL = "2025-06-18"
@@ -67,12 +69,14 @@ TOOLS: list[dict] = [
     {
         "name": "start_thread",
         "description": (
-            "Start a thread for the reader on lines of this pull request, where none is yet, with your first "
+            "Start a new thread for the reader on lines of a file of this pull request, with your first "
             "message, in Markdown: differ shows it on the lines like a comment the reader sent you, and the reader's "
             "reply in it reaches you as a `follow_up` frame. `path` is the file's path in the diff: its new path "
             "when the pull request renames it. `line` is the last line, `start_line` the first when the thread "
             "covers several. `side` is `RIGHT` (the default) for lines of the file at the head commit, `LEFT` for "
-            "lines of the file before the pull request. Answers the thread's `id`."
+            "lines of the file before the pull request. Lines are numbered as at the pull request's head commit on "
+            "GitHub, which leaves out commits you have not pushed. Answers the thread's `id`, that commit and the "
+            "code the thread covers."
         ),
         "inputSchema": {
             "type": "object",
@@ -167,16 +171,10 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
                 return "read_thread needs the thread's id.", True
             return json.dumps(claude.thread(ref, thread_id)), False
         if name == "reply_in_thread":
-            thread_id, body, seen = arguments.get("id"), arguments.get("body"), arguments.get("seen")
-            if (
-                not isinstance(thread_id, str)
-                or not isinstance(body, str)
-                or not body.strip()
-                or not isinstance(seen, int)
-                or isinstance(seen, bool)
-                or seen < 0
-            ):
-                return "reply_in_thread needs the thread's id, a body and seen.", True
+            thread_id = arguments.get("id")
+            if not isinstance(thread_id, str):
+                return "reply_in_thread needs the thread's id.", True
+            body, seen = text_of(arguments.get("body")), count_of(arguments.get("seen"))
             c = claude.reply(ref, thread_id, body, seen)
             return f"Replied in the thread on {c['path']}:{c['line']}.", False
         if name == "start_thread":
@@ -192,55 +190,40 @@ def call(ref: PullRef, name: str, arguments: dict) -> tuple[str, bool]:
         return f"No tool named {name}.", True
     except claude.NoComment as exc:
         return str(exc), True
+    except ValueError as exc:
+        return f"{name}: {exc}", True
     except Exception as exc:  # noqa: BLE001 - every failure must reach Claude as text
         return f"{type(exc).__name__}: {exc}", True
 
 
 def start_thread(ref: PullRef, arguments: dict) -> tuple[str, bool]:
-    """Start Claude's thread on the lines the arguments name, with the code they cover from the side's file; refuse
-    a file outside the diff and lines outside the file."""
-    path, line, side, body = (arguments.get(k) for k in ("path", "line", "side", "body"))
-    start_line = arguments.get("start_line")
-    side = "RIGHT" if side is None else side
-    if (
-        not isinstance(path, str)
-        or not isinstance(body, str)
-        or not body.strip()
-        or not line_number(line)
-        or not (start_line is None or line_number(start_line))
-        or side not in ("RIGHT", "LEFT")
-    ):
-        return "start_thread needs a path, a line, a body, and a side of RIGHT or LEFT.", True
-    first = line if start_line is None else start_line
+    """Start Claude's thread on the lines the arguments name, with the code they cover in the side's file, numbered
+    as the page numbers them; refuse a file outside the diff and lines outside the file. Answers the thread's id, the
+    commit the lines are numbered at, and the code, for Claude to check it named the lines it meant."""
+    path, start_line = arguments.get("path"), arguments.get("start_line")
+    if not isinstance(path, str):
+        return "start_thread needs the file's path.", True
+    line, body = line_number(arguments.get("line")), text_of(arguments.get("body"))
+    side: claude.Side = one_of(arguments.get("side", "RIGHT"), claude.Side)
+    first = line if start_line is None else line_number(start_line)
     if first > line:
-        return "start_line comes after line.", True
+        return "start_thread: start_line comes after line.", True
     mirror, base, head = commits(ref)
     old = paths(mirror, base, head).get(path)
     if old is None:
         return f"{path} is not a file of this pull request's diff.", True
     commit, file = (head, path) if side == "RIGHT" else (base, old)
-    content = build.read_files(mirror, commit, [file]).get(file)
-    if content is None:
+    if (content := build.read_files(mirror, commit, [file]).get(file)) is None:
         return f"{path} has no {'new' if side == 'RIGHT' else 'old'} side: use the other side.", True
-    lines = file_lines(content.decode(errors="replace"))
+    lines = file_lines(classify.decoded(content))
     if line > len(lines):
-        return f"{file} has {len(lines)} lines {'at the head' if side == 'RIGHT' else 'before the pull request'}.", True
-    c = claude.start(
-        ref,
-        path=path,
-        line=line,
-        start_line=None if first == line else first,
-        side=side,
-        commit=head,
-        code=lines[first - 1 : line],
-        body=body,
-    )
-    return f"Started thread {c['id']} on {path}:{line_range(first, line)}.", False
-
-
-def line_number(value: object) -> TypeGuard[int]:
-    """Whether a tool's argument is a line number."""
-    return type(value) is int and value >= 1
+        where = "at the head" if side == "RIGHT" else "before the pull request"
+        return f"{file} has {len(lines)} lines of text {where}.", True
+    code = lines[first - 1 : line]
+    start = None if first == line else first
+    c = claude.start(ref, path=path, line=line, start_line=start, side=side, commit=head, code=code, body=body)
+    numbered = "".join(f"\n{n:>5}  {text}" for n, text in enumerate(code, first))
+    return f"Started thread {c['id']} on {path}:{line_range(first, line)} ({side}) at {commit[:12]}:{numbered}", False
 
 
 def line_range(first: int, last: int) -> str:

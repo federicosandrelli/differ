@@ -29,7 +29,6 @@ answer 500. The server checks who asks, and reads the JSON object, before it cal
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, get_args
 
 import build
 import claude
@@ -38,6 +37,7 @@ import comments
 import editors
 import merge
 import session
+from fields import count_of, flag, line_number, lines_of, one_of, run_id, text_of
 from github import PullRef
 
 # An action: the pull request, the request's JSON object and the port this server listens on, to the answer's JSON.
@@ -235,52 +235,3 @@ def _rebuild(ref: PullRef, body: dict, port: int) -> dict:
 def _open(ref: PullRef, body: dict, port: int) -> dict:
     editors.open_file(ref, str(body["editor"]), str(body["path"]), line_number(body["line"]))
     return {}
-
-
-def one_of(value: object, kind: object) -> Any:
-    """The value of a request's field when the Literal type allows it; else a ValueError, which answers 400."""
-    if value not in get_args(kind):
-        raise ValueError(f"{value!r} is not one of {', '.join(map(repr, get_args(kind)))}")
-    return value
-
-
-def flag(value: object) -> bool:
-    """The yes or no a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not bool:
-        raise ValueError(f"{value!r} is not true or false")
-    return value
-
-
-def run_id(value: object) -> int:
-    """The workflow run id a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not int or value <= 0:
-        raise ValueError(f"{value!r} is not a workflow run id")
-    return value
-
-
-def line_number(value: object) -> int:
-    """The line number a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not int or value < 1:
-        raise ValueError(f"{value!r} is not a line number")
-    return value
-
-
-def count_of(value: object) -> int:
-    """The count a request's field names; else a ValueError, which answers 400."""
-    if type(value) is not int or value < 0:
-        raise ValueError(f"{value!r} is not a count")
-    return value
-
-
-def text_of(value: object) -> str:
-    """The text a request's field holds; else a ValueError, which answers 400."""
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{value!r} is not a text")
-    return value
-
-
-def lines_of(value: object) -> list[str]:
-    """The lines of code a request's field holds; else a ValueError, which answers 400."""
-    if not isinstance(value, list) or not all(isinstance(line, str) for line in value):
-        raise ValueError(f"{value!r} is not a list of lines")
-    return value

@@ -58,11 +58,12 @@ and you answered that thread or still work on it. Handle every other frame, repl
   about the change or the old side of a file.
 - `read_thread` gives a thread a frame names, with every message and `seen`.
 - `reply_in_thread` answers a thread, with its `id` and `seen`.
-- `start_thread` starts a thread on lines of a file of the diff where none is yet, with your first message, which
+- `start_thread` starts a new thread on lines of a file of the diff, with your first message, which
   differ shows on the lines as Markdown. Use it to point the reader at lines: a question, a concern or a note of a
   review the reader asks for. Give the file's `path` in the diff, `line` and, for several lines, `start_line`, and
   `side` `LEFT` for lines of the file before the pull request. The reader's reply in it comes to you as a
-  `follow_up` frame; handle it like any other thread.
+  `follow_up` frame; handle it like any other thread. Lines are numbered at the head commit on GitHub, so push
+  first when the lines you mean are in commits you have not pushed. Check the code the tool answers.
 - `describe_file` sets the description of why the pull request changes one file, and what it changes, which differ
   shows as Markdown under the file's header, in place of the one before; an empty body removes it. Describe files when the
   reader asks you to, and follow the `differ-file-descriptions` skill to write each description.

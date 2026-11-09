@@ -51,7 +51,13 @@ def test_initialize_echoes_the_clients_protocol_version_and_offers_tools() -> No
 
 def test_tools_list_names_the_tools_with_their_schemas() -> None:
     tools = result("tools/list")["tools"]
-    assert [t["name"] for t in tools] == ["pull_request_diff", "read_thread", "reply_in_thread", "start_thread", "describe_file"]
+    assert [t["name"] for t in tools] == [
+        "pull_request_diff",
+        "read_thread",
+        "reply_in_thread",
+        "start_thread",
+        "describe_file",
+    ]
     assert all("inputSchema" in t and t["description"] for t in tools)
 
 
@@ -134,11 +140,13 @@ def test_a_tool_failure_comes_back_as_text_with_is_error() -> None:
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A repository with two commits, served as the mirror of REF, whose pull request goes from the first to the
-    second: it changes a.py, renames old.py to new.py with one more line, and deletes gone.py."""
+    second: it changes a.py, renames old.py to new.py with one more line, deletes gone.py and adds a binary img.bin."""
     long = "".join(f"line {n}\n" for n in range(20))
     first = {"a.py": "print(1)\n", "b.py": "two\n", "old.py": long, "gone.py": "bye\n"}
     root, base, head = make_repo(
-        tmp_path / "repo", first, {"a.py": "print(2)\n", "b.py": "two\n", "new.py": long + "line 20\n"}
+        tmp_path / "repo",
+        first,
+        {"a.py": "print(2)\n", "b.py": "two\n", "new.py": long + "line 20\n", "img.bin": b"a\0b\nc\n"},
     )
     # The base branch moved on after the pull request's branch left it, as GitHub's base commit does.
     git(root, "checkout", "-q", base)
@@ -205,12 +213,22 @@ def test_start_thread_keeps_claudes_thread_on_the_lines_with_their_code_and_wait
     answer = start(path="new.py", start_line=2, line=3, body="Why one more line?")
     assert not answer["isError"], answer
     (c,) = claude.read(REF)
-    assert answer["content"][0]["text"] == f"Started thread {c['id']} on new.py:2-3."
-    assert (c["path"], c["start_line"], c["line"], c["side"], c["code"]) == ("new.py", 2, 3, "RIGHT", ["line 1", "line 2"])
+    head = github.pull_request(REF).head
+    assert (
+        answer["content"][0]["text"]
+        == f"Started thread {c['id']} on new.py:2-3 (RIGHT) at {head[:12]}:\n    2  line 1\n    3  line 2"
+    )
+    assert (c["path"], c["start_line"], c["line"], c["side"], c["code"]) == (
+        "new.py",
+        2,
+        3,
+        "RIGHT",
+        ["line 1", "line 2"],
+    )
     assert c["state"] == "answered" and [(m["author"], m["body"]) for m in c["messages"]] == [
         ("claude", "Why one more line?")
     ]
-    assert c["commit"] == github.pull_request(REF).head
+    assert c["commit"] == head
     frames: list[str] = []
     claude.attach(REF, frames.append)
     assert frames == []
@@ -228,15 +246,17 @@ def test_start_thread_on_the_old_side_reads_the_file_before_the_pull_request(rep
 def test_start_thread_refuses_lines_outside_the_file_and_files_outside_the_diff(repo: Path) -> None:
     refusals = {
         "b.py is not a file of this pull request's diff.": start(path="b.py", line=1, body="x"),
-        "a.py has 1 lines at the head.": start(path="a.py", line=2, body="x"),
+        "a.py has 1 lines of text at the head.": start(path="a.py", line=2, body="x"),
         "gone.py has no new side: use the other side.": start(path="gone.py", line=1, body="x"),
-        "start_line comes after line.": start(path="a.py", start_line=2, line=1, body="x"),
+        "start_thread: start_line comes after line.": start(path="a.py", start_line=2, line=1, body="x"),
+        "start_thread: 0 is not a line number": start(path="a.py", line=0, body="x"),
+        "img.bin has 0 lines of text at the head.": start(path="img.bin", line=1, body="x"),
     }
     for text, answer in refusals.items():
         assert answer == {"content": [{"type": "text", "text": text}], "isError": True}
-    for arguments in ({"path": "a.py", "line": 0, "body": "x"}, {"path": "a.py", "line": 1, "body": " "}):
-        assert start(**arguments)["isError"]
-    assert start(path="a.py", line=1, side="UP", body="x")["isError"]
+    assert (
+        start(path="a.py", line=1, body=" ")["isError"] and start(path="a.py", line=1, side="UP", body="x")["isError"]
+    )
     assert claude.read(REF) == []
 
 
