@@ -8,12 +8,14 @@ import html
 import itertools
 import json
 import os
+import re
 import threading
 import time
 from datetime import UTC, date, datetime
 from typing import Literal, NamedTuple, TypedDict
 
 import build
+import claude_desktop
 import followed
 import github
 import recent
@@ -27,6 +29,8 @@ MERGED_QUERY = "is:pr is:merged -author:@me sort:updated-desc"
 FAILED = ("FAILURE", "ERROR")
 RUNNING = ("PENDING", "EXPECTED")
 SHOWN = 5
+LINEAR_LINKBACK = "<!-- linear-linkback -->"
+LINEAR_ISSUE = re.compile(r"https://linear\.app/[\w-]+/issue/([A-Za-z0-9]+-\d+)")
 NONE_HTML = '<span class="hint none">None</span>'
 
 
@@ -41,22 +45,19 @@ class Column(NamedTuple):
 
 
 class Group(NamedTuple):
-    """A group of the start page: its title, empty for a group set apart by space alone, and its columns."""
+    """A group of the start page: its columns, in a row set apart from the one above by space."""
 
-    label: str
     columns: tuple[Column, ...]
 
 
 GROUPS = (
     Group(
-        "Need you",
         (
             Column("Your pull requests", ("action",)),
             Column("Waiting for your review", ("reviewing",)),
         ),
     ),
     Group(
-        "",
         (
             Column("Drafts", ("draft",)),
             Column("Waiting for a reviewer", ("ci", "review", "unreviewed")),
@@ -100,8 +101,9 @@ def reason(text: str, kind: render.ReasonKind, tone: Tone = "") -> Reason:
 
 
 class Row(TypedDict):
-    """A pull request as a section lists it: its reasons, in the order `own` and `other` give them, and the time its
-    age counts from, in seconds since the epoch."""
+    """A pull request as a section lists it: its reasons, in the order `own` and `other` give them, the time its
+    age counts from, in seconds since the epoch, its added and removed lines, and the link to its Linear issue, empty
+    without one."""
 
     owner: str
     repo: str
@@ -111,6 +113,9 @@ class Row(TypedDict):
     author: str
     reasons: list[Reason]
     at: float
+    additions: int
+    deletions: int
+    linear: str
 
 
 class Board(TypedDict):
@@ -237,7 +242,7 @@ def own(pr: dict, viewer: str) -> tuple[str, list[Reason]]:
         return "review", [reason("Changes requested", "pencil")]
     if asked := requested(pr):
         return "review", [reason(f"Review requested from {names(asked)}", "person")]
-    return "review", [reason("No reviewer yet", "person-plus")]
+    return "action", [reason("No reviewer yet", "person-plus")]
 
 
 def other(
@@ -274,6 +279,16 @@ def seconds(iso: str | None) -> float:
     return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() if iso else 0.0
 
 
+def linear_issue(pr: dict) -> str:
+    """The link to the Linear issue that Linear's linkback comment names, among the first comments; empty without
+    one."""
+    for comment in nodes(pr, "linear"):
+        body = comment.get("body") or ""
+        if LINEAR_LINKBACK in body and (m := LINEAR_ISSUE.search(body)):
+            return m[0]
+    return ""
+
+
 def row(pr: dict, reasons: list[Reason]) -> Row:
     owner, repo = pr["repository"]["nameWithOwner"].lower().split("/", 1)
     status = github.status_of(pr.get("state") or "", bool(pr.get("isDraft"))) or ""
@@ -287,6 +302,9 @@ def row(pr: dict, reasons: list[Reason]) -> Row:
         author=login(pr),
         reasons=reasons,
         at=seconds(at),
+        additions=pr.get("additions") or 0,
+        deletions=pr.get("deletions") or 0,
+        linear=linear_issue(pr),
     )
 
 
@@ -340,14 +358,14 @@ def full(found: list[list[dict]]) -> list[str]:
 
 
 def load() -> Board:
-    """The saved board; an empty one when board.json is missing, broken, or from a version with rows without
-    reasons."""
+    """The saved board; an empty one when board.json is missing, broken, or from a version with rows that lack a
+    field of `Row`."""
     try:
         data = json.loads(PATH.read_text())
         if not isinstance(data["sections"], dict) or not all(
-            "reasons" in r for rows in data["sections"].values() for r in rows
+            Row.__required_keys__ <= r.keys() for rows in data["sections"].values() for r in rows
         ):
-            raise KeyError("reasons")
+            raise KeyError("row")
         return Board(
             viewer=data["viewer"],
             fetched=data["fetched"],
@@ -436,6 +454,9 @@ def opened_rows(shown: set[PullRef]) -> list[Row]:
             author=p["author"],
             reasons=[],
             at=p["opened"],
+            additions=0,
+            deletions=0,
+            linear="",
         )
         for p in recent.load()["pages"]
         if p["opened"] >= since and recent.ref_of(p) not in shown
@@ -458,27 +479,54 @@ def reasons_html(reasons: list[Reason]) -> str:
     return f'<span class="reasons">{pills}</span>' if pills else ""
 
 
-def card_html(r: Row, viewer: str, quiet: bool, hidden: bool) -> str:
-    """A pull request as a card of two lines: its title, with its age on the right; then its status icon and, for the
-    viewer's own, `owner/repo#number`, or, for someone else's, the author's login and the repository's name, with the
-    reasons on the right. A quiet card sits on the canvas, the others on the panel."""
+def links_html(r: Row, session: claude_desktop.Session | None) -> str:
+    """The links of a pull request to the places it is worked on: its Linear issue and its Claude Code session, each
+    as an icon. Empty without either."""
+    links = ""
+    if m := LINEAR_ISSUE.match(r["linear"]):
+        links += (
+            f'<a href="{html.escape(r["linear"])}" target="_blank" rel="noopener" title="{html.escape(m[1])} in Linear" '
+            f'aria-label="{html.escape(m[1])} in Linear">{render.reason_icon("linear")}</a>'
+        )
+    if session:
+        label = html.escape(f"Claude Code: {session.title}" if session.title else "Claude Code session")
+        links += f'<a href="{html.escape(session.link)}" title="{label}" aria-label="{label}">{render.reason_icon("bot")}</a>'
+    return f'<span class="links">{links}</span>' if links else ""
+
+
+def split_html(r: Row) -> str:
+    """The pull request's added and removed lines as a split."""
+    return (
+        f'<span class="split"><span class="a">+{r["additions"]:,}</span>'
+        f'<span class="d">−{r["deletions"]:,}</span></span>'
+    )
+
+
+def card_html(r: Row, viewer: str, quiet: bool, hidden: bool, session: claude_desktop.Session | None) -> str:
+    """A pull request as a card of two lines: its title, a link that covers the card, with its age on the right; then
+    its status icon and, for the viewer's own, `owner/repo#number`, or, for someone else's, the author's login and the
+    repository's name, then its added and removed lines and its links, with the reasons on the right. A quiet card
+    sits on the canvas, the others on the panel."""
     ref, icon = ref_of(r), render.pr_icon(r["status"])
     if r["author"] == viewer:
         who = f'<span class="ref">{html.escape(str(ref))}</span>'
     else:
         who = f'<span class="by">{html.escape(r["author"] or "ghost")}</span><span class="ref">{html.escape(r["repo"])}</span>'
     return (
-        f'<a class="card{"" if quiet else " panel"} pr" href="{html.escape(ref.path)}"{" hidden" if hidden else ""}>'
-        f'<span class="line"><span class="t">{html.escape(r["title"])}</span>'
+        f'<div class="card{"" if quiet else " panel"} pr"{" hidden" if hidden else ""}>'
+        f'<span class="line"><a class="t cover" href="{html.escape(ref.path)}">{html.escape(r["title"])}</a>'
         f'<span class="age">{html.escape(ago(r["at"]))}</span></span>'
-        f'<span class="line"><span class="m">{icon}{who}</span>{reasons_html(r["reasons"])}</span></a>'
+        f'<span class="line"><span class="m">{icon}{who}{split_html(r)}{links_html(r, session)}</span>'
+        f"{reasons_html(r['reasons'])}</span></div>"
     )
 
 
-def list_html(key: str, rows: list[Row], viewer: str, quiet: bool) -> str:
+def list_html(
+    key: str, rows: list[Row], viewer: str, quiet: bool, sessions: dict[PullRef, claude_desktop.Session]
+) -> str:
     """A list of cards keyed by `key`, all but the first SHOWN hidden, and a "Show N more" button when some are
-    hidden, or None without rows."""
-    cards = "".join(card_html(r, viewer, quiet, i >= SHOWN) for i, r in enumerate(rows))
+    hidden, or None without rows. `sessions` gives the Claude Code session of a pull request."""
+    cards = "".join(card_html(r, viewer, quiet, i >= SHOWN, sessions.get(ref_of(r))) for i, r in enumerate(rows))
     more = f'<button class="ghost more">Show {len(rows) - SHOWN} more</button>' if len(rows) > SHOWN else ""
     return f'<section class="sub" data-key="{key}">{cards or NONE_HTML}{more}</section>'
 
@@ -494,14 +542,15 @@ def footer_html(board: Board) -> str:
     return f'<footer class="start hint">{known}<button class="ghost" data-settings>Settings <kbd>⌘,</kbd></button></footer>'
 
 
-def column_html(column: Column, board: Board) -> str:
+def column_html(column: Column, board: Board, sessions: dict[PullRef, claude_desktop.Session]) -> str:
     """A column: its label and the count of the rows of its sections, with a plus when one of them is full, then the
     rows of its sections as one list keyed by its first section, the most urgent section first, each section in the
-    board's order. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary."""
+    board's order. A folded column is a `details` keyed by its first section, closed, with a chevron in its summary.
+    `sessions` gives the Claude Code session of a pull request."""
     rows = [r for key in column.sections for r in board["sections"].get(key) or []]
     full = any(key in board["full"] for key in column.sections)
     head = f"<h3>{html.escape(column.label)}{count_html(len(rows), full)}</h3>"
-    body = list_html(column.sections[0], rows, board["viewer"], column.quiet)
+    body = list_html(column.sections[0], rows, board["viewer"], column.quiet, sessions)
     classes = f'class="column{" quiet" if column.quiet else ""}"'
     if column.folded:
         return (
@@ -576,14 +625,13 @@ def sections_html(on: list[str] | None = None) -> str:
     strip, groups = "", []
     if board["sections"]:
         strip = f'<div class="strip">{repos_html(board, chosen)}{updated_html(board)}</div>'
+        sessions = claude_desktop.sessions()
         for group in GROUPS:
             row = [c for c in group.columns if not c.folded]
-            title = f"<h2>{html.escape(group.label)}</h2>" if group.label else ""
-            parts = "".join(column_html(c, filtered) for c in row)
-            folded = "".join(column_html(c, filtered) for c in group.columns if c.folded)
+            parts = "".join(column_html(c, filtered, sessions) for c in row)
+            folded = "".join(column_html(c, filtered, sessions) for c in group.columns if c.folded)
             groups.append(
-                f'<section class="group">{title}'
-                f'<div class="columns" style="--n: {len(row)}">{parts}</div>{folded}</section>'
+                f'<section class="group"><div class="columns" style="--n: {len(row)}">{parts}</div>{folded}</section>'
             )
     if opened := kept(opened_rows(shown)):
         groups.append(

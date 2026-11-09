@@ -222,7 +222,7 @@ def repos_of_recent_prs(since: date) -> list[str] | None:
 
 # The fields of a pull request that search_prs asks for.
 PR_FIELDS = """
-number title url isDraft state updatedAt mergedAt mergeable reviewDecision
+number title url isDraft state updatedAt mergedAt mergeable reviewDecision additions deletions
 repository { nameWithOwner }
 author { __typename login }
 commits(last: 1) { nodes { commit { committedDate author { user { login } } statusCheckRollup { state } } } }
@@ -230,6 +230,7 @@ reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ..
 reviews(last: 30) { nodes { author { __typename login } state submittedAt body } }
 comments(last: 30) { nodes { author { __typename login } createdAt } }
 reviewThreads(last: 20) { nodes { isResolved comments(last: 5) { nodes { author { __typename login } createdAt } } } }
+linear: comments(first: 5) { nodes { body } }
 """
 # How many pull requests search_prs reads from each search.
 SEARCH_LIMIT = 50

@@ -60,12 +60,16 @@ input.big, button.big { font-size: 14px; border-radius: var(--radius-lg); }
 input.big { padding: 9px 12px; } button.big { padding: 0 16px; }
 
 /* A card: a bordered box on the canvas, for a thread, a form, a comment, a dialog or a list. .panel puts it on the
-   panel surface, to raise it over cards on the canvas. A card that is a link keeps the text colour and lights on
-   hover. A banner: a notice that something needs the reader. */
+   panel surface, to raise it over cards on the canvas. A card that is a link holds a .cover link, in the text
+   colour, which stretches over the card under the card's other links and lights the card while the pointer is on
+   it. A banner: a notice that something needs the reader. */
 .card { background: var(--bg-canvas); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .card.panel { background: var(--bg-panel); }
-a.card { color: var(--text); }
-a.card:hover { background: var(--bg-hover); text-decoration: none; }
+.card:has(.cover) { position: relative; }
+.card:has(.cover:hover) { background: var(--bg-hover); }
+.cover { color: var(--text); } .cover:hover { text-decoration: none; }
+.cover::after { content: ""; position: absolute; inset: 0; }
+.card:has(.cover) a:not(.cover) { position: relative; }
 .banner { color: var(--mod-fg); background: var(--mod-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 9px 12px; }
 
 /* A count is a number in a rounded pill next to a label, with an icon before it at times; .hits is the count of
