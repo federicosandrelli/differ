@@ -890,14 +890,28 @@ def test_escape_in_a_comment_box_keeps_the_search(page: Page, server_url: str) -
     expect(page.locator("#side .search")).to_have_value("")
 
 
-def test_search_keeps_every_file_in_the_tree(page: Page, server_url: str) -> None:
-    open_pr(page, server_url)
-    leaves = page.locator("#side .leaf")
-    count = leaves.count()
+def test_search_keeps_every_file_in_the_tree_and_on_the_page(page: Page, server_url: str, add_pr: AddPr) -> None:
+    open_pr(page, server_url, add_pr({}, {"a.py": 'print("hello")\n', "b.py": 'print("bye")\n'}))
     page.fill("#side .search", "hello")
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
-    expect(leaves).to_have_count(count)
-    expect(page.locator("#main section[data-file]")).to_have_count(1)
+    expect(page.locator("#side .leaf")).to_have_count(2)
+    expect(page.locator("#main section[data-file]")).to_have_count(2)
+
+
+def test_enter_goes_on_from_a_file_without_a_hit_that_option_down_stepped_onto(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    open_pr(page, server_url, add_pr({}, {"a.py": "needle = 1\nneedle = 2\n", "b.py": "x = 1\n", "c.py": "needle = 3\n"}))
+    page.fill("#side .search", "needle")
+    page.click("#side .leaf[data-path='a.py']")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 1 / 3")
+    page.keyboard.press("Alt+ArrowDown")
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "b.py")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 3 lines")
+    page.focus("#side .search")
+    page.keyboard.press("Enter")
+    expect(page.locator("#searchmeta")).to_have_text("2 files · 3 / 3")
+    expect(page.locator(f"#{hit_row(page)}")).to_contain_text("needle = 3")
 
 
 def test_typing_in_the_search_keeps_the_caret_where_the_reader_types(page: Page, server_url: str) -> None:
@@ -952,6 +966,25 @@ def test_cmd_f_fills_the_search_with_the_selected_code(page: Page, server_url: s
     expect(page.locator("#side .search")).to_be_focused()
     expect(page.locator("#side .search")).to_have_value('print("hello")')
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+
+
+def test_cmd_f_keeps_the_files_without_a_hit_and_the_selected_row_still(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    page.set_viewport_size({"width": 1100, "height": 400})
+    lines = "".join(f"x{i} = {i}\n" for i in range(60))
+    open_pr(page, server_url, add_pr({}, {"a.py": lines, "b.py": "def needle():\n    pass\n" + lines}))
+    row = page.locator("section[data-file='b.py'] tr.add td.c", has_text="needle")
+    row.evaluate("(c) => { main.scrollTop += c.getBoundingClientRect().top - main.getBoundingClientRect().top - 250; }")
+    expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "a.py")
+    before = row.bounding_box()
+    row.select_text()
+    page.keyboard.press("Meta+f")
+    expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
+    expect(page.locator("#main section[data-file='a.py']")).to_have_count(1)
+    after = row.bounding_box()
+    assert before and after
+    assert after["y"] == pytest.approx(before["y"], abs=1)
 
 
 def test_a_click_on_the_header_leaves_the_section_open_and_the_chevron_closes_it(page: Page, server_url: str) -> None:

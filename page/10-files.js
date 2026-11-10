@@ -11,11 +11,9 @@ function fileListed(f) {
 const rowQuery = () => state.fileSearch ? '' : state.q;
 // Whether the search finds the file: its path holds the query, or a row of its view does.
 const found = (f) => state.fileSearch ? caseFold(f.path).includes(caseFold(state.q)) : viewHits(f).length > 0;
-// While searching, the page shows the files the search finds. A closed section counts its view too, so closing a
-// section keeps its file on the page.
-function fileShown(f) { return fileListed(f) && (!state.q || found(f)); }
-// The files the tree lists: the file search hides the files it doesn't find; the row search leaves them all in place.
-const fileInTree = (f) => state.fileSearch ? fileShown(f) : fileListed(f);
+// The files the page and the tree show: the file search hides the files it doesn't find; the row search leaves them
+// all in place.
+function fileShown(f) { return fileListed(f) && (!state.fileSearch || !state.q || found(f)); }
 
 // The keys of the rows the file's view shows that hold the query, in file order, whether its section is open
 // or not. The rows are kept per fold state and searched once per query.
@@ -69,8 +67,7 @@ function treeOrder(node, out) {
 // The shown files in tree order; recomputed only when the state that selects them changes.
 const visibleCache = { key: null, files: [] };
 function visibleFiles() {
-  const folds = rowQuery() ? FILES.map(foldKey).join('\u0000') : '';
-  const key = [state.filter, state.q, state.fileSearch, state.showNoiseOnly, state.showGenerated, folds].join('\u0000');
+  const key = [state.filter, state.fileSearch && state.q, state.showNoiseOnly, state.showGenerated].join('\u0000');
   if (visibleCache.key !== key) {
     visibleCache.key = key;
     visibleCache.files = treeOrder(buildTree(FILES.filter(fileShown)), []);

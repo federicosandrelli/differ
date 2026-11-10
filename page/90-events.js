@@ -116,7 +116,8 @@ function openFileSearch() {
   if (!state.fileSearch) { state.fileSearch = true; state.hit = null; render(); }
   focusSearch();
 }
-// Ending the search also takes it back to the rows. The files it hid come back around the active file, which stays put.
+// Ending the search also takes it back to the rows. The files the file search hid come back around the active file,
+// which stays put.
 function closeSearch() {
   const box = document.querySelector('#side .search');
   if (!box || !(box.value || state.fileSearch)) return;
@@ -146,12 +147,12 @@ function goHit(hit) {
   if (hit.key == null) scrollToFile(hit.path); else { go(hit.path, hit.key, true); popHit(); }
   updateSearchMeta();
 }
-// While searching, a file shown from the tree opens at its first hit; false when the file has none. In file search
-// it makes the file the current hit and returns false.
+// While searching, a file shown from the tree opens at its first hit; false when the file has none. A file without
+// a hit, and every file in file search, becomes the current hit itself, so Enter goes on from it.
 function goFirstHit(path) {
-  if (state.fileSearch) { if (state.q) { state.hit = { path, key: null }; updateSearchMeta(); } return false; }
-  const key = state.q ? firstHitKey(BY_PATH[path]) : null;
+  const key = firstHitKey(BY_PATH[path]);
   if (key) goHit({ path, key });
+  else if (state.q) { state.hit = { path, key: null }; updateSearchMeta(); }
   return !!key;
 }
 

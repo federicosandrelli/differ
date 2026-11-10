@@ -476,7 +476,7 @@ function unhide(f) {
   if (!kindVisible(f)) state.filter = 'all';
   if (f.noise_only) state.showNoiseOnly = true;
   if (f.generated) state.showGenerated = true;
-  if (state.q && !found(f)) { state.q = ''; state.hit = null; }
+  if (state.fileSearch && state.q && !found(f)) { state.q = ''; state.hit = null; }
   return true;
 }
 // Show a file, and a row of it when given the row's key, opening whatever folds hide it. The row lights up for a

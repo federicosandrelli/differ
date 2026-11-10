@@ -39,7 +39,7 @@ function renderTreeNode(node, depth, out) {
   for (const f of [...node.files].sort(byBase)) out.push(leafHtml(f, depth));
 }
 function renderTree() {
-  const files = FILES.filter(fileInTree);
+  const files = FILES.filter(fileShown);
   const root = buildTree(files);
   const counts = {}; for (const f of files) { const k = changeKind(f); counts[k] = (counts[k] || 0) + 1; }
   const out = [`<div class="tree"><div class="legend">${['A', 'M', 'D', 'R', 'V'].filter(k => counts[k]).map(k => `<span class="pill st-${k}">${KIND_LABEL[k]}</span><span class="n">${counts[k]}</span>`).join('')}</div>`];
@@ -64,7 +64,7 @@ function updateSearchMeta() {
   if (!state.q) { el.textContent = ''; return; }
   const all = allHits(), at = hitPosition(all);
   const where = at >= 0 ? ` · ${at + 1} / ${all.length}` : state.fileSearch ? '' : ` · ${plural(all.length, 'line')}`;
-  el.textContent = plural(visibleFiles().length, 'file') + where;
+  el.textContent = plural(visibleFiles().filter(found).length, 'file') + where;
 }
 function focusSearch() { const i = document.querySelector('#side .search'); if (i) { i.focus({ preventScroll: true }); i.setSelectionRange(i.value.length, i.value.length); } }
 
@@ -224,7 +224,8 @@ function setCursor(el) {
   const f = el.dataset.path && BY_PATH[el.dataset.path];
   if (f) passFile(f);
 }
-// Show a file the reader steps onto. While searching, it opens at its first hit; a closed section stays closed.
+// Show a file the reader steps onto. While searching, it opens at its first hit, or at its top when it has none; a
+// closed section stays closed.
 function passFile(f) { if (!((state.fileSearch || sectionOpen(f)) && goFirstHit(f.path))) scrollToFile(f.path); }
 function toggleFolder(folder) {
   state.closed.has(folder) ? state.closed.delete(folder) : state.closed.add(folder);
