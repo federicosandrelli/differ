@@ -313,7 +313,8 @@ def test_what_the_terminal_types_comes_back_a_paste_is_bracketed_and_a_submit_pr
 def test_the_terminal_title_says_whether_claude_works_and_on_what_task(fake: SimpleNamespace) -> None:
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
-    wait_for(lambda: "fake claude" in output())
+    # The fake claude prints a line once it listens, from another thread; typed before it, the title could hold it.
+    wait_for(lambda: "Listening for differ comments." in output())
     # The fake claude echoes what the terminal types, so a title typed into it comes back as the process's title. The
     # first half comes back before the second goes in, so the title arrives in two reads.
     session.write(REF, "\x1b]0;\u25d0 fix".encode())
