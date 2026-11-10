@@ -151,7 +151,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # The base branch moved on after the pull request's branch left it, as GitHub's base commit does.
     git(root, "checkout", "-q", base)
     moved = commit_tree(root, {**first, "c.py": "later\n"}, "later on main")
-    pr = github.PullRequest("t", "u", "", "ann", moved, head, "main", "feature", 1, "OPEN", False)
+    pr = github.PullRequest("t", "u", "", "ann", moved, head, "main", "feature", False, 1, "OPEN", False)
     monkeypatch.setattr(github, "pull_request", lambda ref: pr)
     monkeypatch.setattr(build, "ensure_repo", lambda ref, log: root)
     monkeypatch.setattr(build, "fetch", lambda *args: None)

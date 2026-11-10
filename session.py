@@ -36,6 +36,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -412,16 +413,18 @@ def _start(ref: PullRef, port: int, generation: int) -> None:
             raise SetupNeeded("old", problem)
         with lock:
             session_of(ref).setup = ""
-        pr = github.pull_request(ref)
-        if pr.status in claude.ENDED:
-            raise RuntimeError(f"The pull request is {pr.status}, so it gets no session.")
-        viewer = github.viewer_login()
-        folder = checkout.worktree(ref, pr.head)
-        mirror = build.mirror_of(ref)
-        try:
-            trust(mirror)
-        except (OSError, ValueError) as exc:
-            sys.stderr.write(f"Could not record the trust of {mirror}: {exc}\n")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            viewer_read = pool.submit(github.viewer_login)
+            pr = github.pull_request(ref)
+            if pr.status in claude.ENDED:
+                raise RuntimeError(f"The pull request is {pr.status}, so it gets no session.")
+            folder = checkout.worktree(ref, pr.head, pr.head_ref, pr.from_fork)
+            mirror = build.mirror_of(ref)
+            try:
+                trust(mirror)
+            except (OSError, ValueError) as exc:
+                sys.stderr.write(f"Could not record the trust of {mirror}: {exc}\n")
+            viewer = viewer_read.result()
         with lock:
             s = session_of(ref)
             if s.generation != generation:

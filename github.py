@@ -80,6 +80,7 @@ class PullRequest:
     head: str
     base_ref: str
     head_ref: str
+    from_fork: bool
     commits: int
     state: str
     draft: bool
@@ -100,7 +101,9 @@ def gh(*args: str, timeout: float = commands.TIMEOUT, cwd: Path | None = None) -
 
 
 def pull_request(ref: PullRef) -> PullRequest:
-    fields = "title,body,author,url,baseRefOid,headRefOid,baseRefName,headRefName,commits,state,isDraft"
+    fields = (
+        "title,body,author,url,baseRefOid,headRefOid,baseRefName,headRefName,isCrossRepository,commits,state,isDraft"
+    )
     meta = json.loads(gh("pr", "view", str(ref.number), "--repo", ref.slug, "--json", fields))
     return PullRequest(
         title=meta["title"],
@@ -111,6 +114,7 @@ def pull_request(ref: PullRef) -> PullRequest:
         head=meta["headRefOid"],
         base_ref=meta["baseRefName"],
         head_ref=meta["headRefName"],
+        from_fork=meta["isCrossRepository"],
         commits=len(meta["commits"]),
         state=meta["state"],
         draft=meta["isDraft"],

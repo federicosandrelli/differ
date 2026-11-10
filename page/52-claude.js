@@ -6,11 +6,13 @@
 // `session`, where the embedded session stands, and `error`, why the reader's last action on it failed, until the
 // next one. `started` and `applied` count the loads and the reader's
 // actions as LOADS does for the comments, so a load that answers after a later load or action changes nothing.
-const CL = { loaded: false, listening: false, comments: [], descriptions: {}, session: null, error: '', timer: 0, started: 0, applied: 0 };
+const CL = { loaded: false, listening: false, comments: [], descriptions: {}, session: null, error: '', timer: 0, started: 0, applied: 0, unheardSince: 0 };
 const CLAUDE_POLL_MS = 5000;
 // The poll while the session starts, Claude works or Claude asks a question, so the dot and the terminal's header follow
-// them.
+// them, and for CLAUDE_UNHEARD_MS while the session runs without listening, as it does until Claude arms its Monitor in
+// its first turn.
 const CLAUDE_BUSY_POLL_MS = 1000;
+const CLAUDE_UNHEARD_MS = 30000;
 const CLAUDE_KEY = 'dr:claude';
 // The words of the tag the reader's last message shows while it waits for Claude's reply.
 const CLAUDE_TAGS = { waiting: 'waiting for Claude', sent: 'sent to Claude' };
@@ -34,7 +36,11 @@ async function loadClaude() {
 // planned before.
 function pollClaude() {
   clearTimeout(CL.timer);
-  const ms = CL.session && (CL.session.starting || CL.session.installing || CL.session.working || CL.session.asking) ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
+  const s = CL.session, unheard = !!s?.running && !CL.listening;
+  if (!unheard) CL.unheardSince = 0; else if (!CL.unheardSince) CL.unheardSince = Date.now();
+  const arming = unheard && Date.now() - CL.unheardSince < CLAUDE_UNHEARD_MS;
+  const busy = s && (s.starting || s.installing || arming || s.working || s.asking);
+  const ms = busy ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
   CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
 // Show the server's answer: the threads when the comments changed, the files when their descriptions changed or the

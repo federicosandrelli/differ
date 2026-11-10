@@ -369,6 +369,13 @@ def test_a_worktree_is_made_from_the_mirror_on_the_pull_requests_branch_at_its_h
     assert (folder / "a.txt").read_text() == "feature\n"
 
 
+def test_a_worktree_given_its_head_branch_reads_no_branch_from_github(gh: FakeGitHub, cache: Path) -> None:
+    head = gh.commit(7, BASE)
+    folder = checkout.worktree(REF, head, "feature", False)
+    assert branch_of(folder) == "feature" and head_of(folder) == head
+    assert not [call for call in gh.calls() if call[:2] == ["pr", "view"]]
+
+
 def test_a_worktree_moves_to_a_new_head_and_each_pull_request_gets_its_own(gh: FakeGitHub, cache: Path) -> None:
     first = gh.commit(7, BASE)
     folder = checkout.worktree(REF, first)

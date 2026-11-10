@@ -35,6 +35,7 @@ PR = github.PullRequest(
     head="c" * 40,
     base_ref="main",
     head_ref="greeting",
+    from_fork=False,
     commits=1,
     state="OPEN",
     draft=False,
@@ -57,7 +58,7 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleName
     folder = tmp_path / "worktree"
     folder.mkdir()
     removed: list[PullRef] = []
-    monkeypatch.setattr(checkout, "worktree", lambda ref, head=None: folder)
+    monkeypatch.setattr(checkout, "worktree", lambda ref, head=None, branch=None, fork=False: folder)
     monkeypatch.setattr(checkout, "remove_worktree", removed.append)
     monkeypatch.setattr(github, "pull_request", lambda ref: PR)
     monkeypatch.setattr(github, "viewer_login", lambda: "tester")
@@ -575,10 +576,32 @@ def test_reap_orphans_ends_a_claude_with_the_session_id_whose_parent_is_gone_and
         bystander.wait()
 
 
+def test_a_start_makes_the_worktree_while_it_reads_the_viewer(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made, order = threading.Event(), []
+
+    def worktree(ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False) -> Path:
+        order.append("worktree")
+        made.set()
+        return fake.folder
+
+    def viewer_login() -> str:
+        made.wait(5)
+        order.append("viewer")
+        return "tester"
+
+    monkeypatch.setattr(checkout, "worktree", worktree)
+    monkeypatch.setattr(github, "viewer_login", viewer_login)
+    session.start(REF, fake.port, 80, 24)
+    wait_for(running)
+    assert order == ["worktree", "viewer"]
+
+
 def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
     checking_out, closed = threading.Event(), threading.Event()
 
-    def slow_worktree(ref: PullRef, head: str | None = None) -> Path:
+    def slow_worktree(ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False) -> Path:
         checking_out.set()
         closed.wait(10)
         return fake.folder

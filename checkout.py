@@ -52,15 +52,16 @@ def worktree_of(ref: PullRef) -> Path:
     return build.CACHE / "worktrees" / ref.owner / ref.repo / str(ref.number)
 
 
-def worktree(ref: PullRef, head: str | None = None) -> Path:
+def worktree(ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False) -> Path:
     """The pull request's worktree: a folder of its own, made from the bare mirror the first time, on the pull
-    request's branch at `head`, the pull request's head on GitHub, read now when not given. A session commits and
-    pushes from it, and nothing else moves it. A folder that is no longer a worktree, because it was deleted by hand
-    or its mirror was cloned again, is made again. Moves a force-pushed branch as `check_out` does. Raises Refused
-    when the worktree has uncommitted changes to tracked files on a branch of another pull request or of none, and
-    CommandError when gh or git fails."""
+    request's branch at `head`, the pull request's head on GitHub, read now when not given. `branch` and `fork` are
+    the head branch and whether it lives in a fork, as `branch_of` gives them, read from GitHub when `branch` is not
+    given. A folder that is no longer a worktree, because it was deleted by hand or its mirror was cloned again, is
+    made again. Moves a force-pushed branch as `check_out` does. Raises Refused when the worktree has uncommitted
+    changes to tracked files on a branch of another pull request or of none, and CommandError when gh or git
+    fails."""
     mirror = build.ensure_repo(ref, lambda _: None)
-    branch, fork = branch_of(ref)
+    branch, fork = (branch, fork) if branch else branch_of(ref)
     head = head or build.recent_head(ref)
     with _mirror_lock(mirror):
         build.fetch(mirror, ref.number, head, head, lambda _: None)
