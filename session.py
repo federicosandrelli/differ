@@ -38,6 +38,7 @@ import tempfile
 import termios
 import threading
 import time
+import unicodedata
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -789,6 +790,7 @@ def _write(s: Session, data: bytes) -> None:
 # How long a submit waits after its paste before it presses Enter. Claude Code takes an Enter that arrives soon after
 # the paste as part of the paste; 0.1 seconds was not always enough. A Claude Code that stalls for longer still can.
 SUBMIT_WAIT = 0.5
+HELD_MAX = 500
 
 
 def paste(ref: PullRef, text: str, submit: bool = False) -> None:
@@ -816,9 +818,12 @@ def _paste(s: Session, text: str, submit: bool) -> None:
 
 
 def hold(ref: PullRef, text: str) -> None:
-    """Keep the text for `paste_held`, in place of any text held before."""
+    """Keep the text for `paste_held`, in place of any text held before, as one line the reader can read whole: line
+    breaks and tabs become spaces, other control and invisible format characters go, and the text stops at
+    HELD_MAX characters, short of the length at which Claude Code shows a paste as a placeholder."""
+    line = "".join(" " if c in "\t\n\r" else c for c in text if c in "\t\n\r" or unicodedata.category(c)[0] != "C")
     with lock:
-        session_of(ref).held = text
+        session_of(ref).held = " ".join(line.split())[:HELD_MAX]
 
 
 def paste_held(ref: PullRef) -> bool:

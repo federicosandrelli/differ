@@ -285,6 +285,13 @@ def test_a_held_prompt_is_pasted_once_and_unsent(monkeypatch: pytest.MonkeyPatch
         assert session.session_of(REF).typed
 
 
+def test_a_held_prompt_is_one_readable_line_of_at_most_held_max_characters() -> None:
+    session.hold(REF, "review\r\nit\tnow\u200b\u202e\x07 " + "x" * 600)
+    with session.lock:
+        held = session.session_of(REF).held
+    assert held.startswith("review it now x") and len(held) == session.HELD_MAX
+
+
 def test_a_close_forgets_the_held_prompt(fake: SimpleNamespace) -> None:
     session.hold(REF, "/review-pr")
     session.close(REF)

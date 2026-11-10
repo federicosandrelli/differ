@@ -303,14 +303,18 @@ async function sendQuickPrompt(prompt) {
   } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); } finally { TERM.pasting = false; }
 }
 // Paste the prompt a differ:// link brought into the session's prompt, unsent, once the session takes quick prompts,
-// and bring the terminal up with the cursor in it, for the reader to read it and send it.
+// and bring the terminal up, for the reader to read it and send it. No click asked for it, so the focus moves to the
+// terminal only from nowhere in particular: a key meant for a comment box must not reach Claude's prompt. An answer
+// to a poll sent before the paste still says a prompt is held, so the terminal comes up only after a paste.
 async function pasteHeldPrompt() {
   if (!termSession().held || !quickReady() || TERM.pasting) return;
   TERM.pasting = true;
   try {
+    CL.session.held = false;
+    if (!(await api('claude_paste_held', {})).pasted) return;
+    const idle = document.activeElement === document.body;
     if (TERM.open) renderSide(); else await openTerminal(false);
-    if (TERM.term) TERM.term.focus();
-    await api('claude_paste_held', {});
+    if (idle && TERM.term) TERM.term.focus();
   } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); } finally { TERM.pasting = false; }
 }
 async function termClick(t) {

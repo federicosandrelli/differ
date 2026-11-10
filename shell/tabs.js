@@ -39,8 +39,9 @@
     if (!tab) { tab = { key, url, title: '…', status: '', claudeState: '', claudeTitle: '', frame: null }; tabs.push(tab); }
     activate(tab);
   }
-  const sessionAction = (tab, action, body) => {
-    const m = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(tab.key);
+  // Post a page action for the pull request whose page is at the path; nothing for another path.
+  const sessionAction = (path, action, body) => {
+    const m = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(path);
     if (!m) return Promise.resolve();
     return fetch(`/api/${m[1]}/${m[2]}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
   };
@@ -53,13 +54,13 @@
     let model = null;
     try { model = localStorage.getItem(MODEL_KEY); } catch {}
     const frame = tab.frame;
-    sessionAction(tab, 'claude_open', model ? { model } : {}).then(() => {
+    sessionAction(tab.key, 'claude_open', model ? { model } : {}).then(() => {
       if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'claude-open' }, location.origin);
     });
   }
   // A closed tab ends its pull request's Claude session, if one runs; the server keeps the session's id, so the next
   // open of the pull request resumes the conversation.
-  const endSession = (tab) => sessionAction(tab, 'claude_close', {});
+  const endSession = (tab) => sessionAction(tab.key, 'claude_close', {});
   function close(tab) {
     const i = tabs.indexOf(tab);
     if (i < 0) return;
@@ -388,11 +389,11 @@
     fetch('/api/link?pr=' + encodeURIComponent(pr)).then(r => r.ok ? r.json() : null).then((link) => {
       if (!link) return;
       const why = !link.followed ? `You don't follow ${link.repo}` : link.fork === null ? "differ can't tell whether it comes from a fork" : link.fork ? 'It comes from a fork' : '';
-      const asked = why ? askReader(`A link asks to open ${link.name}. ${why}, and a Claude session on its page runs the pull request's hooks. Open it?`) : Promise.resolve(true);
+      const brings = prompt ? " It also brings a prompt for Claude, which you'll see before you send it." : '';
+      const asked = why ? askReader(`A link asks to open ${link.name}. ${why}, and a Claude session on its page runs the pull request's hooks.${brings} Open it?`) : Promise.resolve(true);
       return asked.then((ok) => {
         if (!ok) return;
-        const held = prompt ? fetch(`/api${link.path.replace('/pull/', '/')}/claude_hold`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: prompt }) }).catch(() => {}) : Promise.resolve();
-        return held.then(() => open(link.path));
+        return (prompt ? sessionAction(link.path, 'claude_hold', { text: prompt }) : Promise.resolve()).then(() => open(link.path));
       });
     }).catch(() => {});
   }
