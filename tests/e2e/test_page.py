@@ -2260,28 +2260,85 @@ def test_the_start_page_lists_the_viewers_pull_requests_and_scrolls_a_long_list(
         (cache_dir / "board.json").unlink(missing_ok=True)
 
 
-def test_a_long_list_on_the_start_page_counts_the_cards_below_and_scrolls_on(page: Page, server_url: str) -> None:
-    # A 600px window gives the list 300px: five 50px cards and their 8px gaps fit, and the sixth is cut.
+def serve_board(page: Page, body: str) -> None:
+    """Answer every load of the start page's board with `body`."""
+    page.route(re.compile(r"/board\?"), lambda route: route.fulfill(content_type="text/html", body=body))
+
+
+def serve_long_column(page: Page, height: int = 50) -> None:
+    """A board with one column of twenty cards `height` px tall, each with a link, in a 600px window. The list gets
+    300px: with 50px cards, five cards and their 8px gaps fit, and the sixth is cut. A page of the list is its height
+    less both fades, 300 - 40 - 64 = 196px."""
     cards = "".join(
-        f'<div class="card pr" style="flex: none; height: 50px"><a href="#{n}">PR {n}</a></div>' for n in range(20)
+        f'<div class="card pr" style="flex: none; height: {height}px"><a href="#{n}">PR {n}</a></div>'
+        for n in range(20)
     )
     page.set_viewport_size({"width": 1000, "height": 600})
-    page.route(
-        re.compile(r"/board\?"),
-        lambda route: route.fulfill(
-            content_type="text/html",
-            body=f'<div class="column"><h3>Long</h3><section class="sub" data-key="long">{cards}</section></div>',
-        ),
+    serve_board(
+        page,
+        f'<div class="column"><h3>Long</h3><section class="sub" data-key="long" data-label="Long">{cards}</section></div>',
     )
+
+
+def test_a_long_list_on_the_start_page_counts_the_cards_below_and_pages_them_clear_of_the_fades(
+    page: Page, server_url: str
+) -> None:
+    serve_long_column(page)
     page.goto(server_url + "/home")
     sub, more = page.locator(".sub[data-key=long]"), page.locator(".column .more")
     expect(more).to_have_text("15 more ↓")
+    expect(more).to_have_accessible_name("15 more in Long")
     more.click()
-    expect(more).to_have_text("11 more ↓")
-    more.focus()
+    page.wait_for_function("document.querySelector('.sub').scrollTop === 196")
+    expect(more).to_have_text("12 more ↓")
+    page.evaluate("window.drawn = document.querySelector('.more'); document.dispatchEvent(new Event('tab-shown'))")
+    page.wait_for_function("!drawn.isConnected")
+    expect(more).to_be_focused()
+    expect(more).to_have_text("12 more ↓")
     sub.evaluate("list => { list.scrollTop = list.scrollHeight; }")
     expect(more).to_be_disabled()
     expect(sub.locator("a").last).to_be_focused()
+
+
+def test_tabbing_down_a_long_list_on_the_start_page_keeps_each_focused_card_clear_of_the_fades(
+    page: Page, server_url: str
+) -> None:
+    serve_long_column(page, height=70)
+    page.goto(server_url + "/home")
+    page.locator(".sub a").first.focus()
+    clear = """() => {
+      const card = document.activeElement.closest('.card').getBoundingClientRect();
+      const list = document.activeElement.closest('.sub'), box = list.getBoundingClientRect();
+      const top = box.top + (list.hasAttribute('data-above') ? 40 : 0);
+      const bottom = box.bottom - (list.hasAttribute('data-below') ? 64 : 0);
+      return card.top >= top - 1 && card.bottom <= bottom + 1;
+    }"""
+    for n in range(1, 15):
+        page.keyboard.press("Tab")
+        expect(page.locator(f'.sub a[href="#{n}"]')).to_be_focused()
+        assert page.evaluate(clear), f"card {n} sits in a fade"
+
+
+def test_a_list_that_stops_scrolling_drops_its_button_and_hands_the_focus_to_its_last_row(
+    page: Page, server_url: str
+) -> None:
+    # Ten 50px rows fill 500px: a 600px window gives the list 300px, a 1200px window all it needs.
+    rows = "".join(f'<a class="item" href="#{n}" style="height: 50px">PR {n}</a>' for n in range(10))
+    page.add_init_script("window.errors = []; addEventListener('error', (e) => errors.push(e.message));")
+    page.set_viewport_size({"width": 1000, "height": 600})
+    serve_board(
+        page,
+        '<section class="group opened"><h2>Recently opened</h2>'
+        f'<div class="card"><div class="list" data-label="Recently opened">{rows}</div></div></section>',
+    )
+    page.goto(server_url + "/home")
+    more = page.locator(".opened > .more")
+    expect(more).to_have_text("4 more ↓")
+    more.focus()
+    page.set_viewport_size({"width": 1000, "height": 1200})
+    expect(more).to_have_count(0)
+    expect(page.locator(".list a").last).to_be_focused()
+    assert page.evaluate("errors") == []
 
 
 def test_focusing_the_start_page_search_selects_its_text(page: Page, server_url: str) -> None:

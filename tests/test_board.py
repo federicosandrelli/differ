@@ -308,7 +308,7 @@ def test_classify_lists_other_peoples_merges_newest_merge_first_and_leaves_out_t
 
 def sub(page: str, key: str) -> str:
     """The HTML of the list with the key."""
-    return re.findall(rf'<section class="sub" data-key="{key}">.*?</section>', page)[0]
+    return re.findall(rf'<section class="sub" data-key="{key}"[^>]*>.*?</section>', page)[0]
 
 
 def column_counts(page: str) -> list[str]:
@@ -320,7 +320,7 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
     mine = [pr(1, ci="FAILURE"), pr(2, requested=("bob",))]
     save(board.classify(ME, [mine, [], [pr(3, author="ann", repo="acme/tools")], [], []], []))
     page = board.sections_html()
-    assert re.findall(r'<section class="sub" data-key="(\w+)">', page) == [
+    assert re.findall(r'<section class="sub" data-key="(\w+)"', page) == [
         "action",
         "reviewing",
         "draft",

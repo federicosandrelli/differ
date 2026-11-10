@@ -513,10 +513,10 @@ def card_html(r: Row, viewer: str, quiet: bool) -> str:
     )
 
 
-def list_html(key: str, rows: list[Row], viewer: str, quiet: bool) -> str:
-    """A list of cards keyed by `key`, or None without rows."""
+def list_html(key: str, label: str, rows: list[Row], viewer: str, quiet: bool) -> str:
+    """A list of cards keyed by `key` and named `label`, or None without rows."""
     cards = "".join(card_html(r, viewer, quiet) for r in rows)
-    return f'<section class="sub" data-key="{key}">{cards or NONE_HTML}</section>'
+    return f'<section class="sub" data-key="{key}" data-label="{html.escape(label)}">{cards or NONE_HTML}</section>'
 
 
 def footer_html(board: Board) -> str:
@@ -537,7 +537,7 @@ def column_html(column: Column, board: Board) -> str:
     rows = [r for key in column.sections for r in board["sections"].get(key) or []]
     full = any(key in board["full"] for key in column.sections)
     head = f"<h3>{html.escape(column.label)}{count_html(len(rows), full)}</h3>"
-    body = list_html(column.sections[0], rows, board["viewer"], column.quiet)
+    body = list_html(column.sections[0], column.label, rows, board["viewer"], column.quiet)
     classes = f'class="column{" quiet" if column.quiet else ""}"'
     if column.folded:
         return (
@@ -622,6 +622,7 @@ def sections_html(on: list[str] | None = None) -> str:
     if opened := kept(opened_rows(shown)):
         groups.append(
             f'<section class="group opened"><h2>Recently opened<span class="count">{len(opened)}</span></h2>'
-            f'<div class="list card">{"".join(row_html(r, board["viewer"]) for r in opened)}</div></section>'
+            f'<div class="card"><div class="list" data-label="Recently opened">'
+            f"{''.join(row_html(r, board['viewer']) for r in opened)}</div></div></section>"
         )
     return strip + ("".join(groups) or '<div class="empty">No pull requests yet.</div>') + footer_html(board)

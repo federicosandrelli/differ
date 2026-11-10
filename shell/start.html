@@ -9,25 +9,43 @@ const board = document.getElementById('board');
 const openedColumns = new Set();
 const lists = () => board.querySelectorAll('.sub, .list');
 const listKey = (list) => list.dataset.key ?? 'opened';
-// A list marks the edges with cards past them, which fade. A list that scrolls has a button under it with the count
-// of the cards below its bottom edge, disabled once none are. A disabled button loses the focus, so the focus moves
-// to the last card's link.
+// A list marks the edges with cards past them, which fade. A list that scrolls has a button under it, under its card
+// when it sits in one, with the count of the cards below its bottom edge, disabled once none are. The button pages
+// the list by the height between the fades, so each card passes clear of both. A button that hides or goes takes
+// the focus with it, so the focus moves to the last card's link.
+const fade = (list, edge) => parseFloat(getComputedStyle(list).getPropertyValue(`--fade-${edge}`));
+const page = (list) => {
+  const step = Math.max(list.clientHeight - fade(list, 'top') - fade(list, 'bottom'), list.clientHeight / 2);
+  list.scrollBy({ top: step, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+};
+const handOff = (list, more) => {
+  if (document.activeElement !== more) return;
+  const last = list.lastElementChild;
+  (last.matches('a') ? last : last.querySelector('a'))?.focus({ preventScroll: true });
+};
 const mark = (list) => {
-  list.toggleAttribute('data-above', list.scrollTop > 1);
-  list.toggleAttribute('data-below', list.scrollTop + list.clientHeight < list.scrollHeight - 1);
-  let more = list.nextElementSibling?.matches('.more') ? list.nextElementSibling : null;
-  if (list.scrollHeight <= list.clientHeight) { more?.remove(); return; }
-  if (!more) {
-    more = Object.assign(document.createElement('button'), { className: 'ghost more' });
-    list.after(more);
-  }
   const edge = list.getBoundingClientRect().top + list.clientTop + list.clientHeight;
   const below = [...list.children].filter(card => card.getBoundingClientRect().bottom > edge + 1).length;
-  more.textContent = `${below} more ↓`;
-  if (!below && document.activeElement === more) {
-    const last = list.lastElementChild;
-    (last.matches('a') ? last : last.querySelector('a'))?.focus({ preventScroll: true });
+  list.toggleAttribute('data-above', list.scrollTop > 1);
+  list.toggleAttribute('data-below', below > 0);
+  const key = listKey(list);
+  let more = board.querySelector(`.more[data-list="${CSS.escape(key)}"]`);
+  if (list.scrollHeight <= list.clientHeight) {
+    if (more) { handOff(list, more); more.remove(); }
+    return;
   }
+  if (!more) {
+    more = Object.assign(document.createElement('button'), { className: 'ghost more' });
+    more.dataset.list = key;
+    more.addEventListener('click', () => page(list));
+    (list.parentElement.closest('.card') ?? list).after(more);
+  }
+  const text = `${below} more ↓`;
+  if (more.textContent !== text) {
+    more.textContent = text;
+    more.setAttribute('aria-label', `${below} more in ${list.dataset.label}`);
+  }
+  if (!below) handOff(list, more);
   more.disabled = !below;
 };
 const markAll = () => lists().forEach(mark);
@@ -43,11 +61,19 @@ board.addEventListener('toggle', (e) => {
   const folded = e.target.closest('.folded');
   if (!folded) return;
   if (folded.open) openedColumns.add(folded.dataset.key); else openedColumns.delete(folded.dataset.key);
-  folded.querySelectorAll('.sub').forEach(mark);
 }, true);
 board.addEventListener('scroll', (e) => { if (e.target.matches?.('.sub, .list')) mark(e.target); }, true);
-// The board resizes with the window, and when a page scrollbar comes or goes, which can wrap a card's title.
-new ResizeObserver(markAll).observe(board);
+// The browser scrolls a focused card only until some of it shows, so the card may sit in a fade. Scrolling to the
+// nearest edge honours the list's scroll padding, which keeps the card clear of both fades.
+board.addEventListener('focusin', (e) => {
+  const list = e.target.closest('.sub, .list');
+  if (list) [...list.children].find(card => card.contains(e.target))?.scrollIntoView({ block: 'nearest' });
+});
+// The board resizes with the window, when a folded column opens, and when a page scrollbar comes or goes, which can
+// wrap a card's title. Marking adds and removes buttons, which resizes the board again, so it waits for the next
+// frame rather than resize the board inside the observer.
+new ResizeObserver(() => requestAnimationFrame(markAll)).observe(board);
+markAll();
 // The repositories the reader turned on in the strip above the groups. The server draws the board with their rows
 // only, and presses their toggles; a repository the reader no longer follows has no toggle, so it drops out.
 const REPOS_KEY = 'dr:boardRepos';
@@ -57,13 +83,6 @@ board.addEventListener('click', (e) => {
   const settings = e.target.closest('[data-settings]');
   if (settings) { SHELL?.settings(settings.dataset.settings); return; }
   if (e.target.closest('[data-update]')) { e.preventDefault(); update(); return; }
-  const more = e.target.closest('.more');
-  if (more) {
-    const list = more.previousElementSibling;
-    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-    list.scrollBy({ top: list.clientHeight * 0.8, behavior: smooth ? 'smooth' : 'auto' });
-    return;
-  }
   const toggle = e.target.closest('[data-repo]');
   if (toggle) {
     const repo = toggle.dataset.repo;
@@ -78,7 +97,7 @@ board.addEventListener('click', (e) => {
 // A cached load draws the board from GitHub's last answer at once; the others ask GitHub again first, and the update
 // notice at the end of the repository strip turns busy meanwhile. The board is stale until a load that asks
 // GitHub draws it, so a cached load that ends while the board is stale asks GitHub next: a toggle click may have
-// cancelled the load that asked. The redraw keeps the focus on the toggle it had. Cmd+R or a click on the update
+// cancelled the load that asked. The redraw keeps the focus on the toggle or the list's button it had. Cmd+R or a click on the update
 // link forces the update, which makes the board stale: the loads ask GitHub even when it answered a moment ago,
 // until one of them ends. The update notice keeps its width while it is busy, so the strip keeps its lines.
 let loading = null, stale = true, force = false;
@@ -106,9 +125,10 @@ const loadBoard = (cached) => {
   if (forced) query.set('force', '1');
   if (!cached) setUpdate(Notice.busy('Updating…'));
   fetchBoard(query, signal).then((h) => {
-    const focused = document.activeElement?.dataset?.repo;
+    const { repo, list } = document.activeElement?.dataset ?? {};
     redraw(h);
-    if (focused) board.querySelector(`[data-repo="${CSS.escape(focused)}"]`)?.focus();
+    if (repo) board.querySelector(`[data-repo="${CSS.escape(repo)}"]`)?.focus();
+    if (list) board.querySelector(`.more[data-list="${CSS.escape(list)}"]:enabled`)?.focus();
     if (board.querySelector('.repos')) {
       on = [...board.querySelectorAll('[data-repo].on')].map(b => b.dataset.repo);
       saveOn();

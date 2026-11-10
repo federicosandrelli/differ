@@ -89,6 +89,8 @@ def test_every_token_is_used_and_every_used_token_is_defined() -> None:
         "--gap",
         "--fade-top",
         "--fade-bottom",
+        "--mask-top",
+        "--mask-bottom",
     }
     non_colour |= {"--radius-sm", "--radius", "--radius-lg", "--radius-pill", "--control-font", "--control-line"}
     used: set[str] = set()
