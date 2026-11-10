@@ -447,8 +447,6 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
         *session_flag,
         "--model",
         s.model,
-        "--permission-mode",
-        "bypassPermissions",
         "--setting-sources",
         "user,project,local",
         "--strict-mcp-config",

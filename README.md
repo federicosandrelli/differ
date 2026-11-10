@@ -75,16 +75,15 @@ It starts with Opus 5.5 unless you pick another model in the settings.
 - "Send to Claude" in a comment box sends the comment to the session instead of
   GitHub. The session listens for these comments, and its reply shows in the
   thread. The bot's dot is lit while it listens.
-- The session runs with permissions bypassed: it reads, edits, commits and
-  pushes without asking. The repository's own `CLAUDE.md`, hooks and settings
-  load, on anyone's pull request, as soon as its page opens while Auto start is
+- The session runs in the permission mode your Claude Code settings choose
+  (`permissions.defaultMode`), and it can commit and push. The repository's
+  own `CLAUDE.md`, hooks and settings load, on anyone's pull request, as soon as its page opens while Auto start is
   on. If you also push to the branch from your own clone, the two can race, and
   the later push has to rebase.
 - Before each start, differ records the repository's mirror as trusted in
   `~/.claude.json` when that file exists, the entry Claude Code's docs name for
   trusting a folder by hand, so Claude Code does not ask whether you trust the
-  folder. Other first-run questions, such as accepting bypassed permissions,
-  still show in the terminal.
+  folder. Other first-run questions still show in the terminal.
 - Closing the tab ends the session and removes the worktree. The next
   start resumes the conversation.
 

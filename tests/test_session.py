@@ -221,7 +221,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
     session_id = args[args.index("--session-id") + 1]
     assert len(session_id) == 36 and start["cwd"] == str(fake.folder)
     assert args[args.index("--model") + 1] == "claude-opus-5-5"
-    assert args[args.index("--permission-mode") + 1] == "bypassPermissions"
+    assert "--permission-mode" not in args
     assert args[args.index("--setting-sources") + 1] == "user,project,local"
     assert "--strict-mcp-config" in args
     config = json.loads(args[args.index("--mcp-config") + 1])["mcpServers"]["differ"]

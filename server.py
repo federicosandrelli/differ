@@ -432,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
         """Answer the WebSocket handshake of the page's terminal, then relay the pull request's session until either
         side closes the connection: what the session prints goes to the page as binary frames, what the reader types
         comes back the same way, and a text frame `{"cols": n, "rows": n}` sets the terminal's size. Only a page of
-        this server may connect: the session runs with permissions bypassed, so typing into it runs code."""
+        this server may connect: typing into the session runs code."""
         if not (ws := self.upgrade(from_page=True)):
             return
 
