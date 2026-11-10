@@ -237,6 +237,19 @@ def test_start_thread_keeps_claudes_thread_on_the_lines_with_their_code_and_wait
     assert frames == []
 
 
+def test_start_thread_refuses_a_second_thread_of_claudes_on_the_same_lines(repo: Path) -> None:
+    start(path="a.py", line=1, body="First.")
+    (c,) = claude.read(REF)
+    again = start(path="a.py", line=1, body="Again.")
+    assert again == {
+        "content": [{"type": "text", "text": f"start_thread: you started thread {c['id']} on these lines already"}],
+        "isError": True,
+    }
+    assert not start(path="new.py", start_line=1, line=2, body="Other lines.")["isError"]
+    claude.add(REF, path="a.py", line=1, start_line=None, side="RIGHT", commit=c["commit"], code=[], body="Mine.")
+    assert len(claude.read(REF)) == 3
+
+
 def test_start_thread_on_the_old_side_reads_the_file_before_the_pull_request(repo: Path) -> None:
     assert not start(path="a.py", line=1, side="LEFT", body="Was 1.")["isError"]
     assert not start(path="gone.py", line=1, side="LEFT", body="Gone.")["isError"]

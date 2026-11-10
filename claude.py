@@ -56,6 +56,10 @@ class NoComment(fields.Invalid):
     """The pull request has no Claude comment with that id."""
 
 
+class Started(fields.Invalid):
+    """Claude already started a thread on the same lines of the same commit."""
+
+
 def read(ref: PullRef) -> list[dict]:
     """The pull request's comments; empty when it has none, or when the file is broken."""
     return [with_messages(c) for c in records.COMMENTS.read(ref, list) if isinstance(c, dict)]
@@ -238,9 +242,14 @@ def start_thread(
 ) -> dict:
     """Keep a thread Claude starts on lines of the pull request, with an id never used before. Nothing waits for
     Claude in it, so it is `answered` and goes to no session; the reader's reply in it goes as a `follow_up`. Answers
-    the thread as kept."""
+    the thread as kept. Raises Started when Claude already started a thread on the same lines of the same commit, so
+    that describing the files again adds no second thread."""
     with lock:
         comments = read(ref)
+        where = {"path": path, "line": line, "start_line": start_line, "side": side, "commit": commit}
+        for c in comments:
+            if c["messages"][0]["author"] == "claude" and all(c[k] == v for k, v in where.items()):
+                raise Started(f"you started thread {c['id']} on these lines already")
         c = new_thread("claude", path, line, start_line, side, commit, code, body)
         comments.append(c)
         write(ref, comments)
