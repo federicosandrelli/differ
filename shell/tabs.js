@@ -379,20 +379,25 @@
   tabs = (saved.tabs || []).filter(t => t && t.url).map(t => ({ key: keyOf(t.url), url: t.url, title: t.title || '…', status: t.status || '', claudeState: '', claudeTitle: '', frame: null }));
   activate(byKey(saved.active) || home);
 
-  // The desktop app holds the pull requests that differ:// links name, and sends 'links' when one arrives. Any app
-  // or site can send such a link, and a Claude session started from the page runs the hooks of the pull request's
-  // head commit. So a pull request from a fork, or of a repository the reader does not follow, opens only once they
-  // agree. For a followed repository, a null fork means GitHub did not say.
-  function openLink(pr) {
+  // The desktop app holds the links that differ:// URLs bring, and sends 'links' when one arrives. Any app or site can
+  // send such a link, and a Claude session started from the page runs the hooks of the pull request's head commit. So
+  // a pull request from a fork, or of a repository the reader does not follow, opens only once they agree. For a
+  // followed repository, a null fork means GitHub did not say. A link's prompt waits in the server until the page
+  // pastes it into the session's prompt, unsent, so the reader sees it before it runs.
+  function openLink({ pr, prompt }) {
     fetch('/api/link?pr=' + encodeURIComponent(pr)).then(r => r.ok ? r.json() : null).then((link) => {
       if (!link) return;
       const why = !link.followed ? `You don't follow ${link.repo}` : link.fork === null ? "differ can't tell whether it comes from a fork" : link.fork ? 'It comes from a fork' : '';
       const asked = why ? askReader(`A link asks to open ${link.name}. ${why}, and a Claude session on its page runs the pull request's hooks. Open it?`) : Promise.resolve(true);
-      return asked.then(ok => { if (ok) open(link.path); });
+      return asked.then((ok) => {
+        if (!ok) return;
+        const held = prompt ? fetch(`/api${link.path.replace('/pull/', '/')}/claude_hold`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: prompt }) }).catch(() => {}) : Promise.resolve();
+        return held.then(() => open(link.path));
+      });
     }).catch(() => {});
   }
   function openLinks() {
-    invoke('take_links').then(prs => prs.forEach(openLink)).catch(() => {});
+    invoke('take_links').then(links => links.forEach(openLink)).catch(() => {});
   }
   if (invoke) { window.addEventListener('links', openLinks); openLinks(); }
 })();

@@ -18,6 +18,8 @@
   claude_open, claude_close, claude_paste
                                        the embedded session: start it with the terminal's cols and rows and the
                                        model, end it, paste text into its prompt and, with submit, send it
+  claude_hold, claude_paste_held       keep a differ:// link's prompt for the session, and paste it into the session's
+                                       prompt, unsent (answers whether there was one)
   claude_install                       install Claude Code, or update one too old, in the session's terminal, then
                                        start the session
   claude_address                       put a review thread in the session's queue of addresses, with the prompt that
@@ -103,6 +105,17 @@ def _claude_paste(ref: PullRef, body: dict, port: int) -> dict:
 @action("claude_address")
 def _claude_address(ref: PullRef, body: dict, port: int) -> dict:
     return session.address(ref, text_of(body["thread"]), text_of(body["text"]))
+
+
+@action("claude_hold")
+def _claude_hold(ref: PullRef, body: dict, port: int) -> dict:
+    session.hold(ref, text_of(body["text"]))
+    return {}
+
+
+@action("claude_paste_held")
+def _claude_paste_held(ref: PullRef, body: dict, port: int) -> dict:
+    return {"pasted": session.paste_held(ref)}
 
 
 @action("comment")

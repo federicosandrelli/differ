@@ -146,7 +146,8 @@ class Session:
     addresses, oldest first, and `typed` is set while the reader has typed into the terminal since their last Enter, so
     no paste of an address submits what they typed. `working_since` is the time the title last turned to Claude working,
     as `claude.now()` gives it, while it shows Claude working. `generation` counts the starts, so a start that finishes
-    after a close or a later start is dropped. `writes` is held around every write to the pseudoterminal and its close,
+    after a close or a later start is dropped. `held` is a prompt that a differ:// link brought, until it goes into
+    the session's prompt or the session closes. `writes` is held around every write to the pseudoterminal and its close,
     `sends` around every send to the terminals, and `pastes` around a paste and its Enter, so two pastes never mix; all
     three outside the module lock."""
 
@@ -172,6 +173,7 @@ class Session:
     size: tuple[int, int] = (80, 24)
     branch: str = ""
     head: str = ""
+    held: str = ""
     writes: threading.Lock = field(default_factory=threading.Lock)
     sends: threading.Lock = field(default_factory=threading.Lock)
     pastes: threading.Lock = field(default_factory=threading.Lock)
@@ -342,6 +344,7 @@ def status(ref: PullRef) -> dict:
             "addresses": {a.thread: "working" if a.stage == "started" else "queued" for a in s.addresses}
             if running
             else {},
+            "held": bool(s.held),
             "setup": s.setup,
             "command": setup_command(s.setup),
             "installing": alive and s.installing,
@@ -812,6 +815,25 @@ def _paste(s: Session, text: str, submit: bool) -> None:
         write(s.ref, b"\r")
 
 
+def hold(ref: PullRef, text: str) -> None:
+    """Keep the text for `paste_held`, in place of any text held before."""
+    with lock:
+        session_of(ref).held = text
+
+
+def paste_held(ref: PullRef) -> bool:
+    """Paste the held text into the session's prompt, unsent, and forget it. Whether there was text to paste. The text
+    waits at the prompt as text the reader typed does (`typed`), so no address submits it."""
+    with lock:
+        s = session_of(ref)
+        text, s.held = s.held, ""
+    if text:
+        paste(ref, text)
+        with lock:
+            s.typed = True
+    return bool(text)
+
+
 def resize(ref: PullRef, cols: int, rows: int) -> None:
     """Set the size of the session's terminal. The call never waits, so it runs under the lock, where the descriptor
     stays open: the reader forgets it under the lock before it closes it."""
@@ -851,7 +873,9 @@ def close(ref: PullRef, remove_worktree: bool = True) -> None:
     """End the pull request's session and, by default, remove its worktree. The session file stays, so the next
     start resumes the conversation."""
     with lock:
-        proc = _forget(session_of(ref))
+        s = session_of(ref)
+        s.held = ""
+        proc = _forget(s)
     if proc is not None:
         end([proc])
     if remove_worktree:

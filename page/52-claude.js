@@ -48,7 +48,8 @@ function pollClaude() {
 // Show the server's answer: the threads when the comments changed, the files when their descriptions changed, the
 // session started or stopped taking quick prompts, or the threads' marks of Claude's work moved (claudeMarks), else
 // the footer when the session came or went, else the terminal's header when the session moved. A reply being written
-// in a thread that is gone goes with it. The merge state loads again once Claude's work ends.
+// in a thread that is gone goes with it. The merge state loads again once Claude's work ends, and a held prompt goes
+// into the session once it takes it.
 function applyClaude(d) {
   const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
   const descriptions = JSON.stringify(d.descriptions) !== JSON.stringify(CL.descriptions);
@@ -61,6 +62,7 @@ function applyClaude(d) {
   if (threads) threadsChanged();
   if (threads || descriptions || ready !== quickReady() || marks !== claudeMarks()) render(); else if (footer || session) renderSide();
   if (worked) watchMerge();
+  pasteHeldPrompt();
 }
 // What the threads show of Claude's work besides their comments: where Address with Claude stands for each thread,
 // and the comment that shows Claude working, so it changes only when what the threads show changes.

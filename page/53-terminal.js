@@ -302,6 +302,17 @@ async function sendQuickPrompt(prompt) {
     await api('claude_paste', { text: prompt.text, submit: true });
   } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); } finally { TERM.pasting = false; }
 }
+// Paste the prompt a differ:// link brought into the session's prompt, unsent, once the session takes quick prompts,
+// and bring the terminal up with the cursor in it, for the reader to read it and send it.
+async function pasteHeldPrompt() {
+  if (!termSession().held || !quickReady() || TERM.pasting) return;
+  TERM.pasting = true;
+  try {
+    if (TERM.open) renderSide(); else await openTerminal(false);
+    if (TERM.term) TERM.term.focus();
+    await api('claude_paste_held', {});
+  } catch (e) { CL.error = `Claude: ${e.message}`; renderSide(); } finally { TERM.pasting = false; }
+}
 async function termClick(t) {
   const d = t.dataset;
   // A click on a button leaves the focus where it was in WebKit, so the terminal would keep the Escape that closes

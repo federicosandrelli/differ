@@ -246,6 +246,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
         "working_since": "",
         "asking": False,
         "addresses": {},
+        "held": False,
         "setup": "",
         "command": "",
         "installing": False,
@@ -268,6 +269,26 @@ def test_a_submit_presses_enter_in_a_write_of_its_own_after_the_wait(monkeypatch
     monkeypatch.setattr(session.time, "sleep", calls.append)
     session.paste(REF, "rebase it", submit=True)
     assert calls == [b"\x1b[200~rebase it\x1b[201~", session.SUBMIT_WAIT, b"\r"]
+
+
+def test_a_held_prompt_is_pasted_once_and_unsent(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bytes] = []
+    monkeypatch.setattr(session, "write", lambda ref, data: calls.append(data))
+    assert not session.paste_held(REF)
+    session.hold(REF, "first")
+    session.hold(REF, "/review-pr")
+    assert session.status(REF)["held"]
+    assert session.paste_held(REF) and not session.paste_held(REF)
+    assert calls == [b"\x1b[200~/review-pr\x1b[201~"]
+    assert not session.status(REF)["held"]
+    with session.lock:
+        assert session.session_of(REF).typed
+
+
+def test_a_close_forgets_the_held_prompt(fake: SimpleNamespace) -> None:
+    session.hold(REF, "/review-pr")
+    session.close(REF)
+    assert not session.status(REF)["held"]
 
 
 def test_a_paste_drops_the_escapes_that_would_end_it_early(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -802,6 +823,7 @@ def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypat
         "working_since": "",
         "asking": False,
         "addresses": {},
+        "held": False,
         "setup": "",
         "command": "",
         "installing": False,

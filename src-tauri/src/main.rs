@@ -11,6 +11,7 @@ use std::time::Duration;
 
 mod update;
 
+use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::{
     AppHandle, LogicalPosition, Manager, RunEvent, State, Theme, TitleBarStyle, Url, WebviewUrl,
@@ -25,9 +26,16 @@ struct Sidecar {
     child: Mutex<Option<Child>>,
 }
 
-// The pull requests that differ:// links named, held until the shell takes them: a link that launches the app
-// arrives before the shell has loaded.
-struct Links(Mutex<Vec<String>>);
+// What a differ:// link asks for: a pull request, and a prompt to put into its Claude session's prompt, unsent.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+struct Link {
+    pr: String,
+    prompt: Option<String>,
+}
+
+// The links that arrived, held until the shell takes them: a link that launches the app arrives before the shell
+// has loaded.
+struct Links(Mutex<Vec<Link>>);
 
 // Marks the page as running in the app, so its CSS leaves room for the transparent title bar, and lays
 // a drag region over that strip: the webview covers the title bar, so the window only moves when Tauri's
@@ -234,37 +242,46 @@ async fn confirm(window: tauri::WebviewWindow, message: String) -> bool {
 }
 
 #[tauri::command]
-fn take_links(links: State<Links>) -> Vec<String> {
+fn take_links(links: State<Links>) -> Vec<Link> {
     std::mem::take(&mut *links.0.lock().unwrap())
 }
 
-// The pull requests that differ://open?pr=<a pull request URL or owner/repo#123> links name.
-fn link_prs(urls: &[Url]) -> Vec<String> {
+// The links among the URLs: differ://open?pr=<a pull request URL or owner/repo#123>, with &prompt=<text> for one
+// that brings a prompt.
+fn links_of(urls: &[Url]) -> Vec<Link> {
     urls.iter()
         .filter(|url| url.scheme() == "differ" && url.host_str() == Some("open"))
         .filter_map(|url| {
-            let pr = url
-                .query_pairs()
-                .find(|(key, _)| key == "pr")?
-                .1
-                .into_owned();
-            // The # of an unencoded owner/repo#123 starts the URL's fragment.
-            Some(match url.fragment() {
-                Some(fragment) => format!("{pr}#{fragment}"),
-                None => pr,
+            // A # in the link is text, such as the # of an unencoded owner/repo#123, not the start of a fragment.
+            let mut query = url.query().unwrap_or("").to_owned();
+            if let Some(fragment) = url.fragment() {
+                query = format!("{query}#{fragment}");
+            }
+            let parsed: Url = format!("differ://open?{}", query.replace('#', "%23"))
+                .parse()
+                .ok()?;
+            let value = |name: &str| {
+                parsed
+                    .query_pairs()
+                    .find(|(key, _)| key == name)
+                    .map(|(_, value)| value.into_owned())
+            };
+            Some(Link {
+                pr: value("pr")?,
+                prompt: value("prompt").filter(|prompt| !prompt.trim().is_empty()),
             })
         })
         .collect()
 }
 
-// A differ:// link opens its pull request in a tab. The app keeps the pull request and tells the shell, which takes
-// it with take_links.
+// A differ:// link opens its pull request in a tab. The app keeps the link and tells the shell, which takes it with
+// take_links.
 fn open_links(app: &AppHandle, urls: &[Url]) {
-    let prs = link_prs(urls);
-    if prs.is_empty() {
+    let links = links_of(urls);
+    if links.is_empty() {
         return;
     }
-    app.state::<Links>().0.lock().unwrap().extend(prs);
+    app.state::<Links>().0.lock().unwrap().extend(links);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.set_focus();
@@ -430,12 +447,12 @@ fn end_server(child: &mut Child) {
 
 #[cfg(test)]
 mod tests {
-    use super::{answers, link_prs};
+    use super::{answers, links_of, Link};
     use std::net::TcpListener;
     use tauri::Url;
 
     #[test]
-    fn takes_the_pull_requests_of_differ_open_links() {
+    fn takes_the_pull_request_and_prompt_of_differ_open_links() {
         let urls: Vec<Url> = [
             "differ://open?pr=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1",
             "differ://open?pr=o/r#2",
@@ -443,13 +460,27 @@ mod tests {
             "differ://settings?pr=o/r%234",
             "other://open?pr=o/r%235",
             "differ://open",
+            "differ://open?pr=o/r%236&prompt=%2Freview-pr%20now",
+            "differ://open?pr=o/r#7&prompt=a#b",
+            "differ://open?pr=o/r%238&prompt=%20",
         ]
         .iter()
         .map(|url| url.parse().unwrap())
         .collect();
+        let link = |pr: &str, prompt: Option<&str>| Link {
+            pr: pr.to_owned(),
+            prompt: prompt.map(str::to_owned),
+        };
         assert_eq!(
-            link_prs(&urls),
-            ["https://github.com/o/r/pull/1", "o/r#2", "o/r#3"]
+            links_of(&urls),
+            [
+                link("https://github.com/o/r/pull/1", None),
+                link("o/r#2", None),
+                link("o/r#3", None),
+                link("o/r#6", Some("/review-pr now")),
+                link("o/r#7", Some("a#b")),
+                link("o/r#8", None),
+            ]
         );
     }
 

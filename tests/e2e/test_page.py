@@ -1329,6 +1329,31 @@ def test_the_terminal_runs_the_session_in_the_worktree_and_types_into_it(
     assert closed.ok and not worktree.exists()
 
 
+def test_a_held_prompt_goes_into_the_listening_session_with_the_terminal_up(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    pr = add_pr(OLD, NEW, branch="held")
+    number = pr.rsplit("/", 1)[1]
+    api = f"{server_url}/api/acme/widgets/{number}"
+    open_pr(page, server_url, pr)
+    try:
+        page.click("#side .foot [data-term-toggle]")
+        expect(page.locator(".term .thead .state")).to_have_text(
+            re.compile("listening on acme/widgets#"), timeout=60000
+        )
+        page.click("#side .foot [data-term-toggle]")
+        expect(page.locator(".term")).to_have_count(0)
+
+        held = page.request.post(f"{api}/claude_hold", data={"text": "/review-pr now"}, headers={"Origin": server_url})
+        assert held.ok
+        expect(page.locator("#termslot .term .xterm")).to_be_visible(timeout=15000)
+        page.wait_for_function(f"({TERM_TEXT})().includes('/REVIEW-PR NOW')")
+        page.wait_for_function("!termSession().held")
+    finally:
+        closed = page.request.post(f"{api}/claude_close", data={}, headers={"Origin": server_url})
+    assert closed.ok
+
+
 def open_in_shell(page: Page, server_url: str, pr: str) -> Frame:
     """Open the pull request at the page path `pr` in a tab of the shell, and answer the tab's frame once its
     comments have loaded."""

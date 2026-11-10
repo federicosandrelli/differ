@@ -54,7 +54,9 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 - A `differ://open?pr=<pull request URL>` link opens the pull request in a tab
   of the desktop app. For a pull request from a fork or of a repository you
   don't follow, the app asks first, since a Claude session on the page runs the
-  pull request's hooks.
+  pull request's hooks. Add `&prompt=<text>` to put a prompt into the Claude
+  session's prompt once it listens. differ doesn't send it: you read it and
+  press Enter.
 
 ## Claude in the page
 
