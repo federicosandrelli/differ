@@ -901,7 +901,9 @@ def test_search_keeps_every_file_in_the_tree_and_on_the_page(page: Page, server_
 def test_enter_goes_on_from_a_file_without_a_hit_that_option_down_stepped_onto(
     page: Page, server_url: str, add_pr: AddPr
 ) -> None:
-    open_pr(page, server_url, add_pr({}, {"a.py": "needle = 1\nneedle = 2\n", "b.py": "x = 1\n", "c.py": "needle = 3\n"}))
+    open_pr(
+        page, server_url, add_pr({}, {"a.py": "needle = 1\nneedle = 2\n", "b.py": "x = 1\n", "c.py": "needle = 3\n"})
+    )
     page.fill("#side .search", "needle")
     page.click("#side .leaf[data-path='a.py']")
     expect(page.locator("#searchmeta")).to_have_text("2 files · 1 / 3")
