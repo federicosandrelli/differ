@@ -26,7 +26,7 @@ main:has(#board) { max-width: 1320px; }
 .sub { max-height: 50vh; overflow-y: auto; }
 .column h3, .folded h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 /* A folded column opens under the row, from a summary that holds the column's chevron and its head. */
-.folded { margin-top: 16px; }
+.folded { margin-top: 40px; }
 .folded > summary { display: flex; align-items: center; gap: 4px; list-style: none; cursor: pointer; color: var(--text-secondary); }
 .folded > summary::-webkit-details-marker { display: none; }
 .folded > summary:hover, .folded > summary:hover h3 { color: var(--accent); }
@@ -57,6 +57,16 @@ main:has(#board) { max-width: 1320px; }
 .quiet .pr .t { font-weight: 400; color: var(--text-secondary); -webkit-line-clamp: 1; }
 .quiet .pr .m, .quiet .pr .age { font-size: 11px; }
 .list { max-height: 50vh; overflow: hidden auto; }
+/* A list that scrolls fades out at each edge with cards past it (data-above, data-below). Under it, a button counts
+   the cards below; it keeps its place, unseen, once the list reaches its end, so the page under it holds still. */
+.sub, .list {
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 0px), #000 calc(100% - var(--fade-bottom, 0px)), transparent);
+}
+:is(.sub, .list)[data-above] { --fade-top: 40px; }
+:is(.sub, .list)[data-below] { --fade-bottom: 64px; }
+.more { display: flex; width: fit-content; margin: 0 auto; }
+.list + .more { margin-top: 8px; }
+.more:disabled { visibility: hidden; }
 .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--text); }
 .item:first-child { border-top: 0; } .item:hover { background: var(--bg-panel); text-decoration: none; }
 .item .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -9,18 +9,45 @@ const board = document.getElementById('board');
 const openedColumns = new Set();
 const lists = () => board.querySelectorAll('.sub, .list');
 const listKey = (list) => list.dataset.key ?? 'opened';
+// A list marks the edges with cards past them, which fade. A list that scrolls has a button under it with the count
+// of the cards below its bottom edge, disabled once none are. A disabled button loses the focus, so the focus moves
+// to the last card's link.
+const mark = (list) => {
+  list.toggleAttribute('data-above', list.scrollTop > 1);
+  list.toggleAttribute('data-below', list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+  let more = list.nextElementSibling?.matches('.more') ? list.nextElementSibling : null;
+  if (list.scrollHeight <= list.clientHeight) { more?.remove(); return; }
+  if (!more) {
+    more = Object.assign(document.createElement('button'), { className: 'ghost more' });
+    list.after(more);
+  }
+  const edge = list.getBoundingClientRect().top + list.clientTop + list.clientHeight;
+  const below = [...list.children].filter(card => card.getBoundingClientRect().bottom > edge + 1).length;
+  more.textContent = `${below} more ↓`;
+  if (!below && document.activeElement === more) {
+    const last = list.lastElementChild;
+    (last.matches('a') ? last : last.querySelector('a'))?.focus({ preventScroll: true });
+  }
+  more.disabled = !below;
+};
+const markAll = () => lists().forEach(mark);
 const redraw = (h) => {
   const scrolled = new Map([...lists()].map(list => [listKey(list), list.scrollTop]));
   board.innerHTML = h;
   for (const folded of board.querySelectorAll('.folded')) folded.open = openedColumns.has(folded.dataset.key);
   for (const list of lists()) list.scrollTop = scrolled.get(listKey(list)) ?? 0;
+  markAll();
 };
-// A toggle event does not bubble, so the board hears it in the capture phase.
+// Toggle and scroll events do not bubble, so the board hears them in the capture phase.
 board.addEventListener('toggle', (e) => {
   const folded = e.target.closest('.folded');
   if (!folded) return;
   if (folded.open) openedColumns.add(folded.dataset.key); else openedColumns.delete(folded.dataset.key);
+  folded.querySelectorAll('.sub').forEach(mark);
 }, true);
+board.addEventListener('scroll', (e) => { if (e.target.matches?.('.sub, .list')) mark(e.target); }, true);
+// The board resizes with the window, and when a page scrollbar comes or goes, which can wrap a card's title.
+new ResizeObserver(markAll).observe(board);
 // The repositories the reader turned on in the strip above the groups. The server draws the board with their rows
 // only, and presses their toggles; a repository the reader no longer follows has no toggle, so it drops out.
 const REPOS_KEY = 'dr:boardRepos';
@@ -30,6 +57,13 @@ board.addEventListener('click', (e) => {
   const settings = e.target.closest('[data-settings]');
   if (settings) { SHELL?.settings(settings.dataset.settings); return; }
   if (e.target.closest('[data-update]')) { e.preventDefault(); update(); return; }
+  const more = e.target.closest('.more');
+  if (more) {
+    const list = more.previousElementSibling;
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    list.scrollBy({ top: list.clientHeight * 0.8, behavior: smooth ? 'smooth' : 'auto' });
+    return;
+  }
   const toggle = e.target.closest('[data-repo]');
   if (toggle) {
     const repo = toggle.dataset.repo;

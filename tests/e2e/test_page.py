@@ -2227,6 +2227,28 @@ def test_the_start_page_lists_the_viewers_pull_requests_and_scrolls_a_long_list(
         (cache_dir / "board.json").unlink(missing_ok=True)
 
 
+def test_a_long_list_on_the_start_page_counts_the_cards_below_and_scrolls_on(page: Page, server_url: str) -> None:
+    # A 600px window gives the list 300px: five 50px cards and their 8px gaps fit, and the sixth is cut.
+    cards = "".join(f'<div class="card pr" style="flex: none; height: 50px"><a href="#{n}">PR {n}</a></div>' for n in range(20))
+    page.set_viewport_size({"width": 1000, "height": 600})
+    page.route(
+        re.compile(r"/board\?"),
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body=f'<div class="column"><h3>Long</h3><section class="sub" data-key="long">{cards}</section></div>',
+        ),
+    )
+    page.goto(server_url + "/home")
+    sub, more = page.locator(".sub[data-key=long]"), page.locator(".column .more")
+    expect(more).to_have_text("15 more ↓")
+    more.click()
+    expect(more).to_have_text("11 more ↓")
+    more.focus()
+    sub.evaluate("list => { list.scrollTop = list.scrollHeight; }")
+    expect(more).to_be_disabled()
+    expect(sub.locator("a").last).to_be_focused()
+
+
 def test_focusing_the_start_page_search_selects_its_text(page: Page, server_url: str) -> None:
     page.goto(server_url + "/home")
     field = page.locator("input[name=pr]")
