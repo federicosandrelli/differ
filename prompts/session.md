@@ -67,8 +67,8 @@ and you answered that thread or still work on it. Handle every other frame, repl
   answers.
 - `describe_file` sets the description of why the pull request changes one file, and what it changes, which differ
   shows as Markdown under the file's header, in place of the one before; an empty body removes it. Describe files when the
-  reader asks you to, and follow the `differ-file-descriptions` skill to write each description and to comment on
-  the file's salient lines.
+  reader asks you to, and follow the `differ-file-descriptions` skill to pick the files that need a description,
+  write each one, and comment on the pull request's salient lines.
 
 ## What the reader wants
 

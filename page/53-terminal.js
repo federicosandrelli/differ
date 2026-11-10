@@ -29,7 +29,7 @@ const rebasePrompt = (base) => ({ label: `Rebase onto ${base}`, text: `Rebase th
 // The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter. The rebase
 // names the base branch of the merge state once it loads, since GitHub may have retargeted the pull request.
 const quickPrompts = () => [
-  { label: 'Describe file changes', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, call describe_file once for each file, and comment on its salient lines with start_thread." },
+  { label: 'Describe file changes', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, call describe_file for each file that needs a description, and comment on the pull request's salient lines with start_thread." },
   rebasePrompt(M.loaded ? M.base : PR.base_ref),
 ];
 const ARROW_RIGHT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 7h8M7.5 3.5L11 7l-3.5 3.5"/><path d="M12.5 2.5v9" stroke-opacity=".5"/></svg>';
