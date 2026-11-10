@@ -2229,7 +2229,9 @@ def test_the_start_page_lists_the_viewers_pull_requests_and_scrolls_a_long_list(
 
 def test_a_long_list_on_the_start_page_counts_the_cards_below_and_scrolls_on(page: Page, server_url: str) -> None:
     # A 600px window gives the list 300px: five 50px cards and their 8px gaps fit, and the sixth is cut.
-    cards = "".join(f'<div class="card pr" style="flex: none; height: 50px"><a href="#{n}">PR {n}</a></div>' for n in range(20))
+    cards = "".join(
+        f'<div class="card pr" style="flex: none; height: 50px"><a href="#{n}">PR {n}</a></div>' for n in range(20)
+    )
     page.set_viewport_size({"width": 1000, "height": 600})
     page.route(
         re.compile(r"/board\?"),
