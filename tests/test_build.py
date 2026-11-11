@@ -1,5 +1,6 @@
 import os
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,25 @@ def test_every_subprocess_gets_a_timeout_and_clones_get_a_longer_one(
     build.ensure_repo(PullRef("o", "r", 7), lambda line: None)
     build.fetch(tmp_path / "r.git", 7, "base", "head", lambda line: None)
     assert timeouts == {"clone": 600, "cat-file": 120, "fetch": 600}
+
+
+def test_two_threads_that_need_a_new_mirror_clone_it_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(build, "CACHE", tmp_path)
+    clones: list[Path] = []
+
+    def clone(ref: PullRef, mirror: Path) -> None:
+        mirror.mkdir()
+        time.sleep(0.2)
+        clones.append(mirror)
+
+    monkeypatch.setattr(build.github, "clone", clone)
+    mirrors: list[Path] = []
+    threads = [threading.Thread(target=lambda: mirrors.append(build.ensure_repo(REF, lambda line: None))) for _ in "ab"]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert clones == [build.mirror_of(REF)] and mirrors == clones * 2
 
 
 def test_prune_keeps_the_two_newest_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

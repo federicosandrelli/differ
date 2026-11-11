@@ -1358,6 +1358,12 @@ def claude_opens(page: Page) -> list[str]:
     return opens
 
 
+def session_of(page: Page, server_url: str, pr: str) -> dict:
+    """Where the session of the pull request at the page path `pr` stands, as the server answers it."""
+    number = pr.rsplit("/", 1)[1]
+    return page.request.get(f"{server_url}/api/acme/widgets/{number}/claude").json()["session"]
+
+
 def close_session(page: Page, server_url: str, pr: str) -> None:
     number = pr.rsplit("/", 1)[1]
     page.request.post(f"{server_url}/api/acme/widgets/{number}/claude_close", data={}, headers={"Origin": server_url})
@@ -1430,6 +1436,42 @@ def test_auto_start_starts_the_session_of_a_shell_tab_and_leaves_the_terminal_hi
 
 
 @pytest.mark.auto_start
+def test_auto_start_starts_the_session_while_the_page_builds(page: Page, server_url: str, add_pr: AddPr) -> None:
+    pr = add_pr(OLD, NEW, branch="auto-start-build")
+    page.route("**/status/**", lambda route: route.abort())
+    try:
+        page.goto(server_url + "/")
+        home = page.frame_locator("#panes iframe.on")
+        home.locator("input[name=pr]").fill(f"acme/widgets#{pr.rsplit('/', 1)[1]}")
+        home.locator("input[name=pr]").press("Enter")
+        expect(page.frame_locator("#panes iframe.on").locator("#log")).to_be_visible()
+        deadline = time.monotonic() + 60
+        while not session_of(page, server_url, pr)["running"]:
+            assert time.monotonic() < deadline, session_of(page, server_url, pr)
+            time.sleep(0.2)
+        expect(page.frame_locator("#panes iframe.on").locator("#side")).to_have_count(0)
+    finally:
+        close_session(page, server_url, pr)
+
+
+@pytest.mark.auto_start
+def test_a_built_page_shows_the_session_the_shell_starts_before_its_next_poll(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    pr = add_pr(OLD, NEW, branch="auto-start-built")
+    page.goto(server_url + "/")
+    page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
+    open_in_shell(page, server_url, pr)
+    page.evaluate("localStorage.removeItem('dr:claudeStart')")
+    try:
+        page.reload()
+        tab = shell_tab(page)
+        tab.wait_for_function("CL.session && (CL.session.starting || CL.session.running)", timeout=3000)
+    finally:
+        close_session(page, server_url, pr)
+
+
+@pytest.mark.auto_start
 def test_auto_start_off_starts_nothing_in_a_shell_tab(page: Page, server_url: str) -> None:
     page.goto(server_url + "/")
     page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
@@ -1461,7 +1503,7 @@ def test_auto_start_starts_nothing_while_comments_for_claude_are_off(page: Page,
 
 
 @pytest.mark.auto_start
-def test_auto_start_skips_a_pull_request_that_github_reports_merged_since_its_page_was_built(
+def test_auto_start_runs_no_session_for_a_pull_request_that_github_reports_merged_since_its_page_was_built(
     page: Page, server_url: str, add_pr: AddPr, gh_state: Path
 ) -> None:
     path = add_pr(OLD, NEW)
@@ -1471,13 +1513,16 @@ def test_auto_start_skips_a_pull_request_that_github_reports_merged_since_its_pa
     pr = gh_state / f"pr{path.rsplit('/', 1)[1]}.json"
     pr.write_text(json.dumps(json.loads(pr.read_text()) | {"state": "MERGED"}))
     page.evaluate("localStorage.removeItem('dr:claudeStart')")
-    opens = claude_opens(page)
-    page.reload()
+    with page.expect_response(lambda r: r.url.endswith("/claude_open")) as opened:
+        page.reload()
+    assert opened.value.ok
     tab = shell_tab(page)
     assert tab.evaluate("PR_STATUS") == "open"
-    tab.wait_for_function("C.status === 'merged'")
-    tab.wait_for_function("CL.loaded")
-    assert opens == []
+    deadline = time.monotonic() + 30
+    while session_of(page, server_url, path)["starting"]:
+        assert time.monotonic() < deadline
+        time.sleep(0.2)
+    assert not session_of(page, server_url, path)["running"]
 
 
 @pytest.mark.auto_start
@@ -1992,8 +2037,23 @@ def test_the_model_in_the_settings_goes_with_the_start_of_a_session(page: Page, 
         tab = open_in_shell(page, server_url, pr)
         listening = tab.locator("#side .foot [data-term-toggle]")
         expect(listening).to_have_attribute("title", "Claude is listening · show the terminal", timeout=60000)
-        assert len(bodies) == 1 and (bodies[0] or {}).get("model") == "claude-sonnet-5-5"
+        assert bodies and all((body or {}).get("model") == "claude-sonnet-5-5" for body in bodies)
     finally:
+        close_session(page, server_url, pr)
+
+
+def test_the_terminal_starts_the_session_with_the_model_in_the_settings(
+    page: Page, server_url: str, add_pr: AddPr
+) -> None:
+    pr = add_pr(OLD, NEW, branch="terminal-model")
+    open_pr(page, server_url, pr)
+    page.evaluate("localStorage.setItem('dr:claudeModel', 'claude-haiku-5-5')")
+    try:
+        with page.expect_request(lambda r: r.url.endswith("/claude_open")) as opened:
+            page.click("#side .foot [data-term-toggle]")
+        assert (opened.value.post_data_json or {}).get("model") == "claude-haiku-5-5"
+    finally:
+        page.evaluate("localStorage.removeItem('dr:claudeModel')")
         close_session(page, server_url, pr)
 
 

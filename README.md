@@ -77,8 +77,8 @@ It starts with Opus 5.5 unless you pick another model in the settings.
   thread. The bot's dot is lit while it listens.
 - The session runs in the permission mode your Claude Code settings choose
   (`permissions.defaultMode`), and it can commit and push. The repository's
-  own `CLAUDE.md`, hooks and settings load, on anyone's pull request, as soon as its page opens while Auto start is
-  on. If you also push to the branch from your own clone, the two can race, and
+  own `CLAUDE.md`, hooks and settings load, on anyone's pull request, as soon as its tab opens while Auto start is
+  on, even while its page still builds. If you also push to the branch from your own clone, the two can race, and
   the later push has to rebase.
 - Before each start, differ records the repository's mirror as trusted in
   `~/.claude.json` when that file exists, the entry Claude Code's docs name for

@@ -76,9 +76,12 @@ if (SHELL) {
     e.preventDefault();
     SHELL.settings();
   }, true);
-  // The shell says when the tab comes to the front; pages listen for 'tab-shown' on the document.
+  // The shell says when the tab comes to the front, and when its start of the Claude session answers; pages listen for
+  // 'tab-shown' and 'claude-open' on the document.
   window.addEventListener('message', (e) => {
-    if (e.origin === location.origin && e.data && e.data.type === 'shown') document.dispatchEvent(new Event('tab-shown'));
+    if (e.origin !== location.origin || !e.data) return;
+    if (e.data.type === 'shown') document.dispatchEvent(new Event('tab-shown'));
+    if (e.data.type === 'claude-open') document.dispatchEvent(new Event('claude-open'));
   });
   SHELL.page(location.pathname + location.search, document.title, PR_STATUS);
 }

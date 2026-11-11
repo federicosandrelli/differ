@@ -39,13 +39,27 @@
     if (!tab) { tab = { key, url, title: '…', status: '', claudeState: '', claudeTitle: '', frame: null }; tabs.push(tab); }
     activate(tab);
   }
+  const sessionAction = (tab, action, body) => {
+    const m = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(tab.key);
+    if (!m) return Promise.resolve();
+    return fetch(`/api/${m[1]}/${m[2]}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+  };
+  // With Auto start on, a tab starts its pull request's Claude session as soon as its page reports the pull request,
+  // so the session starts while the progress page waits for the build. The page's status may be the one it was built
+  // with, so the server, which asks GitHub, refuses a merged or closed pull request; it does nothing for a session that
+  // runs or starts. Once the start answers, the page loads the session's state at once instead of at its next poll.
+  function startSession(tab) {
+    if (!isOn(CLAUDE_KEY) || !isOn(START_KEY)) return;
+    let model = null;
+    try { model = localStorage.getItem(MODEL_KEY); } catch {}
+    const frame = tab.frame;
+    sessionAction(tab, 'claude_open', model ? { model } : {}).then(() => {
+      if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'claude-open' }, location.origin);
+    });
+  }
   // A closed tab ends its pull request's Claude session, if one runs; the server keeps the session's id, so the next
   // open of the pull request resumes the conversation.
-  function endSession(tab) {
-    const m = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(tab.key);
-    if (!m) return;
-    fetch(`/api/${m[1]}/${m[2]}/claude_close`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {});
-  }
+  const endSession = (tab) => sessionAction(tab, 'claude_close', {});
   function close(tab) {
     const i = tabs.indexOf(tab);
     if (i < 0) return;
@@ -141,6 +155,7 @@
       const key = keyOf(m.url), twin = tabs.find(t => t !== tab && t.key === key);
       if (twin) { close(tab); activate(twin); return; }
       tab.key = key; draw(); save();
+      startSession(tab);
     }
   });
 
@@ -235,8 +250,9 @@
     followed.save();
   });
   // The settings that are on unless saved as 'off', by the attribute of their buttons: whether a comment can go to a
-  // Claude Code session, in the body, and whether a pull request's page starts its session when it opens.
-  const ON_OFF = { 'data-claude-setting': 'dr:claude', 'data-claude-start': 'dr:claudeStart' };
+  // Claude Code session, in the body, and whether a tab starts its pull request's session when it opens.
+  const CLAUDE_KEY = 'dr:claude', START_KEY = 'dr:claudeStart';
+  const ON_OFF = { 'data-claude-setting': CLAUDE_KEY, 'data-claude-start': START_KEY };
   const isOn = (key) => { try { return localStorage.getItem(key) !== 'off'; } catch { return true; } };
   function drawOnOff() {
     for (const [attr, key] of Object.entries(ON_OFF)) {

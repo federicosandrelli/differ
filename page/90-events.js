@@ -257,9 +257,7 @@ window.addEventListener('hashchange', () => {
   const t = hashTarget();
   if (t && t.key == null) { if (unhide(BY_PATH[t.path])) render(); scrollToFile(t.path); }
   else if (t) go(t.path, t.key);
-  // Auto start waits for the comments, which carry the pull request's status on GitHub, since the page's own status
-  // is the one it was built with.
-  loadComments().then(() => { autoStart(); return loadMerge(); });
+  loadComments().then(loadMerge);
   loadViewed();
   loadClaude();
   loadEditors();
@@ -270,4 +268,5 @@ window.addEventListener('hashchange', () => {
   };
   window.addEventListener('focus', refresh);
   document.addEventListener('tab-shown', refresh);
+  document.addEventListener('claude-open', loadClaude);
 })();

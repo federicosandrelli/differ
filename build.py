@@ -101,6 +101,9 @@ head_checked: dict[PullRef, float] = {}
 heads: dict[PullRef, str] = {}
 head_read: dict[PullRef, float] = {}
 lock = threading.Lock()
+# One lock per mirror, held while ensure_repo looks for the mirror and clones it, so a build and a session's start
+# never clone one repository at once, nor fetch into a mirror still being cloned.
+_clones: dict[Path, threading.Lock] = {}
 
 
 def serve(ref: PullRef) -> Path | None:
@@ -239,12 +242,15 @@ def mirror_of(ref: PullRef) -> Path:
 
 def ensure_repo(ref: PullRef, log: Log) -> Path:
     mirror = mirror_of(ref)
-    if not mirror.exists():
-        log(f"Cloning {ref.slug} without file contents (first time for this repo)")
-        mirror.parent.mkdir(parents=True, exist_ok=True)
-        github.clone(ref, mirror)
-    else:
-        log(f"Using the cached clone of {ref.slug}")
+    with lock:
+        clone_lock = _clones.setdefault(mirror, threading.Lock())
+    with clone_lock:
+        if not mirror.exists():
+            log(f"Cloning {ref.slug} without file contents (first time for this repo)")
+            mirror.parent.mkdir(parents=True, exist_ok=True)
+            github.clone(ref, mirror)
+        else:
+            log(f"Using the cached clone of {ref.slug}")
     return mirror
 
 
