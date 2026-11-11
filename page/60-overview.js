@@ -72,5 +72,5 @@ function overviewHtml() {
 }
 // Everything the overview's HTML depends on, so it is rebuilt only when one of them changes.
 function overviewKey() {
-  return JSON.stringify([C.version, C.loaded, C.error, state.busy]);
+  return JSON.stringify([C.version, C.loaded, C.error, state.busy, claudeMarks()]);
 }

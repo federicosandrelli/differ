@@ -443,7 +443,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             for opcode, payload in ws.messages():
                 if opcode == websocket.BINARY:
-                    session.write(ref, payload)
+                    session.type_in(ref, payload)
                 elif opcode == websocket.TEXT:
                     size = json.loads(payload)
                     session.resize(ref, int(size["cols"]), int(size["rows"]))

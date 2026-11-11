@@ -9,6 +9,10 @@ to a terminal that connects, so a reloaded page shows what the session showed. T
 set says whether Claude works and on what task. Claude Code's hooks, which the process posts to the pull request's
 `hook` endpoint, say whether Claude asks the reader a question.
 
+Address with Claude puts a review thread in the session's queue of addresses (`address`). The server pastes the first
+one only while Claude waits at its prompt, so each address reads as `queued` until the title shows Claude working on
+it, then `working` until Claude waits again.
+
 Before a start, `trust` records the repository's bare mirror as trusted in Claude Code's config file, so the process
 starts without the folder trust dialog: Claude Code keys the trust of a worktree on its repository, which for the
 pull request's worktree is the mirror.
@@ -97,6 +101,12 @@ Setup = Literal["", "missing", "old"]
 # Claude Code's docs give. A `claude` that is too old updates itself with UPDATE_ARGS.
 INSTALL_COMMAND = ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]
 UPDATE_ARGS = ["update"]
+# The seconds an address that was pasted waits for the title to show Claude working, before it leaves the queue: a
+# title of another shape never shows it.
+ADDRESS_START_WAIT = 20.0
+# The seconds a paste of an address waits for the terminal to settle before it goes, such as for a CANCEL_KEY that was
+# typed as Claude turned to wait, after which it looks again whether the address may go.
+ADDRESS_SETTLE = 0.5
 
 
 def setup_command(setup: Setup) -> str:
@@ -114,15 +124,31 @@ class SetupNeeded(RuntimeError):
         self.setup: Setup = setup
 
 
+@dataclass(eq=False)
+class Address:
+    """A review thread the reader had Claude address: the thread's id, the prompt, and its `stage`: `queued` until its
+    paste is under way, `settling` while the paste waits ADDRESS_SETTLE and goes, `sent` once its Enter went, and
+    `started` once the title shows Claude working after that. Two addresses are the same only when they are one
+    object."""
+
+    thread: str
+    text: str
+    stage: Literal["queued", "settling", "sent", "started"] = "queued"
+
+
 @dataclass
 class Session:
     """A pull request's session: its id, its process while one runs, what the process printed, and the terminals that
     show it. `starting` is set from a start until the process runs or the start fails; `error` says why the last start
-    failed or the last process ended, until the next start. `asking` is set while Claude waits for the reader's
-    answer to a question. `setup` says what the last start found missing, until a start gets past it, and
-    `installing` is set while `proc` installs or updates Claude Code instead of running it. `generation` counts the
-    starts, so a start that finishes after a close or a later start is dropped. `writes` is held around every write to the pseudoterminal and its close, `sends` around every send to the
-    terminals, and `pastes` around a paste and its Enter, so two pastes never mix; all three outside the module lock."""
+    failed or the last process ended, until the next start. `asking` is set while Claude waits for the reader's answer
+    to a question. `setup` says what the last start found missing, until a start gets past it, and `installing` is set
+    while `proc` installs or updates Claude Code instead of running it. `addresses` is the queue of the process's
+    addresses, oldest first, and `typed` is set while the reader has typed into the terminal since their last Enter, so
+    no paste of an address submits what they typed. `working_since` is the time the title last turned to Claude working,
+    as `claude.now()` gives it, while it shows Claude working. `generation` counts the starts, so a start that finishes
+    after a close or a later start is dropped. `writes` is held around every write to the pseudoterminal and its close,
+    `sends` around every send to the terminals, and `pastes` around a paste and its Enter, so two pastes never mix; all
+    three outside the module lock."""
 
     ref: PullRef
     id: str = ""
@@ -139,6 +165,9 @@ class Session:
     output: bytearray = field(default_factory=bytearray)
     title: str = ""
     asking: bool = False
+    typed: bool = False
+    working_since: str = ""
+    addresses: list[Address] = field(default_factory=list)
     clients: set[Send] = field(default_factory=set)
     size: tuple[int, int] = (80, 24)
     branch: str = ""
@@ -291,9 +320,10 @@ def listen_prompt(ref: PullRef, port: int, branch: str, head: str) -> str:
 def status(ref: PullRef) -> dict:
     """Where the pull request's session stands, for the page: `starting`, `running`, `error`, the branch and the head
     the worktree is on, from the terminal title, whether Claude is `working` and its `task`, empty without one, and
-    whether Claude is `asking` the reader a question; `setup`, what the last start found missing, with the `command`
-    that fixes it by hand, and `installing`, while the terminal installs or updates Claude Code, which is not
-    `running`."""
+    whether Claude is `asking` the reader a question; `addresses`, the threads in the queue of addresses by id, each
+    `queued` or `working`; `working_since`, the time the title turned to Claude working, empty while Claude is not;
+    `setup`, what the last start found missing, with the `command` that fixes it by hand, and `installing`, while the
+    terminal installs or updates Claude Code, which is not `running`."""
     with lock:
         s = session_of(ref)
         alive = s.proc is not None and s.proc.poll() is None
@@ -308,6 +338,10 @@ def status(ref: PullRef) -> dict:
             "working": working,
             "task": task,
             "asking": running and s.asking,
+            "working_since": s.working_since if working else "",
+            "addresses": {a.thread: "working" if a.stage == "started" else "queued" for a in s.addresses}
+            if running
+            else {},
             "setup": s.setup,
             "command": setup_command(s.setup),
             "installing": alive and s.installing,
@@ -329,9 +363,87 @@ def hook_settings(ref: PullRef, port: int) -> str:
 
 def hook(ref: PullRef, event: dict) -> None:
     """Take a hook the pull request's process posted: Claude asks a question from QUESTION_TOOL's PreToolUse hook on,
-    until any other hook."""
+    until any other hook. The end of a question may let the next address go."""
     with lock:
-        session_of(ref).asking = event.get("hook_event_name") == "PreToolUse"
+        s = session_of(ref)
+        s.asking = event.get("hook_event_name") == "PreToolUse"
+        if not s.asking:
+            _next_address(s)
+
+
+def address(ref: PullRef, thread: str, text: str) -> dict:
+    """Put the review thread in the queue of addresses, with the prompt that has Claude address it, unless it is in the
+    queue already, in which case its prompt becomes this one while it is still `queued`, and paste the first address if Claude
+    waits for one. Answers the session's status."""
+    with lock:
+        s = session_of(ref)
+        queued = next((a for a in s.addresses if a.thread == thread), None)
+        if queued is None:
+            s.addresses.append(Address(thread, text))
+        elif queued.stage == "queued":
+            queued.text = text
+        _next_address(s)
+    return status(ref)
+
+
+def _next_address(s: Session) -> None:
+    """Paste the first address in the queue, in a thread of its own, while the process runs, Claude waits at its
+    prompt, the reader has typed nothing since their last Enter and no address before it waits for Claude or has Claude
+    working. The address is `settling` from then on, so no second paste of it starts. Call it with the lock held."""
+    if not s.addresses or s.addresses[0].stage != "queued" or not _may_paste(s):
+        return
+    first = s.addresses[0]
+    first.stage = "settling"
+    threading.Thread(target=_paste_address, args=(s, first), daemon=True).start()
+
+
+def _may_paste(s: Session) -> bool:
+    """Whether an address may go now: the process runs, Claude waits at its prompt and the reader has typed nothing
+    since their last Enter. Call it with the lock held."""
+    return s.proc is not None and not s.installing and not s.asking and not s.typed and not title_state(s.title)[0]
+
+
+def _paste_address(s: Session, a: Address) -> None:
+    """Paste the address once the terminal settled, if it is still the first and may still go, and give Claude
+    ADDRESS_START_WAIT seconds from its Enter to start on it. Otherwise it is `queued` again and goes on a later turn
+    of the title to waiting, or a later Enter or end of a question. The paste takes `pastes` before it settles, so no
+    quick prompt slips in between the look and the paste. Once the Enter went the address is `sent`, or `started` when
+    the title already shows Claude working, since Claude Code takes a prompt submitted while it works into that work."""
+    with s.pastes:
+        time.sleep(ADDRESS_SETTLE)
+        with lock:
+            if not (s.addresses and s.addresses[0] is a and _may_paste(s)):
+                a.stage = "queued"
+                return
+        _paste(s, a.text, True)
+        with lock:
+            a.stage = "started" if title_state(s.title)[0] else "sent"
+    timer = threading.Timer(ADDRESS_START_WAIT, _address_unstarted, args=(s, a))
+    timer.daemon = True
+    timer.start()
+
+
+def _address_unstarted(s: Session, a: Address) -> None:
+    """Drop an address whose paste the title never showed Claude working on, and paste the next."""
+    with lock:
+        if a in s.addresses and a.stage == "sent":
+            s.addresses.remove(a)
+            _next_address(s)
+
+
+def _title_turned(s: Session, working: bool) -> None:
+    """Move the queue of addresses on when the title turns: an address that was `sent` has Claude working on it once
+    the title shows Claude working, and leaves once Claude waits again, unless it waits for the reader's answer to a
+    question. A turn to working also sets `working_since`. Call it with the lock held."""
+    first = s.addresses[0] if s.addresses else None
+    if working:
+        s.working_since = claude.now()
+        if first and first.stage == "sent":
+            first.stage = "started"
+        return
+    if first and first.stage == "started" and not s.asking:
+        s.addresses.pop(0)
+    _next_address(s)
 
 
 def title_state(title: str) -> tuple[bool, str]:
@@ -499,7 +611,8 @@ def _open(s: Session, args: list[str], folder: Path) -> tuple[subprocess.Popen[b
         os.close(slave)
     s.proc, s.fd, s.started_at, s.starting = proc, master, time.time(), False
     s.output.clear()
-    s.title, s.asking = "", False
+    s.title, s.asking, s.typed, s.working_since = "", False, False, ""
+    s.addresses.clear()
     return proc, master
 
 
@@ -526,9 +639,12 @@ def _relay(s: Session, proc: subprocess.Popen[bytes], fd: int, claude_code: bool
             # the work that led to it.
             if claude_code and (titles := TITLE.findall(s.output, max(0, len(s.output) - len(data) - TITLE_MAX))):
                 title = titles[-1].decode(errors="replace")
-                if title_state(title)[0] and not title_state(s.title)[0]:
+                working, was = title_state(title)[0], title_state(s.title)[0]
+                if working and not was:
                     s.asking = False
                 s.title = title
+                if working != was:
+                    _title_turned(s, working)
             clients = list(s.clients)
             if claude_code and not s.resume and time.time() - s.started_at > QUICK_EXIT:
                 s.resume = True
@@ -617,8 +733,38 @@ def write(ref: PullRef, data: bytes) -> None:
     Waits while the process has not read what was typed before, and stops once the process is gone."""
     with lock:
         s = session_of(ref)
-        if data == CANCEL_KEY:
+        cancel = data == CANCEL_KEY and s.asking
+        if cancel:
             s.asking = False
+    _write(s, data)
+    if cancel:
+        # Claude waits at its prompt once the reader cancels its question, done with the address it worked on. The
+        # queue moves on only after the Escape went, so the next paste never lands before it.
+        with lock:
+            if not title_state(s.title)[0]:
+                _title_turned(s, False)
+
+
+def type_in(ref: PullRef, data: bytes) -> None:
+    """Type what the reader typed in the terminal into the session, as `write` does, and note whether they left
+    something unsent at the prompt (`typed`). The terminal sends each key as typed, escape sequences included: a
+    bracketed paste of the reader's sets `typed`; otherwise an Enter clears it, as does Ctrl+C, on which Claude Code
+    empties its prompt; keys that are only control bytes or escape sequences, such as Escape, Backspace or the arrows,
+    leave it as it is; and printable text sets it. Once `typed` clears, the next address may go."""
+    with lock:
+        s = session_of(ref)
+        if b"\x1b[200~" in data:
+            s.typed = True
+        elif b"\r" in data or b"\x03" in data:
+            s.typed = False
+            _next_address(s)
+        elif not (data.startswith(b"\x1b") or all(b < 0x20 or b == 0x7F for b in data)):
+            s.typed = True
+    write(ref, data)
+
+
+def _write(s: Session, data: bytes) -> None:
+    """Write the bytes to the session's pseudoterminal, waiting while the process has not read what came before."""
     left = memoryview(bytes(data))
     while left:
         with s.writes:
@@ -646,14 +792,24 @@ def paste(ref: PullRef, text: str, submit: bool = False) -> None:
     """Paste the text into the session's prompt as one bracketed paste, so that it lands where the cursor is and
     nothing in it counts as a key. The text loses its escape characters, so nothing in it can end the paste early.
     With `submit`, press Enter `SUBMIT_WAIT` seconds after it, which sends the prompt with whatever the prompt held
-    before, and return after the Enter."""
+    before, and return after the Enter. A submit clears `typed`, since the Enter sends what the reader typed too, and
+    lets the next address go."""
     with lock:
         s = session_of(ref)
     with s.pastes:
-        write(ref, b"\x1b[200~" + text.replace("\x1b", "").encode() + b"\x1b[201~")
-        if submit:
-            time.sleep(SUBMIT_WAIT)
-            write(ref, b"\r")
+        _paste(s, text, submit)
+    if submit:
+        with lock:
+            s.typed = False
+            _next_address(s)
+
+
+def _paste(s: Session, text: str, submit: bool) -> None:
+    """Paste the text as `paste` does. Call it with the session's `pastes` held, and the lock not held."""
+    write(s.ref, b"\x1b[200~" + text.replace("\x1b", "").encode() + b"\x1b[201~")
+    if submit:
+        time.sleep(SUBMIT_WAIT)
+        write(s.ref, b"\r")
 
 
 def resize(ref: PullRef, cols: int, rows: int) -> None:

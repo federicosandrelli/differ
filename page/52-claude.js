@@ -14,8 +14,10 @@ const CLAUDE_POLL_MS = 5000;
 const CLAUDE_BUSY_POLL_MS = 1000;
 const CLAUDE_UNHEARD_MS = 30000;
 const CLAUDE_KEY = 'dr:claude';
-// The words of the tag the reader's last message shows while it waits for Claude's reply.
-const CLAUDE_TAGS = { waiting: 'waiting for Claude', sent: 'sent to Claude' };
+// The words of the tag the reader's last message shows while it waits for Claude's reply: queued until Claude reads
+// the thread, then working while Claude works on it (workingOn), else read.
+const claudeTag = (c) => c.state === 'read' ? (c.id === workingOn() ? 'Claude working' : 'read by Claude')
+  : c.state === 'waiting' || c.state === 'sent' ? 'queued for Claude' : '';
 // The statuses that end a pull request; the server then deletes its comments for Claude.
 const CLAUDE_ENDED = ['merged', 'closed'];
 
@@ -39,26 +41,38 @@ function pollClaude() {
   const s = CL.session, unheard = !!s?.running && !CL.listening;
   if (!unheard) CL.unheardSince = 0; else if (!CL.unheardSince) CL.unheardSince = Date.now();
   const arming = unheard && Date.now() - CL.unheardSince < CLAUDE_UNHEARD_MS;
-  const busy = s && (s.starting || s.installing || arming || s.working || s.asking);
+  const busy = s && (s.starting || s.installing || arming || s.working || s.asking || Object.keys(s.addresses || {}).length);
   const ms = busy ? CLAUDE_BUSY_POLL_MS : CLAUDE_POLL_MS;
   CL.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadClaude(); else pollClaude(); }, ms);
 }
-// Show the server's answer: the threads when the comments changed, the files when their descriptions changed or the
-// session started or stopped taking quick prompts (the threads' Address with Claude buttons), else
+// Show the server's answer: the threads when the comments changed, the files when their descriptions changed, the
+// session started or stopped taking quick prompts, or the threads' marks of Claude's work moved (claudeMarks), else
 // the footer when the session came or went, else the terminal's header when the session moved. A reply being written
 // in a thread that is gone goes with it. The merge state loads again once Claude's work ends.
 function applyClaude(d) {
   const threads = JSON.stringify(d.comments) !== JSON.stringify(CL.comments), footer = d.listening !== CL.listening;
   const descriptions = JSON.stringify(d.descriptions) !== JSON.stringify(CL.descriptions);
   const session = JSON.stringify(d.session) !== JSON.stringify(CL.session);
-  const worked = CL.session?.working && !d.session?.working, ready = quickReady();
+  const worked = CL.session?.working && !d.session?.working, ready = quickReady(), marks = claudeMarks();
   const ids = new Set(d.comments.map(c => claudeKey(c.id)));
   for (const key of state.replyOpen.keys()) if (key.startsWith(claudeKey('')) && !ids.has(key)) state.replyOpen.delete(key);
   Object.assign(CL, d, { loaded: true });
   tellShellClaude();
   if (threads) threadsChanged();
-  if (threads || descriptions || ready !== quickReady()) render(); else if (footer || session) renderSide();
+  if (threads || descriptions || ready !== quickReady() || marks !== claudeMarks()) render(); else if (footer || session) renderSide();
   if (worked) watchMerge();
+}
+// What the threads show of Claude's work besides their comments: where Address with Claude stands for each thread,
+// and the comment that shows Claude working, so it changes only when what the threads show changes.
+const claudeMarks = () => JSON.stringify([termSession().addresses || {}, [...ADDRESSING], workingOn()]);
+// The id of the comment for Claude that Claude works on, or an empty string: the one it read last and has yet to reply
+// to, while Claude works and has worked since it read it (`working_since`, a time in the same format as `read_at`).
+function workingOn() {
+  const s = CL.session;
+  if (!s?.working) return '';
+  const last = CL.comments.filter(c => c.state === 'read')
+    .reduce((l, c) => !l || (c.read_at || '') > (l.read_at || '') ? c : l, null);
+  return last && (last.read_at || '') >= (s.working_since || '') ? last.id : '';
 }
 // Show the server's answer to the load or action with that number, unless the answer to a later one shows already.
 function showClaude(load, d) {
@@ -120,15 +134,14 @@ function claudeThreads() {
 }
 function claudeThreadHtml(f, t) {
   const c = t.claude, ctx = { file: f, thread: t }, last = c.messages.map(m => m.author).lastIndexOf('reader');
-  const tag = CLAUDE_TAGS[c.state] ? `<span class="tag claude">${CLAUDE_TAGS[c.state]}</span>` : '';
+  const tag = claudeTag(c) ? `<span class="tag claude">${claudeTag(c)}</span>` : '';
   const messages = c.messages.map((m, i) => {
     const who = m.author === 'claude' ? `${iconHtml('bot')}<b>Claude</b>` : `<b>${esc(C.viewer || 'you')}</b>`;
     const del = i === 0 ? `<span class="spacer"></span><a href="#" data-claude-delete="${esc(c.id)}">delete</a>` : '';
     return `<div class="comment"><div class="chead">${who}<span class="hint">${ago(m.at)}</span>
       ${i === last ? tag : ''}${del}</div><div class="cbody">${renderMarkdown(m.body, ctx)}</div></div>`;
   }).join('');
-  const reply = state.replyOpen.has(t.id) ? replyHtml(t, btn(`data-claude-follow="${esc(c.id)}"`, 'Send to Claude', true))
-    : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}</div>`;
+  const reply = replyHtml(t, 'Reply to Claude', btn(`data-claude-follow="${esc(c.id)}"`, 'Send to Claude'));
   return `<div class="thread card" data-thread="${esc(t.id)}">${threadHead(t)}${messages}${reply}</div>`;
 }
 // The description Claude gave the file; empty when it has none, or while comments can't go to Claude.

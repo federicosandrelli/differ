@@ -1232,12 +1232,11 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
     expect(thread).to_contain_text("Logged it.")
     expect(thread.locator(".tag.claude")).to_have_count(0)
 
-    thread.locator("[data-reply]").click()
     thread.locator("textarea[data-reply-text]").fill("Make it debug")
     page.keyboard.press("ControlOrMeta+Enter")
     expect(thread.locator(".comment")).to_have_count(3)
     expect(thread.locator(".tag.claude")).to_have_count(1)
-    expect(thread.locator("textarea[data-reply-text]")).to_have_count(0)
+    expect(thread.locator("textarea[data-reply-text]")).to_have_value("")
     messages = page.evaluate("CL.comments.at(-1).messages")
     assert [(m["author"], m["body"]) for m in messages] == [
         ("reader", "Use a logger here"),
@@ -1246,7 +1245,6 @@ def test_a_comment_sent_to_claude_waits_on_its_line_until_claude_replies(page: P
     ]
     expect(session).to_have_attribute("title", "No Claude session · 1 comment waiting · show the terminal")
 
-    thread.locator("[data-reply]").click()
     thread.locator("textarea[data-reply-text]").fill("Never mind")
     assert page.evaluate("hasDraft()")
     thread.locator("[data-claude-delete]").click()
@@ -1383,10 +1381,18 @@ def test_address_with_claude_waits_for_a_session_that_listens_then_sends_the_thr
         expect(button).to_be_enabled(timeout=60000)
         expect(button).not_to_have_attribute("title", re.compile("."))
         page.click("#side .foot [data-term-toggle]")
+        box = page.locator("div.thread[data-thread='T1'] textarea[data-reply-text]")
+        box.fill("Keep it short")
         button.click()
         expect(page.locator("#termslot .term .xterm")).to_be_visible()
         page.wait_for_function(f"({TERM_TEXT})().includes('ADDRESS THIS REVIEW THREAD')")
         page.wait_for_function(f"({TERM_TEXT})().includes('> SAY HI PROPERLY')")
+        page.wait_for_function(f"({TERM_TEXT})().includes('> KEEP IT SHORT')")
+        expect(box).to_have_value("")
+        # The fake claude never sets a title that shows it working, so the thread stays queued.
+        expect(page.locator("div.thread[data-thread='T1'] button[data-addressing]")).to_have_count(1)
+        assert page.evaluate("CL.session.addresses") == {"T1": "queued"}
+        expect(button).to_have_count(0)
         assert "line 11:" in page.evaluate("addressPrompt(C.threads.find(t => t.id === 'T1')).text")
     finally:
         close_session(page, server_url, pr)
@@ -1413,7 +1419,7 @@ def test_the_address_prompt_names_the_lines_of_the_thread(page: Page, server_url
 def test_a_resolved_thread_has_no_address_with_claude(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.click("div.thread[data-thread-open='T2']")
-    expect(page.locator("div.thread[data-thread='T2'] button[data-reply]")).to_be_visible()
+    expect(page.locator("div.thread[data-thread='T2'] textarea[data-reply-text]")).to_be_visible()
     expect(page.locator("div.thread[data-thread='T2'] button[data-address-thread]")).to_have_count(0)
 
 
@@ -1692,7 +1698,6 @@ def test_a_refused_reply_goes_back_to_its_box_and_leaves_the_focus_where_it_is(
 ) -> None:
     with held_mutations(gh_state) as release:
         open_pr(page, server_url)
-        page.click("button[data-reply='T1']")
         page.locator("textarea[data-reply-text='T1']").fill("Will do")
         page.click("button[data-reply-send='T1']")
         expect(page.locator("div.thread[data-thread='T1'] .tag.sending")).to_be_visible()
@@ -1709,12 +1714,11 @@ def test_a_refused_reply_goes_back_to_its_box_and_leaves_the_focus_where_it_is(
 def test_a_reply_shows_as_sending_until_github_has_it(page: Page, server_url: str, gh_state: Path) -> None:
     with held_mutations(gh_state) as release:
         open_pr(page, server_url)
-        page.click("button[data-reply='T1']")
         page.locator("textarea[data-reply-text='T1']").fill("Will do")
         page.click("button[data-reply-send='T1']")
         reply = page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")
         expect(reply.locator(".tag.sending")).to_be_visible()
-        expect(page.locator("textarea[data-reply-text='T1']")).to_have_count(0)
+        expect(page.locator("textarea[data-reply-text='T1']")).to_have_value("")
 
         release()
         expect(reply.locator(".tag.sending")).to_have_count(0)
@@ -1940,7 +1944,6 @@ def test_dragging_across_chunks_highlights_the_rows_of_both(page: Page, server_u
 
 def test_escape_in_a_reply_box_keeps_the_reply(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    page.click("button[data-reply='T1']")
     box = page.locator("textarea[data-reply-text='T1']")
     box.fill("Will do")
     box.press("Escape")

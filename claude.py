@@ -31,9 +31,10 @@ from github import PullRef
 
 Side = Literal["LEFT", "RIGHT"]
 Author = Literal["reader", "claude"]
-# Where the reader's last message stands. waiting: no session has it yet; sent: a listening session has it;
-# answered: Claude replied to it, or Claude started the thread and the reader has not written in it.
-State = Literal["waiting", "sent", "answered"]
+# Where the reader's last message stands. waiting: no session has it yet; sent: a listening session has it; read:
+# Claude read the thread since, and has yet to reply; answered: Claude replied to it, or Claude started the thread and
+# the reader has not written in it.
+State = Literal["waiting", "sent", "read", "answered"]
 # Sends one text frame to a listening session. Raises OSError once the session has gone.
 Send = Callable[[str], None]
 # The statuses that end a pull request, and with it its comments.
@@ -191,24 +192,31 @@ def frame(ref: PullRef, c: dict, replay: bool) -> str:
 
 
 def thread(ref: PullRef, comment_id: str) -> dict:
-    """The comment's thread: where it sits, the code it is on, every message, oldest first, and `seen`, the number of
-    those messages. Raises NoComment for an unknown id."""
+    """The comment's thread, which Claude reads: where it sits, the code it is on, every message, oldest first, and
+    `seen`, the number of those messages. A thread that waits for Claude is `read` from then on, until Claude replies
+    or the reader writes again, or the listener goes, with `read_at`, the time Claude last read it. Raises NoComment
+    for an unknown id."""
     with lock:
-        c = find(read(ref), comment_id)
+        comments = read(ref)
+        c = find(comments, comment_id)
+        if c["state"] in ("waiting", "sent", "read"):
+            c["state"], c["read_at"] = "read", now()
+            write(ref, comments)
     keys = ("id", "path", "line", "start_line", "side", "commit", "code", "messages")
     return {**{k: c[k] for k in keys}, "seen": len(c["messages"])}
 
 
-def deliver(ref: PullRef, comments: list[dict], replay: bool) -> None:
-    """Send the comments to the session that listens on the pull request, if one does, and mark each waiting one
-    it took sent. A session that has gone stops listening. Call it with the lock held."""
-    for c in comments:
+def deliver(ref: PullRef, comments: list[dict], sending: list[dict], replay: bool) -> None:
+    """Send the comments of `sending`, which are among `comments`, the pull request's comments, to the session that
+    listens on the pull request, if one does, and mark each waiting one it took sent. A session that has gone stops
+    listening, and the threads it read wait again (`unlisten`). Call it with the lock held."""
+    for c in sending:
         if not (send := listeners.get(ref)):
             return
         try:
             send(frame(ref, c, replay))
         except OSError:
-            del listeners[ref]
+            unlisten(ref, comments)
             return
         if c["state"] == "waiting":
             c["state"] = "sent"
@@ -231,7 +239,7 @@ def add(
         comments = read(ref)
         c = new_thread("reader", path, line, start_line, side, commit, code, body)
         comments.append(c)
-        deliver(ref, [c], replay=False)
+        deliver(ref, comments, [c], replay=False)
         write(ref, comments)
         listening = ref in listeners
     return answer(ref, listening, comments, commit)
@@ -311,7 +319,7 @@ def follow_up(ref: PullRef, comment_id: str, body: str, head: str) -> dict:
         c = find(comments, comment_id)
         c["messages"].append(message("reader", body, now()))
         c["state"] = "waiting"
-        deliver(ref, [c], replay=False)
+        deliver(ref, comments, [c], replay=False)
         write(ref, comments)
         listening = ref in listeners
     return answer(ref, listening, comments, head)
@@ -365,7 +373,7 @@ def attach(ref: PullRef, send: Send) -> None:
         listeners[ref] = send
         comments = read(ref)
         if unanswered := [c for c in comments if c["state"] != "answered"]:
-            deliver(ref, unanswered, replay=True)
+            deliver(ref, comments, unanswered, replay=True)
             write(ref, comments)
 
 
@@ -373,4 +381,15 @@ def detach(ref: PullRef, send: Send) -> None:
     """Stop the session that send reaches from listening; a later session that listens now stays."""
     with lock:
         if listeners.get(ref) is send:
-            del listeners[ref]
+            comments = read(ref)
+            unlisten(ref, comments)
+            write(ref, comments)
+
+
+def unlisten(ref: PullRef, comments: list[dict]) -> None:
+    """Stop the listener of the pull request, and have the comments it read and has yet to reply to wait for Claude
+    again, since no session works on them any more. The caller writes the comments. Call it with the lock held."""
+    listeners.pop(ref, None)
+    for c in comments:
+        if c["state"] == "read":
+            c["state"] = "waiting"

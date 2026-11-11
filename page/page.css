@@ -258,7 +258,6 @@ tr.notes > td > div.notes > :last-child { margin-bottom: 9px; }
 .comment .cbody pre { margin: 6px 0; padding: 8px 10px; background: var(--bg-inset); border-radius: var(--radius); overflow-x: auto; }
 .comment.pending { background: var(--comment-pending-bg); }
 .comment.approved .chead { color: var(--add-fg); } .comment.changes .chead { color: var(--del-fg); }
-.thread .tfoot { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); }
 .suggestion { margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
 .suggestion .shead { padding: 4px 10px; font-size: 11.5px; color: var(--text-muted); background: var(--bg-panel); border-bottom: 1px solid var(--border); }
 .suggestion table.diff { font-size: 12px; table-layout: auto; width: max-content; min-width: 100%; }
@@ -266,8 +265,9 @@ tr.notes > td > div.notes > :last-child { margin-bottom: 9px; }
 .form > .hint { margin-bottom: 6px; }
 .form textarea { min-height: 84px; }
 .form .actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-.form.reply { border: 0; border-top: 1px solid var(--border); border-radius: 0; max-width: none; }
-.form.reply textarea { min-height: 60px; }
+.form.reply { padding: 8px 12px; border: 0; border-top: 1px solid var(--border); border-radius: 0; max-width: none; }
+.form.reply textarea { min-height: 0; max-height: 12em; padding: 1px 9px; line-height: var(--control-line); resize: none; }
+.form.reply button[data-addressing] { opacity: 1; }
 .outdated { padding: 6px 20px 2px; font-size: 12px; } .outdated .thread { margin: 6px 0; }
 /* The Review button names the viewer's verdict in the verdict's colour; the merge button names where the viewer's own
    pull request stands, in its tone, which it keeps while its panel is open. */

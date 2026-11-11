@@ -20,6 +20,8 @@
                                        model, end it, paste text into its prompt and, with submit, send it
   claude_install                       install Claude Code, or update one too old, in the session's terminal, then
                                        start the session
+  claude_address                       put a review thread in the session's queue of addresses, with the prompt that
+                                       has Claude address it
 
 `answer` reads the fields an action needs, each of its type, runs the action and gives the status of its answer: 404
 for an action it does not know; 400 for a field that is missing or of another type, and for a review or an editor
@@ -96,6 +98,11 @@ def _claude_close(ref: PullRef, body: dict, port: int) -> dict:
 def _claude_paste(ref: PullRef, body: dict, port: int) -> dict:
     session.paste(ref, text_of(body["text"]), body.get("submit") is True)
     return {}
+
+
+@action("claude_address")
+def _claude_address(ref: PullRef, body: dict, port: int) -> dict:
+    return session.address(ref, text_of(body["thread"]), text_of(body["text"]))
 
 
 @action("comment")

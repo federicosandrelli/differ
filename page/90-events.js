@@ -94,7 +94,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('input', (e) => {
   const box = e.target, d = box.dataset;
   if (d.composeText !== undefined && state.compose) { state.compose.text = box.value; return; }
-  if (d.replyText !== undefined) { state.replyOpen.set(d.replyText, box.value); return; }
+  if (d.replyText !== undefined) { state.replyOpen.set(d.replyText, box.value); fitLine(box); return; }
   if (d.reviewText !== undefined) { state.reviewText = box.value; const b = document.querySelector('[data-submit="REQUEST_CHANGES"]'); if (b) updateRequestChanges(b); return; }
   if (d.convText !== undefined) { state.convText = box.value; return; }
   if (d.mergeText !== undefined) { state.mergeText[d.mergeText] = box.value; return; }

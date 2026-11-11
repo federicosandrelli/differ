@@ -170,30 +170,62 @@ function threadHtml(f, t) {
     return `<div class="thread card folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
   }
   const head = threadHead(t);
-  const reply = t.local ? '' : state.replyOpen.has(t.id) ? replyHtml(t, btn(`data-reply-send="${esc(t.id)}"`, 'Add single comment', true)) : `<div class="tfoot">${btn(`data-reply="${esc(t.id)}"`, 'Reply')}
+  const reply = t.local ? '' : replyHtml(t, t.resolved || !termAvailable() ? 'Reply' : 'Reply, or add context for Claude', `${btn(`data-reply-send="${esc(t.id)}"`, 'Reply')}
     ${addressButton(t)}${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
-    ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}</div>`;
+    ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}`);
   return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
 }
-// The button that sends the Claude session the prompt to address an unresolved thread. While the session can't take
-// the prompt, the button shows disabled, with the reason as its tooltip.
+// Where Address with Claude stands for a thread: `queued` from the click until Claude works on it, `working` while
+// Claude does, or '' when Claude has it in neither way.
+const addressState = (t) => ADDRESSING.has(t.id) ? 'queued' : (termSession().addresses || {})[t.id] || '';
+// The threads whose Address with Claude is on its way to the server.
+const ADDRESSING = new Set();
+const ADDRESS_STATES = {
+  queued: ['wait', 'Queued for Claude', 'Claude addresses this thread once it is done with what comes before it.'],
+  working: ['work', 'Claude working', 'Claude is addressing this thread. The terminal shows how it goes.'],
+};
+// The button that has the Claude session address an unresolved thread, with the text of the thread's box as context.
+// While the session can't take the prompt, the button shows disabled, with the reason as its tooltip. Once clicked, it
+// says that the thread is queued for Claude, then that Claude works on it.
 function addressButton(t) {
   if (t.resolved || !termAvailable()) return '';
+  const now = ADDRESS_STATES[addressState(t)];
+  if (now) return `<button class="on" data-addressing title="${esc(now[2])}" disabled><span class="dot ${now[0]}"></span>${now[1]}</button>`;
   const block = quickBlock();
   return btn(`data-address-thread="${esc(t.id)}"${block ? ` title="${esc(block)}"` : ''}`, 'Address with Claude', false, block);
 }
-// The prompt that has Claude address the GitHub review thread `t`: the thread's lines and every comment of it, quoted.
-function addressPrompt(t) {
+// The prompt that has Claude address the GitHub review thread `t`: the thread's lines and every comment of it, quoted,
+// then the reader's note on it, when they wrote one.
+function addressPrompt(t, note = '') {
   const [start, line] = t.outdated ? [t.original_start_line, t.original_line] : [t.start_line, t.line];
   const where = `\`${t.path}\`${line == null ? '' : `, ${linesText(start, line, t.side)}`}${t.outdated ? ' (outdated: the code changed since)' : ''}`;
-  const comments = t.comments.map(c => `${c.author} wrote (${c.url}):\n${c.body.split(/\r?\n/).map(l => `> ${l}`).join('\n')}`).join('\n\n');
-  return { label: 'Address with Claude', text: `Address this review thread of this pull request, on ${where}:\n\n${comments}\n\nThe branch may have moved since the thread started, so read the file and the pull request's diff to find the code it means. Make the change the thread asks for, then commit and push. When the thread asks a question, or you judge the change wrong, tell me here instead of changing the code. Don't reply on GitHub.` };
+  const quote = (text) => text.split(/\r?\n/).map(l => `> ${l}`).join('\n');
+  const comments = t.comments.map(c => `${c.author} wrote (${c.url}):\n${quote(c.body)}`).join('\n\n');
+  const mine = note.trim() ? `\n\nMy own note on it:\n${quote(note.trim())}` : '';
+  return { label: 'Address with Claude', text: `Address this review thread of this pull request, on ${where}:\n\n${comments}${mine}\n\nThe branch may have moved since the thread started, so read the file and the pull request's diff to find the code it means. Make the change the thread asks for, then commit and push. When the thread asks a question, or you judge the change wrong, tell me here instead of changing the code. Don't reply on GitHub.` };
 }
-// The reply box of a thread, with the buttons that send it after Cancel.
-function replyHtml(t, send) {
-  return `<div class="form reply"><textarea data-reply-text="${esc(t.id)}" placeholder="Reply">${esc(state.replyOpen.get(t.id) || '')}</textarea>
-    <div class="actions"><span class="spacer"></span>${btn(`data-reply-cancel="${esc(t.id)}"`, 'Cancel')}
-    ${send}</div></div>`;
+// The foot of a thread: its box, a line that grows with its text, which every thread shows, with the thread's buttons below.
+function replyHtml(t, placeholder, buttons) {
+  return `<div class="form reply"><textarea class="line" rows="1" data-reply-text="${esc(t.id)}" placeholder="${placeholder}">${esc(state.replyOpen.get(t.id) || '')}</textarea>
+    <div class="actions">${buttons}</div></div>`;
+}
+// Give a box that starts as one line the height of its text, up to the height CSS allows.
+function fitLine(box) {
+  box.style.height = '';
+  box.style.height = `${box.scrollHeight + box.offsetHeight - box.clientHeight}px`;
+}
+// Address the thread with Claude, with the text of its box as the reader's note, which leaves the box. The server
+// queues the prompt and sends it once Claude is free. When the server refuses it, the note goes back to the box.
+async function addressThread(t) {
+  if (!quickReady() || addressState(t)) return;
+  const note = state.replyOpen.get(t.id) || '';
+  state.replyOpen.delete(t.id);
+  ADDRESSING.add(t.id); CL.error = ''; render();
+  try {
+    if (!TERM.open) await openTerminal(false);
+    await api('claude_address', { thread: t.id, text: addressPrompt(t, note).text });
+    await loadClaude();
+  } catch (e) { CL.error = `Claude: ${e.message}`; restoreReply(t.id, note); } finally { ADDRESSING.delete(t.id); render(); }
 }
 function composeHtml(f, c) {
   const where = linesText(c.startLine, c.line, c.side);
@@ -364,12 +396,17 @@ function openCompose(path, side, line, extend) {
   render();
 }
 const joinDrafts = (first, then) => then.trim() ? first.trimEnd() + '\n\n' + then : first;
-// Open the reply box of the thread with that id again with its text, joined by the text written in it since. The box
-// takes focus unless another textarea has it.
+// Put the text back in the box of the thread with that id, joined by the text written in it since. The box takes focus
+// unless another textarea has it.
 function restoreReply(id, text) {
   const box = `[data-reply-text="${CSS.escape(id)}"]`;
   state.replyOpen.set(id, joinDrafts(text, state.replyOpen.get(id) || ''));
   if (!typingElsewhere(box)) state.focus = box;
+}
+// Put the cursor in the box of the thread with that id: a send with nothing to send.
+function focusReply(id) {
+  const box = document.querySelector(`[data-reply-text="${CSS.escape(id)}"]`);
+  if (box) box.focus();
 }
 // Open a comment box again with its text, joined by the text of a box or draft written on its line since. While a box
 // with text is open on another line, that box stays and the comment becomes a draft on its own line, marked `refused`.
@@ -428,15 +465,15 @@ function keepBoxHeights(el) {
 function fillBoxes(el) {
   for (const box of el.getElementsByTagName('textarea')) {
     box.value = draftText(box);
-    box.style.height = boxHeights.get(boxKey(box)) || '';
+    if (box.classList.contains('line')) fitLine(box); else box.style.height = boxHeights.get(boxKey(box)) || '';
   }
 }
 function textareaKey(e) {
   const form = e.target.closest('.form');
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"], button[data-reply-send], button[data-claude-follow]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') e.target.blur();
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply],[data-reply-cancel],[data-reply-send],[data-address-thread],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply-send],[data-address-thread],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
@@ -459,17 +496,15 @@ async function commentClick(t, e) {
     await postComment('comment', body, { thread: localThread(c, comment), comment }, () => restoreCompose(c));
     return true;
   }
-  if (d.reply !== undefined) { state.replyOpen.set(d.reply, ''); state.focus = `[data-reply-text="${CSS.escape(d.reply)}"]`; render(); return true; }
-  if (d.replyCancel !== undefined) { state.replyOpen.delete(d.replyCancel); render(); return true; }
   if (d.replySend !== undefined) {
     const text = state.replyOpen.get(d.replySend) || '';
-    if (!text.trim()) return true;
+    if (!text.trim()) { focusReply(d.replySend); return true; }
     const id = d.replySend;
     state.replyOpen.delete(id);
     await postComment('reply', { thread: id, body: text }, { replyTo: id, comment: sendingComment(text, true) }, () => restoreReply(id, text));
     return true;
   }
-  if (d.addressThread !== undefined) { const th = shownThreads().find(x => x.id === d.addressThread); if (th) await sendQuickPrompt(addressPrompt(th)); return true; }
+  if (d.addressThread !== undefined) { const th = shownThreads().find(x => x.id === d.addressThread); if (th) await addressThread(th); return true; }
   if (d.resolve !== undefined) { await post('resolve', { thread: d.resolve, resolved: d.resolved === '1' }); return true; }
   if (d.delete !== undefined) { e.preventDefault(); await post('delete', { comment: d.delete }); return true; }
   if (d.threadOpen !== undefined) { state.openThreads.add(d.threadOpen); render(); return true; }

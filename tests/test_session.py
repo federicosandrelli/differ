@@ -243,7 +243,9 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
         "head": "c" * 40,
         "working": False,
         "task": "",
+        "working_since": "",
         "asking": False,
+        "addresses": {},
         "setup": "",
         "command": "",
         "installing": False,
@@ -415,6 +417,183 @@ def test_the_question_tools_hooks_say_whether_claude_asks_the_reader(fake: Simpl
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
     assert not asking()
+
+
+def addresses() -> dict[str, str]:
+    return session.status(REF)["addresses"]
+
+
+def set_title(title: str, working: bool) -> None:
+    """Have the fake claude set the terminal title, which it echoes, and wait for the server to read it."""
+    session.write(REF, f"\x1b]0;{title}\x07".encode())
+    wait_for(lambda: session.status(REF)["working"] == working)
+
+
+def test_addresses_wait_in_a_queue_and_each_goes_to_claude_once_it_waits_at_its_prompt(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pasted: list[str] = []
+    monkeypatch.setattr(session, "_paste", lambda s, text, submit: pasted.append(text))
+    session.start(REF, fake.port, 80, 24)
+    wait_for(lambda: "Listening for differ comments." in output())
+
+    # Claude waits, so the first address goes at once, and is queued until Claude works on it.
+    session.address(REF, "T1", "address T1")
+    wait_for(lambda: pasted == ["address T1"])
+    assert addresses() == {"T1": "queued"}
+    set_title("◐ fix T1", working=True)
+    assert addresses() == {"T1": "working"}
+
+    # While Claude works, a second address waits in the queue, and a second click on one adds nothing.
+    session.address(REF, "T2", "address T2")
+    session.address(REF, "T1", "address T1 again")
+    assert addresses() == {"T1": "working", "T2": "queued"}
+    assert pasted == ["address T1"]
+
+    # Claude waiting for the reader's answer to a question still works on the address.
+    with session.lock:
+        session.session_of(REF).asking = True
+    set_title("✳ fix T1", working=False)
+    assert addresses() == {"T1": "working", "T2": "queued"}
+    with session.lock:
+        session.session_of(REF).asking = False
+    set_title("◑ fix T1", working=True)
+
+    # Once Claude waits at its prompt, the first is done and the next goes.
+    set_title("✳ fix T1", working=False)
+    wait_for(lambda: pasted == ["address T1", "address T2"])
+    assert addresses() == {"T2": "queued"}
+
+    # The queue outlives neither its process nor the start of the next.
+    session.close(REF)
+    assert addresses() == {}
+    session.start(REF, fake.port, 80, 24)
+    wait_for(running)
+    assert addresses() == {}
+
+
+def test_an_address_waits_while_the_reader_has_typed_into_the_terminal_without_an_enter(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pasted: list[str] = []
+    monkeypatch.setattr(session, "_paste", lambda s, text, submit: pasted.append(text))
+    monkeypatch.setattr(session, "ADDRESS_SETTLE", 0.05)
+    session.start(REF, fake.port, 80, 24)
+    wait_for(lambda: "Listening for differ comments." in output())
+
+    # What the reader typed and has not sent holds the address back, even when Claude waits.
+    session.type_in(REF, b"half a promp")
+    session.address(REF, "T1", "address T1")
+    set_title("◐ other work", working=True)
+    set_title("✳ other work", working=False)
+    time.sleep(0.2)
+    assert pasted == [] and addresses() == {"T1": "queued"}
+
+    # Once the reader sends it, Claude works on it, and the next time it waits the address goes.
+    session.type_in(REF, b"t\r")
+    set_title("◐ their prompt", working=True)
+    set_title("✳ their prompt", working=False)
+    wait_for(lambda: pasted == ["address T1"])
+
+
+def test_an_address_claude_never_starts_on_leaves_the_queue_for_the_next(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pasted: list[str] = []
+    monkeypatch.setattr(session, "_paste", lambda s, text, submit: pasted.append(text))
+    monkeypatch.setattr(session, "ADDRESS_START_WAIT", 0.3)
+    session.start(REF, fake.port, 80, 24)
+    wait_for(typing_ready)
+    session.address(REF, "T1", "address T1")
+    session.address(REF, "T2", "address T2")
+    assert addresses() == {"T1": "queued", "T2": "queued"}
+    wait_for(lambda: pasted == ["address T1", "address T2"])
+    assert addresses() == {"T2": "queued"}
+    wait_for(lambda: addresses() == {})
+
+
+def test_cancelling_a_question_ends_the_address_and_pastes_the_next(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pasted: list[str] = []
+    monkeypatch.setattr(session, "_paste", lambda s, text, submit: pasted.append(text))
+    monkeypatch.setattr(session, "ADDRESS_SETTLE", 0.05)
+    session.start(REF, fake.port, 80, 24)
+    wait_for(typing_ready)
+    session.address(REF, "T1", "address T1")
+    session.address(REF, "T2", "address T2")
+    wait_for(lambda: pasted == ["address T1"])
+    set_title("◐ fix T1", working=True)
+    with session.lock:
+        session.session_of(REF).asking = True
+    set_title("✳ fix T1", working=False)
+    assert addresses() == {"T1": "working", "T2": "queued"}
+    session.write(REF, session.CANCEL_KEY)
+    wait_for(lambda: pasted == ["address T1", "address T2"])
+    assert addresses() == {"T2": "queued"}
+
+
+def test_a_turn_to_working_while_an_address_settles_keeps_it_for_the_next_wait(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pasted: list[str] = []
+    monkeypatch.setattr(session, "_paste", lambda s, text, submit: pasted.append(text))
+    monkeypatch.setattr(session, "ADDRESS_SETTLE", 0.5)
+    session.start(REF, fake.port, 80, 24)
+    wait_for(typing_ready)
+    session.address(REF, "T1", "address T1")
+    set_title("◐ other work", working=True)
+    time.sleep(0.7)
+    assert pasted == [] and addresses() == {"T1": "queued"}
+    set_title("✳ other work", working=False)
+    wait_for(lambda: pasted == ["address T1"])
+    assert addresses() == {"T1": "queued"}
+    set_title("◐ fix T1", working=True)
+    assert addresses() == {"T1": "working"}
+
+
+def test_only_text_the_reader_left_unsent_holds_the_queue_and_an_enter_releases_it(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pasted: list[str] = []
+    monkeypatch.setattr(session, "_paste", lambda s, text, submit: pasted.append(text))
+    monkeypatch.setattr(session, "ADDRESS_SETTLE", 0.05)
+    session.start(REF, fake.port, 80, 24)
+    wait_for(typing_ready)
+
+    def typed() -> bool:
+        with session.lock:
+            return session.session_of(REF).typed
+
+    for key in (b"\x1b", b"\x1b[A", b"\x7f"):
+        session.type_in(REF, key)
+        assert not typed()
+    session.type_in(REF, b"abc")
+    assert typed()
+    session.type_in(REF, b"\x1b[D")
+    assert typed()
+    session.type_in(REF, b"\x03")
+    assert not typed()
+    session.type_in(REF, b"\x1b[200~line one\rline two\x1b[201~")
+    assert typed()
+
+    # Text left unsent holds the address back while Claude waits, and the Enter lets it go without a turn of the title.
+    session.address(REF, "T1", "address T1")
+    time.sleep(0.2)
+    assert pasted == []
+    session.type_in(REF, b"\r")
+    wait_for(lambda: pasted == ["address T1"])
+
+
+def test_the_status_says_since_when_claude_works(fake: SimpleNamespace) -> None:
+    session.start(REF, fake.port, 80, 24)
+    wait_for(typing_ready)
+    assert session.status(REF)["working_since"] == ""
+    before = claude.now()
+    set_title("◐ work", working=True)
+    assert session.status(REF)["working_since"] >= before
+    set_title("✳ work", working=False)
+    assert session.status(REF)["working_since"] == ""
 
 
 def test_a_terminal_that_connects_later_gets_what_the_session_printed(fake: SimpleNamespace) -> None:
@@ -620,7 +799,9 @@ def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypat
         "head": "",
         "working": False,
         "task": "",
+        "working_since": "",
         "asking": False,
+        "addresses": {},
         "setup": "",
         "command": "",
         "installing": False,

@@ -62,6 +62,7 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
     assert [json.loads(f) for f in frames] == [
         {"event": "comment", "pr": "acme/widgets#1", "id": sent["id"], "seen": 1, "replay": True}
     ]
+    assert states() == ["sent"] and claude.fetch(REF, "abc")["listening"]
     assert claude.thread(REF, sent["id"]) == {
         "id": sent["id"],
         "path": "src/app.py",
@@ -73,7 +74,25 @@ def test_a_comment_waits_until_a_session_listens_and_then_goes_to_it() -> None:
         "messages": sent["messages"],
         "seen": 1,
     }
-    assert states() == ["sent"] and claude.fetch(REF, "abc")["listening"]
+    assert states() == ["read"]
+    assert claude.read(REF)[0]["read_at"]
+
+
+def test_a_thread_read_again_is_stamped_again_and_waits_again_once_its_listener_goes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    add()
+    frames: list[str] = []
+    send = frames.append
+    claude.attach(REF, send)
+    (c,) = claude.fetch(REF, "abc")["comments"]
+    monkeypatch.setattr(claude, "now", lambda: "2026-01-01T00:00:00Z")
+    claude.thread(REF, c["id"])
+    monkeypatch.setattr(claude, "now", lambda: "2026-01-01T00:00:05Z")
+    claude.thread(REF, c["id"])
+    assert states() == ["read"] and claude.read(REF)[0]["read_at"] == "2026-01-01T00:00:05Z"
+    claude.detach(REF, send)
+    assert states() == ["waiting"]
 
 
 def test_a_frame_for_a_long_thread_fits_in_a_monitor_event() -> None:
@@ -88,8 +107,9 @@ def test_a_comment_goes_at_once_to_the_session_that_listens() -> None:
     claude.attach(REF, frames.append)
     assert frames == []
     add("Rename it")
-    assert [(last_said(f), json.loads(f)["replay"]) for f in frames] == [("Rename it", False)]
     assert states() == ["sent"]
+    assert [(last_said(f), json.loads(f)["replay"]) for f in frames] == [("Rename it", False)]
+    assert states() == ["read"]
 
 
 def test_a_second_session_is_refused_while_one_listens_and_let_in_after_it_leaves() -> None:
@@ -133,8 +153,8 @@ def test_a_session_that_connects_again_gets_every_comment_without_a_reply() -> N
     claude.detach(REF, first)
     again: list[str] = []
     claude.attach(REF, again.append)
-    assert [last_said(f) for f in again] == ["two"]
     assert states() == ["answered", "sent"]
+    assert [last_said(f) for f in again] == ["two"]
 
 
 def test_a_reply_answers_its_comment_and_a_delete_removes_it() -> None:
