@@ -85,7 +85,7 @@ function headerHtml(f, open) {
       <button class="chev ghost ${open ? 'open' : ''}" data-toggle="${esc(f.path)}" title="Close or open the file" aria-expanded="${open}"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <span class="badge ${ck}" title="${KIND_LABEL[ck]}">${ck === 'V' ? '→' : ck}</span>
       <span class="path"><b title="${esc(f.base)}">${esc(f.base)}</b><span class="dir" title="${esc(f.dir)}">${esc(f.dir)}</span>${renamedFrom(f)}</span>
-      <span class="kind">${esc(f.kind)}</span>${countsHtml(f)}${editorButton(f)}
+      ${countsHtml(f)}${editorButton(f)}
       <button data-review="${esc(f.path)}" class="${isReviewed(f) ? 'on' : ''}">${isReviewed(f) ? '✓ Reviewed' : 'Mark reviewed'}</button>
     </div></div>`;
 }
