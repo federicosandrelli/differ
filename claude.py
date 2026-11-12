@@ -2,7 +2,7 @@
 the session that listens for them.
 
 A pull request's comments live in its `records.COMMENTS` record, oldest first, and the descriptions Claude gives its
-files in its `records.DESCRIPTIONS` record, until the pull request is merged or closed. Each comment is a thread on
+files in its `records.DESCRIPTIONS` record, until `session.sweep` expires the pull request. Each comment is a thread on
 its lines: the reader's messages and Claude's replies, oldest first. Claude can start a thread too (`start_thread`). A session listens over a WebSocket, one session
 per pull request. While one listens, a new comment, or the reader's reply in a thread, goes to it at once as a text
 frame, and when one connects, every thread without Claude's reply to the reader's last message goes to it."""
@@ -37,7 +37,7 @@ Author = Literal["reader", "claude"]
 State = Literal["waiting", "sent", "read", "answered"]
 # Sends one text frame to a listening session. Raises OSError once the session has gone.
 Send = Callable[[str], None]
-# The statuses that end a pull request, and with it its comments.
+# The statuses that end a pull request.
 ENDED = ("merged", "closed")
 SHA = re.compile(r"[0-9a-f]{40}")
 # The skills differ ships, one Markdown file each, such as differ-comments.md, which tells a session how to listen and

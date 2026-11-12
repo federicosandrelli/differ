@@ -25,10 +25,11 @@ const TERM_ATTRS = '[data-term-toggle],[data-term-dock],[data-term-close],[data-
 // The quick prompt that has Claude rebase the pull request's branch onto the latest `base` and push it.
 const rebasePrompt = (base) => ({ label: `Rebase onto ${base}`, text: `Rebase this pull request's branch onto the latest \`${base}\`: run \`git fetch origin ${base}\`, then \`git rebase origin/${base}\`. If the worktree has uncommitted changes, stop and tell me. Resolve each conflict so that both the changes of \`${base}\` and the changes of this pull request stay. When a conflict has no clear resolution, run \`git rebase --abort\` and tell me why. Never merge \`${base}\` into the branch. Then push with \`git push --force-with-lease --force-if-includes\`.` });
 // The prompts the burger's menu sends to the session, each as if the reader typed it and pressed Enter. The rebase
-// names the base branch of the merge state once it loads, since GitHub may have retargeted the pull request.
+// names the base branch of the merge state once it loads, since GitHub may have retargeted the pull request. It shows
+// for an open or draft pull request only: the worktree of a merged or closed one has no branch.
 const quickPrompts = () => [
   { label: 'Describe file changes', text: "Describe every file of this pull request's diff: follow the differ-file-descriptions skill, call describe_file for each file that needs a description, and comment on the pull request's salient lines with start_thread." },
-  rebasePrompt(M.loaded ? M.base : PR.base_ref),
+  ...(['open', 'draft'].includes(prStatus()) ? [rebasePrompt(M.loaded ? M.base : PR.base_ref)] : []),
 ];
 const ARROW_RIGHT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 7h8M7.5 3.5L11 7l-3.5 3.5"/><path d="M12.5 2.5v9" stroke-opacity=".5"/></svg>';
 const ARROW_LEFT = '<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.5 7h-8M6.5 3.5L3 7l3.5 3.5"/><path d="M1.5 2.5v9" stroke-opacity=".5"/></svg>';
@@ -50,9 +51,6 @@ function savePane() {
   lsSet(TERM_OPEN_KEY, TERM.open ? 'open' : null);
 }
 const termSession = () => CL.session || { starting: false, running: false, error: '', branch: '', head: '', setup: '', command: '', installing: false };
-// Whether the reader can show the terminal: the page is served, the setting is on and the pull request is still
-// open, since the server ends the session of a merged or closed one as soon as it sees the status.
-const termAvailable = () => claudeOn() && !CLAUDE_ENDED.includes(prStatus());
 
 // ---------- the element and its docks
 // The terminal's element, made once: a header and the screen xterm.js draws in.
@@ -66,7 +64,7 @@ function termElement() {
 }
 // The sidebar's place for the terminal: a grip above it, then the slot the element goes in after each render.
 function termSlotHtml() {
-  if (!termAvailable() || !TERM.open || TERM.dock !== 'side') return '';
+  if (!claudeOn() || !TERM.open || TERM.dock !== 'side') return '';
   return `<div class="termgrip" data-term-grip></div><div id="termslot" style="height: ${TERM.height}px"></div>`;
 }
 // The column the terminal takes between the sidebar and the code, made when first needed.
@@ -84,7 +82,7 @@ function termColumn() {
 // Put the terminal's element where its dock says, or take it out of the page when it is hidden, and draw its header.
 function mountTerminal() {
   const el = termElement(), col = document.getElementById('termcol');
-  if (!termAvailable() || !TERM.open) {
+  if (!claudeOn() || !TERM.open) {
     el.remove();
     if (col) col.remove();
     return;
@@ -362,4 +360,4 @@ async function termClick(t) {
 window.addEventListener('storage', (e) => { if (e.key === 'dr:theme' && TERM.term) TERM.term.options.theme = termTheme(); });
 // A terminal the reader left open on this pull request comes back with the page, once the page has drawn and the
 // scripts after this one have run. It starts nothing: the shell's Auto start does.
-setTimeout(() => { if (termAvailable() && TERM.open) openTerminal(false); }, 0);
+setTimeout(() => { if (claudeOn() && TERM.open) openTerminal(false); }, 0);

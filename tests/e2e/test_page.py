@@ -1534,29 +1534,6 @@ def test_auto_start_starts_nothing_while_comments_for_claude_are_off(page: Page,
 
 
 @pytest.mark.auto_start
-def test_auto_start_runs_no_session_for_a_pull_request_that_github_reports_merged_since_its_page_was_built(
-    page: Page, server_url: str, add_pr: AddPr, gh_state: Path
-) -> None:
-    path = add_pr(OLD, NEW)
-    page.goto(server_url + "/")
-    page.evaluate("localStorage.setItem('dr:claudeStart', 'off')")
-    open_in_shell(page, server_url, path)
-    pr = gh_state / f"pr{path.rsplit('/', 1)[1]}.json"
-    pr.write_text(json.dumps(json.loads(pr.read_text()) | {"state": "MERGED"}))
-    page.evaluate("localStorage.removeItem('dr:claudeStart')")
-    with page.expect_response(lambda r: r.url.endswith("/claude_open")) as opened:
-        page.reload()
-    assert opened.value.ok
-    tab = shell_tab(page)
-    assert tab.evaluate("PR_STATUS") == "open"
-    deadline = time.monotonic() + 30
-    while session_of(page, server_url, path)["starting"]:
-        assert time.monotonic() < deadline
-        time.sleep(0.2)
-    assert not session_of(page, server_url, path)["running"]
-
-
-@pytest.mark.auto_start
 def test_auto_start_with_a_terminal_left_open_starts_the_session_once(
     page: Page, server_url: str, add_pr: AddPr
 ) -> None:

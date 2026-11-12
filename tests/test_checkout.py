@@ -419,6 +419,20 @@ def test_a_worktree_keeps_a_commit_a_session_left_on_the_branch_and_says_so(gh: 
     assert head_of(checkout.build.mirror_of(REF), "refs/heads/feature") == local
 
 
+def test_a_detached_worktree_needs_no_branch_on_github_and_leaves_the_branchs_commits_on_it(
+    gh: FakeGitHub, cache: Path
+) -> None:
+    head = gh.commit(7, BASE)
+    folder = checkout.worktree(REF, head)
+    local = commit_tree(folder, {**BASE, "mine.txt": "unpushed\n"}, "left behind")
+    git(gh.pusher, "push", "-q", "origin", "--delete", "feature")
+    assert checkout.worktree(REF, head, "feature", False, detached=True) == folder
+    assert branch_of(folder) == "" and head_of(folder) == head and head_of(folder, "refs/heads/feature") == local
+    checkout.remove_worktree(REF)
+    assert checkout.worktree(REF, head, "feature", False, detached=True) == folder
+    assert branch_of(folder) == "" and head_of(folder) == head
+
+
 def test_a_worktree_deleted_by_hand_is_made_again_and_remove_worktree_removes_it(gh: FakeGitHub, cache: Path) -> None:
     head = gh.commit(7, BASE)
     folder = checkout.worktree(REF, head)

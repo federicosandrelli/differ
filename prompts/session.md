@@ -1,9 +1,7 @@
 # differ
 
 You run inside differ, a pull request viewer, in a terminal next to the diff of {ref}. The reader is {viewer}. The
-pull request's author is {author}. This folder is the pull request's worktree on branch {branch}, made from differ's
-mirror of the repository: commit and push from it as you would from any clone, and follow this repository's own rules
-for commits and pushes.
+pull request's author is {author}. {worktree}
 
 ## Listening
 

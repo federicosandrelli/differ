@@ -58,13 +58,23 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleName
     folder = tmp_path / "worktree"
     folder.mkdir()
     removed: list[PullRef] = []
-    monkeypatch.setattr(checkout, "worktree", lambda ref, head=None, branch=None, fork=False: folder)
+    worktrees: list[bool] = []
+
+    def worktree(
+        ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False, detached: bool = False
+    ) -> Path:
+        worktrees.append(detached)
+        return folder
+
+    monkeypatch.setattr(checkout, "worktree", worktree)
     monkeypatch.setattr(checkout, "remove_worktree", removed.append)
     monkeypatch.setattr(github, "pull_request", lambda ref: PR)
     monkeypatch.setattr(github, "viewer_login", lambda: "tester")
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    yield SimpleNamespace(folder=folder, removed=removed, log=tmp_path / "starts.log", port=httpd.server_address[1])
+    yield SimpleNamespace(
+        folder=folder, removed=removed, detached=worktrees, log=tmp_path / "starts.log", port=httpd.server_address[1]
+    )
     session.stop_all()
     httpd.shutdown()
     httpd.server_close()
@@ -654,10 +664,11 @@ def test_stop_all_ends_the_sessions_and_keeps_the_worktrees(fake: SimpleNamespac
 
 def test_expire_ends_the_session_and_deletes_its_file_and_the_comments(fake: SimpleNamespace) -> None:
     claude.add(REF, path="a.py", line=1, start_line=None, side="RIGHT", commit="abc", code=[], body="b")
+    session.note_opened(REF)
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
     session.expire(REF)
-    assert not running() and records.SESSIONS.refs() == [] and fake.removed == [REF]
+    assert not running() and records.kept() == [] and fake.removed == [REF]
     assert claude.fetch(REF, "abc")["comments"] == []
 
 
@@ -685,6 +696,31 @@ def test_a_sweep_expires_the_merged_and_closed_pull_requests_with_a_record_and_k
     assert sorted(asked, key=lambda r: r.number) == [*refs.values(), gone, described, idle]
     assert records.kept() == [refs["open"], refs["draft"], gone]
     assert sorted(fake.removed, key=lambda r: r.number) == [refs["merged"], refs["closed"], described, idle]
+
+
+def test_a_sweep_keeps_an_ended_pull_request_opened_lately_or_while_github_answers_or_with_a_running_session(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lately, long_ago, running_ref, meanwhile = (PullRef("acme", "widgets", n) for n in (1, 2, 3, 4))
+    session.note_opened(lately)
+    records.OPENED.write(long_ago, {"at": time.time() - session.KEEP_ENDED - 60})
+    records.OPENED.write(running_ref, {"at": 0})
+    records.OPENED.write(meanwhile, {"at": 0})
+    monkeypatch.setattr(github, "pull_request", lambda ref: replace(PR, state="MERGED"))
+    session.start(running_ref, fake.port, 80, 24)
+    wait_for(lambda: session.status(running_ref)["running"])
+    asked: list[PullRef] = []
+
+    def standings(asked_for: list[PullRef]) -> dict[PullRef, github.Standing]:
+        asked.extend(asked_for)
+        session.note_opened(meanwhile)
+        return {ref: github.Standing("merged", "me") for ref in asked_for}
+
+    monkeypatch.setattr(github, "pr_standings", standings)
+    session.sweep()
+    assert asked == [running_ref, long_ago, meanwhile]
+    assert records.kept() == [running_ref, lately, meanwhile] and fake.removed == [long_ago]
+    session.close(running_ref)
 
 
 def test_a_thread_reaches_the_session_which_replies_through_the_mcp_server(fake: SimpleNamespace) -> None:
@@ -788,7 +824,9 @@ def test_a_start_makes_the_worktree_while_it_reads_the_viewer(
 ) -> None:
     made, order = threading.Event(), []
 
-    def worktree(ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False) -> Path:
+    def worktree(
+        ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False, detached: bool = False
+    ) -> Path:
         order.append("worktree")
         made.set()
         return fake.folder
@@ -808,7 +846,9 @@ def test_a_start_makes_the_worktree_while_it_reads_the_viewer(
 def test_a_close_during_a_start_drops_the_start(fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
     checking_out, closed = threading.Event(), threading.Event()
 
-    def slow_worktree(ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False) -> Path:
+    def slow_worktree(
+        ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False, detached: bool = False
+    ) -> Path:
         checking_out.set()
         closed.wait(10)
         return fake.folder
@@ -850,12 +890,18 @@ def test_a_failure_the_start_did_not_expect_shows_in_the_status(
     assert session.status(REF)["error"] == "'headRefName'"
 
 
-def test_a_merged_pull_request_gets_no_session(fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(github, "pull_request", lambda ref: replace(PR, state="MERGED"))
+@pytest.mark.parametrize(("state", "detached"), [("OPEN", False), ("MERGED", True), ("CLOSED", True)])
+def test_a_merged_or_closed_pull_request_gets_a_session_in_a_detached_worktree_that_pushes_nothing(
+    fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, state: str, detached: bool
+) -> None:
+    pr = replace(PR, state=state)
+    monkeypatch.setattr(github, "pull_request", lambda ref: pr)
     session.start(REF, fake.port, 80, 24)
-    wait_for(lambda: not session.status(REF)["starting"])
-    assert session.status(REF)["error"] == "The pull request is merged, so it gets no session."
-    assert starts(fake.log) == []
+    wait_for(running)
+    assert fake.detached == [detached]
+    assert ("commit and push nothing" in session.system_prompt(REF, pr, "me")) == detached
+    assert ("without a branch" in session.listen_prompt(REF, fake.port, pr)) == detached
+    session.close(REF)
 
 
 def test_a_paste_the_session_does_not_read_holds_up_nothing_else(

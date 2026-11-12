@@ -46,9 +46,8 @@
     return fetch(`/api/${m[1]}/${m[2]}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
   };
   // With Auto start on, a tab starts its pull request's Claude session as soon as its page reports the pull request,
-  // so the session starts while the progress page waits for the build. The page's status may be the one it was built
-  // with, so the server, which asks GitHub, refuses a merged or closed pull request; it does nothing for a session that
-  // runs or starts. Once the start answers, the page loads the session's state at once instead of at its next poll.
+  // so the session starts while the progress page waits for the build. The server does nothing for a session that runs
+  // or starts. Once the start answers, the page loads the session's state at once instead of at its next poll.
   function startSession(tab) {
     if (!isOn(CLAUDE_KEY) || !isOn(START_KEY)) return;
     let model = null;

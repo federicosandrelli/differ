@@ -2,6 +2,7 @@ import io
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, cast, get_args
 from urllib.parse import quote
@@ -11,6 +12,7 @@ import pytest
 import build
 import commands
 import recent
+import records
 import server
 from github import PullRef
 
@@ -491,20 +493,6 @@ def test_followed_is_refused_from_another_origin(tmp_path: Path, monkeypatch: py
 
 
 @pytest.mark.parametrize(
-    ("status", "expired"), [("open", []), ("merged", [PullRef("o", "r", 1)]), ("closed", [PullRef("o", "r", 1)])]
-)
-def test_a_comments_load_expires_the_comments_for_claude_of_an_ended_pull_request(
-    status: str, expired: list[PullRef], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    gone: list[PullRef] = []
-    monkeypatch.setattr(server.comments, "fetch", lambda ref: {"status": status})
-    monkeypatch.setattr(server.session, "expire", gone.append)
-    h = request("GET", "/api/o/r/1/comments")
-    h.do_GET()
-    assert response(h)[0] == 200 and gone == expired
-
-
-@pytest.mark.parametrize(
     ("action", "body", "function", "expected"),
     [
         ("claude_open", {"cols": 100, "rows": 30}, "start", (PullRef("o", "r", 1), 8765, 100, 30, "claude-opus-5-5")),
@@ -550,6 +538,8 @@ def test_a_vendored_file_is_served_and_any_other_name_under_vendor_is_not() -> N
 def test_the_comments_for_claude_are_placed_on_the_head_the_page_names(monkeypatch: pytest.MonkeyPatch) -> None:
     asked: list[tuple[PullRef, str]] = []
     monkeypatch.setattr(server.claude, "fetch", lambda ref, head: asked.append((ref, head)) or {})
+    records.OPENED.delete(PullRef("o", "r", 1))
     h = request("GET", "/api/o/r/1/claude?head=" + "a" * 40)
     h.do_GET()
     assert response(h)[0] == 200 and asked == [(PullRef("o", "r", 1), "a" * 40)]
+    assert time.time() - server.session.opened_at(PullRef("o", "r", 1)) < 60

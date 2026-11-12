@@ -1,7 +1,8 @@
 """The Claude Code session of each pull request: one `claude` process in a pseudoterminal, started by the server in
 the pull request's worktree with a prompt that makes it listen for the pull request's comments, resumed by id across
-starts, shown in the page's terminal over a WebSocket, and ended when the tab closes, when the pull request ends and
-when the server exits.
+starts, shown in the page's terminal over a WebSocket, and ended when the tab closes and when the server exits. Once
+the pull request is merged or closed and the reader has not opened it for KEEP_ENDED, `sweep` deletes the session's
+file and worktree, unless the session runs or starts.
 
 A pull request's session file, its `records.SESSIONS` record, holds the session id, the pid of the last process and
 whether the id has a conversation to resume. The process's output is kept in a buffer of BUFFER_MAX bytes, replayed
@@ -57,12 +58,23 @@ from github import PullRef
 
 ROOT = Path(__file__).resolve().parent
 PROMPT = ROOT / "prompts" / "session.md"
+# What the shipped prompt says about the worktree, of an open or draft pull request and of a merged or closed one.
+ON_BRANCH = (
+    "This folder is the pull request's worktree on branch {branch}, made from differ's mirror of the repository: commit "
+    "and push from it as you would from any clone, and follow this repository's own rules for commits and pushes."
+)
+DETACHED = (
+    "The pull request is {status}. This folder is its worktree at its head without a branch, since GitHub may have "
+    "deleted the branch: read the code and answer, but commit and push nothing."
+)
 # The oldest Claude Code the session runs on: the one the MCP transport, the start flags and the hooks were checked
 # with.
 MIN_VERSION = (2, 1, 319)
 BUFFER_MAX = 256 * 1024
 # A process that ends this soon after a start did not start: its output says why.
 QUICK_EXIT = 15
+# How long a merged or closed pull request keeps its session and its comments after the reader last opened it.
+KEEP_ENDED = 3 * 24 * 60 * 60
 # The variables a server started from a Claude Code session inherits, which would tie the child to that session, put
 # it in bare mode, without the user's login, or turn its transcript off, so that nothing could resume it.
 DROPPED_VARIABLES = (
@@ -301,22 +313,24 @@ def _same(a: os.stat_result | None, b: os.stat_result) -> bool:
 
 
 def system_prompt(ref: PullRef, pr: github.PullRequest, viewer: str) -> str:
-    """The shipped prompt with the pull request, its author and the reader filled in."""
+    """The shipped prompt with the pull request, its author, the reader and its worktree filled in."""
+    worktree = DETACHED if pr.status in claude.ENDED else ON_BRANCH
     return (
         PROMPT.read_text()
         .replace("{ref}", str(ref))
         .replace("{author}", pr.author or "unknown")
         .replace("{viewer}", viewer or "unknown")
-        .replace("{branch}", pr.head_ref)
+        .replace("{worktree}", worktree.format(branch=pr.head_ref, status=pr.status))
     )
 
 
-def listen_prompt(ref: PullRef, port: int, branch: str, head: str) -> str:
+def listen_prompt(ref: PullRef, port: int, pr: github.PullRequest) -> str:
     """The prompt the process starts with, which makes it arm its Monitor: the only text the server gives Claude."""
     url = f"ws://127.0.0.1:{port}/api/{ref.slug}/{ref.number}/listen"
+    where = "without a branch" if pr.status in claude.ENDED else f"on branch {pr.head_ref}"
     return (
-        f"Listen for differ comments on {ref} at {url}. This folder is the pull request's worktree on branch "
-        f"{branch}, at head {head[:12]}. Arm the Monitor first, then say in one line that you listen."
+        f"Listen for differ comments on {ref} at {url}. This folder is the pull request's worktree {where}, at head "
+        f"{pr.head[:12]}. Arm the Monitor first, then say in one line that you listen."
     )
 
 
@@ -532,9 +546,7 @@ def _start(ref: PullRef, port: int, generation: int) -> None:
         with ThreadPoolExecutor(max_workers=1) as pool:
             viewer_read = pool.submit(github.viewer_login)
             pr = github.pull_request(ref)
-            if pr.status in claude.ENDED:
-                raise RuntimeError(f"The pull request is {pr.status}, so it gets no session.")
-            folder = checkout.worktree(ref, pr.head, pr.head_ref, pr.from_fork)
+            folder = checkout.worktree(ref, pr.head, pr.head_ref, pr.from_fork, detached=pr.status in claude.ENDED)
             mirror = build.mirror_of(ref)
             try:
                 trust(mirror)
@@ -577,7 +589,7 @@ def _spawn(s: Session, claude_bin: Path, folder: Path, port: int, pr: github.Pul
         "off",
         "--append-system-prompt",
         system_prompt(s.ref, pr, viewer),
-        listen_prompt(s.ref, port, pr.head_ref, pr.head),
+        listen_prompt(s.ref, port, pr),
     ]
     proc, master = _open(s, args, folder)
     s.installing = False
@@ -900,21 +912,47 @@ def _forget(s: Session) -> subprocess.Popen[bytes] | None:
 
 
 def expire(ref: PullRef) -> None:
-    """End the pull request's session, delete its worktree and its files, with its comments: the pull request is
-    merged or closed."""
+    """End the pull request's session, delete its worktree and its files, with its comments."""
     close(ref)
     with lock:
         sessions.pop(ref, None)
         records.SESSIONS.delete(ref)
+        records.OPENED.delete(ref)
     claude.expire(ref)
 
 
+def note_opened(ref: PullRef) -> None:
+    """Record that the reader opened the pull request's page now."""
+    records.OPENED.write(ref, {"at": time.time()})
+
+
 def sweep() -> None:
-    """Expire every pull request with a record in the cache, a session file, comments or file descriptions, that
-    GitHub reports merged or closed. A pull request GitHub can't return keeps them."""
-    for ref, standing in github.pr_standings(records.kept()).items():
-        if standing.status in claude.ENDED:
+    """Expire every pull request with a record in the cache that GitHub reports merged or closed, that the reader has
+    not opened for KEEP_ENDED, and whose session neither runs nor starts. A pull request GitHub can't return keeps its
+    records."""
+    unopened = [ref for ref in records.kept() if unopened_long(ref)]
+    for ref, standing in github.pr_standings(unopened).items():
+        # The reader may have opened the page, or started the session, while GitHub answered.
+        if standing.status in claude.ENDED and unopened_long(ref) and not busy(ref):
             expire(ref)
+
+
+def unopened_long(ref: PullRef) -> bool:
+    """Whether the reader has not opened the pull request's page for KEEP_ENDED."""
+    return time.time() - opened_at(ref) > KEEP_ENDED
+
+
+def opened_at(ref: PullRef) -> float:
+    """When the reader last opened the pull request's page, in seconds since the epoch; 0 without a record of it."""
+    at = records.OPENED.read(ref, dict).get("at")
+    return at if isinstance(at, int | float) else 0
+
+
+def busy(ref: PullRef) -> bool:
+    """Whether the pull request's session runs or starts."""
+    with lock:
+        s = sessions.get(ref)
+        return s is not None and (s.starting or (s.proc is not None and s.proc.poll() is None))
 
 
 def stop_all() -> None:

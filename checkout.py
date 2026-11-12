@@ -52,34 +52,47 @@ def worktree_of(ref: PullRef) -> Path:
     return build.CACHE / "worktrees" / ref.owner / ref.repo / str(ref.number)
 
 
-def worktree(ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False) -> Path:
+def worktree(
+    ref: PullRef, head: str | None = None, branch: str | None = None, fork: bool = False, detached: bool = False
+) -> Path:
     """The pull request's worktree: a folder of its own, made from the bare mirror the first time, on the pull
     request's branch at `head`, the pull request's head on GitHub, read now when not given. `branch` and `fork` are
     the head branch and whether it lives in a fork, as `branch_of` gives them, read from GitHub when `branch` is not
     given. A folder that is no longer a worktree, because it was deleted by hand or its mirror was cloned again, is
-    made again. Moves a force-pushed branch as `check_out` does. Raises Refused when the worktree has uncommitted
-    changes to tracked files on a branch of another pull request or of none, and CommandError when gh or git
-    fails."""
+    made again. Moves a force-pushed branch as `check_out` does. With `detached`, the worktree goes to `head` without
+    a branch instead, so the branch need not exist on GitHub, and a commit on the branch stays on it. Raises Refused
+    when the worktree has uncommitted changes to tracked files on a branch of another pull request or of none, and
+    CommandError when gh or git fails, also when `detached` meets uncommitted changes that `head` would overwrite."""
     mirror = build.ensure_repo(ref, lambda _: None)
     branch, fork = (branch, fork) if branch else branch_of(ref)
     head = head or build.recent_head(ref)
     with _mirror_lock(mirror):
         build.fetch(mirror, ref.number, head, head, lambda _: None)
         _configure(mirror)
+        folder = _add_worktree(mirror, ref, head)
+        if detached:
+            build.git(folder, "checkout", "--quiet", "--detach", head)
+            return folder
         if not fork:
             remote = f"+refs/heads/{branch}:refs/remotes/origin/{branch}"
             build.git(mirror, "fetch", "--quiet", "--no-tags", "origin", remote, timeout=commands.LONG_TIMEOUT)
-        folder = worktree_of(ref)
-        build.git(mirror, "worktree", "prune")
-        if folder.exists() and _try_git(folder, "rev-parse", "--git-dir").returncode != 0:
-            shutil.rmtree(folder)
-            build.git(mirror, "worktree", "prune")
-        if not folder.exists():
-            folder.parent.mkdir(parents=True, exist_ok=True)
-            build.git(mirror, "worktree", "add", "--detach", str(folder), head, timeout=commands.LONG_TIMEOUT)
         if _current_branch(folder) != branch or build.git(folder, "rev-parse", "HEAD").decode().strip() != head:
             _drop_copied_branch(mirror, branch)
             check_out(folder, ref, branch, fork)
+    return folder
+
+
+def _add_worktree(mirror: Path, ref: PullRef, head: str) -> Path:
+    """The pull request's worktree, added to the mirror at `head` without a branch unless it is a worktree already.
+    Call it with the mirror's lock held."""
+    folder = worktree_of(ref)
+    build.git(mirror, "worktree", "prune")
+    if folder.exists() and _try_git(folder, "rev-parse", "--git-dir").returncode != 0:
+        shutil.rmtree(folder)
+        build.git(mirror, "worktree", "prune")
+    if not folder.exists():
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        build.git(mirror, "worktree", "add", "--detach", str(folder), head, timeout=commands.LONG_TIMEOUT)
     return folder
 
 

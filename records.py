@@ -1,5 +1,6 @@
 """The records the cache keeps per pull request: one JSON file per pull request and kind of record, at
-<folder>/<owner>/<repo>/<number>.json in the cache, until the pull request is merged or closed.
+<folder>/<owner>/<repo>/<number>.json in the cache, until the pull request is merged or closed and the reader has not
+opened it for `session.KEEP_ENDED`, and its session neither runs nor starts.
 
 A record reads as an empty list or dict when its file is missing, broken or of another shape, and is replaced in one
 step by `write_json`, which also writes the cache's other JSON files: recent.json, followed.json and board.json."""
@@ -70,10 +71,13 @@ COMMENTS = Record("claude")
 DESCRIPTIONS = Record("descriptions")
 # The Session's id, the pid of its last process and whether the id has a conversation to resume (session.py).
 SESSIONS = Record("sessions")
-KINDS = (COMMENTS, DESCRIPTIONS, SESSIONS)
+# When the reader last opened the pull request's page, as `at`, in seconds since the epoch (session.py).
+OPENED = Record("opened")
+KINDS = (COMMENTS, DESCRIPTIONS, SESSIONS, OPENED)
 
 
 def kept() -> list[PullRef]:
     """The pull requests with a record of any kind, each once: those with comments first, then those with file
-    descriptions, then those with a session, each kind in the order of its files' paths."""
+    descriptions, then those with a session, then those the reader opened, each kind in the order of its files'
+    paths."""
     return list(dict.fromkeys(ref for kind in KINDS for ref in kind.refs()))

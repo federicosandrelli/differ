@@ -170,7 +170,7 @@ function threadHtml(f, t) {
     return `<div class="thread card folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
   }
   const head = threadHead(t);
-  const reply = t.local ? '' : replyHtml(t, t.resolved || !termAvailable() ? 'Reply' : 'Reply, or add context for Claude', `${btn(`data-reply-send="${esc(t.id)}"`, 'Reply')}
+  const reply = t.local ? '' : replyHtml(t, t.resolved || !claudeOn() ? 'Reply' : 'Reply, or add context for Claude', `${btn(`data-reply-send="${esc(t.id)}"`, 'Reply')}
     ${addressButton(t)}${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}`);
   return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
@@ -188,7 +188,7 @@ const ADDRESS_STATES = {
 // While the session can't take the prompt, the button shows disabled, with the reason as its tooltip. Once clicked, it
 // says that the thread is queued for Claude, then that Claude works on it.
 function addressButton(t) {
-  if (t.resolved || !termAvailable()) return '';
+  if (t.resolved || !claudeOn()) return '';
   const now = ADDRESS_STATES[addressState(t)];
   if (now) return `<button class="on" data-addressing title="${esc(now[2])}" disabled><span class="dot ${now[0]}"></span>${now[1]}</button>`;
   const block = quickBlock();
@@ -232,7 +232,7 @@ function composeHtml(f, c) {
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
     <textarea data-compose-text="${esc(draftKey(c.path, c.side, c.line))}" placeholder="Leave a comment">${esc(c.text)}</textarea>
     <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
-    ${claudeOn() && !CLAUDE_ENDED.includes(prStatus()) ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment', true)}</div></div>`;
+    ${claudeOn() ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment', true)}</div></div>`;
 }
 // A suggestion shows as the lines it replaces, from the file, over the lines it proposes.
 function suggestionHtml(code, ctx) {

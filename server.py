@@ -34,15 +34,15 @@ Usage: server.py [port] [--log <path>] [--exit-with-parent]   (default port 8765
                                      repository is followed and, for a followed one, whether the pull request comes
                                      from a fork (null when unasked or when GitHub can't answer); a 400 for text
                                      that names no pull request (refused cross-site, as the page is)
-  /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments (a merged or
-                                     closed pull request loses its comments for Claude here)
+  /api/<owner>/<repo>/<number>/comments   GET: the review threads, reviews and conversation comments
   /api/<owner>/<repo>/<number>/viewed     GET: the paths of the files the viewer marked viewed on GitHub
   /api/<owner>/<repo>/<number>/editors    GET: the editors installed (GitHub always is), and the names of all the editors
                                      the app knows
   /api/<owner>/<repo>/<number>/merge      GET: the merge state: the checks, the review decision, whether GitHub can
                                      merge, the auto-merge request and the merge methods allowed
   /api/<owner>/<repo>/<number>/claude     GET: the comments for Claude, each placed on the head commit ?head= names,
-                                     whether a Claude Code session listens, and where the embedded session stands
+                                     whether a Claude Code session listens, and where the embedded session stands;
+                                     records that the page is open, as serving the page does
   /api/<owner>/<repo>/<number>/claude_thread?id=<id>   GET: one comment for Claude: its lines, the code it is on,
                                      every message of its thread and `seen`, the number of those messages
   /api/<owner>/<repo>/<number>/listen     a WebSocket: a Claude Code session listens for the comments for Claude,
@@ -300,21 +300,19 @@ class Handler(BaseHTTPRequestHandler):
                 editors.prepare(ref)
                 if page := build.serve(ref):
                     body = page.read_bytes()
+                    session.note_opened(ref)
                     recent.note_opened(ref, *render.read_head(body))
                     return self.send(200, body)
                 return self.send(200, progress_page(ref))
             if (m := API.match(url.path)) and m["action"] == "comments":
-                ref = PullRef.from_match(m)
-                data = comments.fetch(ref)
-                if data["status"] in claude.ENDED:
-                    session.expire(ref)
-                return self.send_json(data)
+                return self.send_json(comments.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "viewed":
                 return self.send_json({"viewed": comments.viewed(PullRef.from_match(m))})
             if (m := API.match(url.path)) and m["action"] == "merge":
                 return self.send_json(merge.fetch(PullRef.from_match(m)))
             if (m := API.match(url.path)) and m["action"] == "claude":
                 ref = PullRef.from_match(m)
+                session.note_opened(ref)
                 data = claude.fetch(ref, (query.get("head") or [""])[0])
                 return self.send_json({**data, "session": session.status(ref)})
             if (m := API.match(url.path)) and m["action"] == "claude_thread":

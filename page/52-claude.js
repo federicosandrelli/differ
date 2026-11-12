@@ -18,8 +18,6 @@ const CLAUDE_KEY = 'dr:claude';
 // the thread, then working while Claude works on it (workingOn), else read.
 const claudeTag = (c) => c.state === 'read' ? (c.id === workingOn() ? 'Claude working' : 'read by Claude')
   : c.state === 'waiting' || c.state === 'sent' ? 'queued for Claude' : '';
-// The statuses that end a pull request; the server then deletes its comments for Claude.
-const CLAUDE_ENDED = ['merged', 'closed'];
 
 const claudeOn = () => !!API && lsGet(CLAUDE_KEY) !== 'off';
 // The key of the thread of the comment with that id, in the threads and in `state.replyOpen`.
@@ -171,7 +169,7 @@ const claudeDot = () => `<span class="dot ${claudeState()}"></span>`;
 // Tell the shell where the session stands, for the dot on the page's tab.
 function tellShellClaude() {
   if (!SHELL) return;
-  const state = termAvailable() ? claudeState() : '';
+  const state = claudeOn() ? claudeState() : '';
   SHELL.claude(state, state ? claudeStanding() : '');
 }
 // What Claude does: "working on" its task, or "working" without one.
@@ -187,7 +185,7 @@ function claudeStanding() {
 // opens the quick prompts; the arrow before them moves the terminal between the sidebar and its own column, and comes
 // on the left so the bot keeps its place when it shows.
 function claudeFootHtml() {
-  if (!termAvailable()) return '';
+  if (!claudeOn()) return '';
   const dock = TERM.open ? `<button class="ghost" data-term-dock title="${TERM.dock === 'side' ? 'Move the terminal to its own column' : 'Move the terminal into this pane'}">${TERM.dock === 'side' ? ARROW_RIGHT : ARROW_LEFT}</button>` : '';
   const bot = `<button class="ghost session${TERM.open ? ' on' : ''}" data-term-toggle title="${esc(claudeStanding())} · ${TERM.open ? 'hide' : 'show'} the terminal">${iconHtml('bot')}${claudeDot()}</button>`;
   const more = `<button class="ghost claude-more" data-term-menu aria-label="Quick prompts" aria-haspopup="menu" aria-expanded="${TERM.menu}">${BURGER}</button>`;
