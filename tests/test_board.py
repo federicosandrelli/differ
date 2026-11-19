@@ -324,12 +324,12 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
         "action",
         "reviewing",
         "draft",
-        "ci",
+        "unreviewed",
         "reviewed",
         "merged",
     ]
-    assert column_counts(page) == ["1", "1", "0", "1", "0", "0"]
-    mine, theirs, _ = re.findall(r'<div class="card.*?</div>', page)
+    assert column_counts(page) == ["2", "1", "0", "0", "0", "0"]
+    mine, _, theirs = re.findall(r'<div class="card.*?</div>', page)
     assert 'href="/acme/widgets/pull/1"' in mine and '<span class="reason tone-bad" title="CI failed">' in mine
     assert '<span class="ref">acme/widgets#1</span>' in mine and ">me<" not in mine
     assert 'href="/acme/tools/pull/3"' in theirs and '<span class="by">ann</span>' in theirs
@@ -353,9 +353,9 @@ def test_html_lists_a_column_most_urgent_section_first_and_each_section_newest_f
     ]
     save(board.classify(ME, [mine, [], asked, involved, [], [], []], ["acme/widgets"]))
     page = board.sections_html()
-    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "action")) == ["4", "3"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "action")) == ["4", "3", "2", "1"]
     assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewing")) == ["5"]
-    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "ci")) == ["2", "1", "8"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "unreviewed")) == ["8"]
     assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewed")) == ["6", "7"]
 
 
@@ -417,10 +417,10 @@ def test_html_names_a_deleted_author_ghost() -> None:
 def test_html_keeps_an_empty_column_with_none() -> None:
     save(board.classify(ME, [[pr(1, requested=("bob",))], [], [], [], []], []))
     page = board.sections_html()
-    for key in ("action", "reviewing", "draft"):
+    for key in ("reviewing", "draft", "unreviewed"):
         assert board.NONE_HTML in sub(page, key)
-    assert board.NONE_HTML not in sub(page, "ci")
-    assert column_counts(page)[:4] == ["0", "0", "0", "1"]
+    assert board.NONE_HTML not in sub(page, "action")
+    assert column_counts(page)[:4] == ["1", "0", "0", "0"]
 
 
 def test_full_names_every_section_a_search_with_as_many_answers_as_it_reads_feeds() -> None:
@@ -449,13 +449,13 @@ def test_html_counts_the_columns_of_each_row_and_folds_both_merges_under_the_sec
     assert "<h3>Merged today" in folded
     assert re.findall(r'href="/acme/widgets/pull/(\d+)"', folded) == ["2", "3"]
     assert folded.index("</summary>") < folded.index('<div class="column quiet">')
-    assert column_counts(page) == ["0", "0", "0", "1", "0", "2"]
+    assert column_counts(page) == ["1", "0", "0", "0", "0", "2"]
 
 
 def test_html_adds_a_plus_to_the_count_of_a_column_with_a_full_section() -> None:
     save(board.classify(ME, [[pr(1, requested=("bob",)), pr(2, ci="PENDING")], [], [], [], []], []), full=("review",))
     page = board.sections_html()
-    assert column_counts(page)[3] == "2+"
+    assert column_counts(page)[0] == "2+"
 
 
 FOLLOWED = ("acme/api", "acme/web")
@@ -487,11 +487,11 @@ def toggles(page: str) -> dict[str, tuple[bool, str]]:
 def test_html_shows_the_rows_of_the_repositories_turned_on_and_counts_them() -> None:
     save_two_repos()
     page = board.sections_html(["acme/api"])
-    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["8", "9", "11"]
-    assert column_counts(page)[:4] == ["0", "0", "1", "1"]
+    assert re.findall(r'href="/acme/\w+/pull/(\d+)"', page) == ["9", "8", "11"]
+    assert column_counts(page)[:4] == ["1", "0", "1", "0"]
     assert board.NONE_HTML in sub(page, "reviewing")
     page = board.sections_html(["acme/web", "acme/api"])
-    assert column_counts(page)[2:4] == ["8", "1"]
+    assert column_counts(page)[:4] == ["1", "0", "8", "0"]
     assert 'href="/acme/tools/pull/10"' not in page
 
 
@@ -499,7 +499,7 @@ def test_html_shows_every_row_when_no_followed_repository_is_on_and_drops_an_unf
     save_two_repos()
     for on in (None, [], ["acme/gone"]):
         page = board.sections_html(on)
-        assert 'href="/acme/tools/pull/10"' in page and column_counts(page)[:4] == ["0", "1", "8", "1"]
+        assert 'href="/acme/tools/pull/10"' in page and column_counts(page)[:4] == ["1", "1", "8", "0"]
         assert toggles(page) == {"acme/api": (False, "2"), "acme/web": (False, "7")}
     assert toggles(board.sections_html(["acme/gone", "acme/api"]))["acme/api"] == (True, "2")
 
