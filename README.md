@@ -6,6 +6,8 @@ on the right, with imports, rename fallout and generated files folded away. You
 can comment, review and merge from the page, and send a comment to the Claude
 Code session that works on the pull request.
 
+![A pull request in differ: the file tree on the left and the pull request's description on the right](docs/screenshots/overview.png)
+
 ## Install
 
 ### Desktop app (macOS, Apple Silicon)
@@ -57,6 +59,8 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
   pull request's hooks. Add `&prompt=<text>` to put a prompt into the Claude
   session's prompt once it listens. differ doesn't send it: you read it and
   press Enter.
+
+![The comment box under a line of code, with the Add single comment and Send to Claude buttons](docs/screenshots/comment.png)
 
 ## Claude in the page
 
