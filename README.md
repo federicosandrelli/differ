@@ -40,6 +40,8 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 
 ## What it does
 
+![The start page, here with sample pull requests: yours, the ones waiting for your review, drafts, and the ones waiting for or under review](docs/screenshots/start.png)
+
 - The start page lists the pull requests that need you, your drafts, the ones
   waiting for a reviewer or being reviewed, and the ones you opened recently.
 - A page is built on the first visit and cached per head commit in
@@ -77,6 +79,8 @@ in the terminal, and starts the session. Claude Code asks you to sign in the
 first time. differ connects the session to its MCP server for the pull request
 itself, so there is nothing to configure.
 It starts with Opus 5.5 unless you pick another model in the settings.
+
+![The Claude session's terminal in a column between the file tree and the pull request, listening for comments](docs/screenshots/terminal.png)
 
 - "Send to Claude" in a comment box sends the comment to the session instead of
   GitHub. The session listens for these comments, and its reply shows in the
