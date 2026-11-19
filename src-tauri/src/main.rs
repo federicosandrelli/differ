@@ -2,7 +2,10 @@
 
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -14,9 +17,10 @@ mod update;
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 use tauri::{
-    AppHandle, LogicalPosition, Manager, RunEvent, State, Theme, TitleBarStyle, Url, WebviewUrl,
-    WebviewWindowBuilder, Wry,
+    AppHandle, Manager, RunEvent, State, Theme, Url, WebviewUrl, WebviewWindowBuilder, Wry,
 };
+#[cfg(target_os = "macos")]
+use tauri::{LogicalPosition, TitleBarStyle};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 struct Sidecar {
@@ -37,24 +41,32 @@ struct Link {
 // has loaded.
 struct Links(Mutex<Vec<Link>>);
 
-// Marks the page as running in the app, so its CSS leaves room for the transparent title bar, and lays
-// a drag region over that strip: the webview covers the title bar, so the window only moves when Tauri's
-// drag handler sees a mousedown on an element with data-tauri-drag-region. The tabbed shell draws its
-// tab strip there and marks it as the drag region itself, so it gets no overlay.
-// The webview also drops clicks on target="_blank" links; sending them through the window lets
-// on_navigation hand every URL outside the local server to the system browser.
-const PAGE_SETUP: &str = r#"document.documentElement.classList.add('app');
+// Marks the page as running in the app. WebView2 runs this before the page has an <html> element, so there the mark
+// waits for it. The webview drops clicks on target="_blank" links; sending them through the window lets on_navigation
+// hand every URL outside the local server to the system browser.
+const PAGE_SETUP: &str = r#"const markApp = () => document.documentElement.classList.add('app');
+if (document.documentElement) markApp();
+else new MutationObserver((_, observer) => {
+  if (document.documentElement) { markApp(); observer.disconnect(); }
+}).observe(document, { childList: true });
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[target="_blank"]');
+  if (a && a.href) { e.preventDefault(); location.href = a.href; }
+}, true);"#;
+
+// On macOS the webview covers a transparent title bar; elsewhere the system's stays. Marks the page, so its CSS
+// leaves room for that strip, and lays a drag region over it: the window only moves when Tauri's drag handler
+// sees a mousedown on an element with data-tauri-drag-region. The tabbed shell draws its tab strip there and
+// marks it as the drag region itself, so it gets no overlay.
+#[cfg(target_os = "macos")]
+const TITLE_BAR_SETUP: &str = r#"document.documentElement.classList.add('titlebar');
 document.addEventListener('DOMContentLoaded', () => {
   if (document.querySelector('[data-tauri-drag-region]')) return;
   const bar = document.createElement('div');
   bar.setAttribute('data-tauri-drag-region', '');
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;z-index:2147483647;';
   document.body.prepend(bar);
-});
-document.addEventListener('click', e => {
-  const a = e.target.closest('a[target="_blank"]');
-  if (a && a.href) { e.preventDefault(); location.href = a.href; }
-}, true);"#;
+});"#;
 
 // The page keeps its settings (theme, reviewed marks, sidebar width) in localStorage, which the webview
 // scopes to the origin, so the server needs the same port on every launch for them to survive.
@@ -84,7 +96,12 @@ fn server_script(app: &tauri::App) -> tauri::Result<PathBuf> {
 }
 
 fn log_dir() -> Option<PathBuf> {
-    let dir = PathBuf::from(std::env::var_os("HOME")?).join("Library/Logs/differ");
+    // Not %LOCALAPPDATA%\differ: the installer puts the app there, and the uninstaller only removes that folder empty.
+    let dir = if cfg!(windows) {
+        PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(r"com.federicosandrelli.differ\logs")
+    } else {
+        PathBuf::from(std::env::var_os("HOME")?).join("Library/Logs/differ")
+    };
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir)
 }
@@ -95,34 +112,111 @@ fn server_log() -> Option<PathBuf> {
 
 const PYTHON_REQUIRED: (u32, u32) = (3, 13);
 
-fn find_on_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
+// python.exe is a console program: started from an app without a console, each run would open a console window.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn find_on_path(name: &str) -> impl Iterator<Item = PathBuf> {
+    let path = std::env::var_os("PATH").unwrap_or_default();
     std::env::split_paths(&path)
-        .map(|dir| dir.join(name))
-        .find(|candidate| candidate.is_file())
+        .map(move |dir| dir.join(name))
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 // The Homebrew interpreter comes first: the login shell's PATH may put the Xcode python3 (3.9) or a
 // pyenv shim ahead of it, and server.py needs 3.13.
-fn python_command() -> Option<PathBuf> {
+#[cfg(unix)]
+fn python_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(prefix) = std::env::var_os("HOMEBREW_PREFIX") {
         candidates.push(PathBuf::from(prefix).join("bin/python3.13"));
     }
     candidates.push(PathBuf::from("/opt/homebrew/bin/python3.13"));
     candidates.push(PathBuf::from("/usr/local/bin/python3.13"));
+    candidates.extend(find_on_path("python3.13"));
+    candidates.extend(find_on_path("python3"));
     candidates
-        .into_iter()
-        .find(|candidate| candidate.is_file())
-        .or_else(|| find_on_path("python3.13"))
-        .or_else(|| find_on_path("python3"))
 }
 
-fn python_version(python: &Path) -> Option<(u32, u32)> {
-    let output = Command::new(python)
+// Where the python.org installer and winget put Python for one user, where uv puts it, then the PATH. These folders
+// and the PATH also hold older versions, so the choice falls to the version check. The python.exe that Windows puts in
+// WindowsApps while no Python is installed only says how to get one.
+#[cfg(windows)]
+fn python_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        candidates.extend(newest_first(
+            &PathBuf::from(local).join(r"Programs\Python"),
+            "Python",
+        ));
+    }
+    if let Some(home) = std::env::var_os("USERPROFILE") {
+        candidates.push(PathBuf::from(home).join(r".local\bin\python3.13.exe"));
+    }
+    if let Some(roaming) = std::env::var_os("APPDATA") {
+        candidates.extend(newest_first(
+            &PathBuf::from(roaming).join(r"uv\python"),
+            "cpython-",
+        ));
+    }
+    candidates.extend(find_on_path("python3.13.exe"));
+    candidates.extend(
+        find_on_path("python.exe")
+            .filter(|python| !python.to_string_lossy().contains("WindowsApps")),
+    );
+    candidates
+}
+
+// The python.exe of each folder in `dir` whose name starts with `prefix`, the newest first.
+#[cfg(windows)]
+fn newest_first(dir: &Path, prefix: &str) -> Vec<PathBuf> {
+    let names = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned());
+    by_version(names, prefix)
+        .into_iter()
+        .map(|name| dir.join(name).join("python.exe"))
+        .collect()
+}
+
+// The names that start with `prefix`, the highest version first. The version is the numbers right after the prefix,
+// up to the next hyphen: Python313 and Python313-32 are both 3.13, and cpython-3.13.1-windows-x86_64-none is 3.13.1.
+#[cfg(windows)]
+fn by_version(names: impl Iterator<Item = String>, prefix: &str) -> Vec<String> {
+    let version = |name: &str| -> Vec<u32> {
+        name[prefix.len()..]
+            .split('-')
+            .next()
+            .unwrap_or_default()
+            .split('.')
+            .filter_map(|part| part.parse().ok())
+            .collect()
+    };
+    let mut names: Vec<_> = names.filter(|name| name.starts_with(prefix)).collect();
+    names.sort_by_key(|name| std::cmp::Reverse(version(name)));
+    names
+}
+
+const PYTHON_INSTALL: &str = if cfg!(windows) {
+    "winget install Python.Python."
+} else {
+    "brew install python@"
+};
+
+// The version a Python runs as, and the interpreter to start. On Windows that is the one it reports, since a uv shim
+// or a virtual environment's python.exe starts the interpreter as a process of its own, and the server must be the
+// app's child to see the app go.
+fn python_version(python: &Path) -> Option<((u32, u32), PathBuf)> {
+    let mut command = Command::new(python);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command
         .args([
             "-c",
-            "import sys; print(sys.version_info[0], sys.version_info[1])",
+            "import sys; print(*sys.version_info[:2]); print(sys._base_executable)",
         ])
         .output()
         .ok()?;
@@ -130,25 +224,45 @@ fn python_version(python: &Path) -> Option<(u32, u32)> {
         return None;
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    let mut parts = text.split_whitespace().map(|part| part.parse::<u32>().ok());
-    Some((parts.next()??, parts.next()??))
+    let mut lines = text.lines();
+    let mut parts = lines
+        .next()?
+        .split_whitespace()
+        .map(|part| part.parse::<u32>().ok());
+    let version = (parts.next()??, parts.next()??);
+    let interpreter = match lines.next() {
+        Some(base) if cfg!(windows) && !base.is_empty() => PathBuf::from(base),
+        _ => python.to_path_buf(),
+    };
+    Some((version, interpreter))
 }
 
+// The first candidate that runs as the version server.py needs, or what the first one found turned out to be.
 fn checked_python() -> Result<PathBuf, String> {
-    let Some(python) = python_command() else {
-        return Err("No python3 was found.".to_string());
-    };
-    match python_version(&python) {
-        Some(version) if version >= PYTHON_REQUIRED => Ok(python),
-        Some((major, minor)) => Err(format!(
-            "Found {} (Python {major}.{minor}).",
-            python.display()
-        )),
-        None => Err(format!(
+    let candidates: Vec<_> = python_candidates()
+        .into_iter()
+        .filter(|candidate| candidate.is_file())
+        .collect();
+    let mut found = None;
+    for python in &candidates {
+        let version = python_version(python);
+        if let Some((v, interpreter)) = &version {
+            if *v >= PYTHON_REQUIRED {
+                return Ok(interpreter.clone());
+            }
+        }
+        found.get_or_insert((python, version));
+    }
+    Err(match found {
+        None => "No python3 was found.".to_string(),
+        Some((python, Some(((major, minor), _)))) => {
+            format!("Found {} (Python {major}.{minor}).", python.display())
+        }
+        Some((python, None)) => format!(
             "Found {}, but it did not report its version.",
             python.display()
-        )),
-    }
+        ),
+    })
 }
 
 fn python_or_exit() -> PathBuf {
@@ -157,7 +271,7 @@ fn python_or_exit() -> PathBuf {
         Err(found) => {
             let (major, minor) = PYTHON_REQUIRED;
             let message = format!(
-                "differ needs Python {major}.{minor} or newer. Install it with: brew install python@{major}.{minor}\n\n{found}"
+                "differ needs Python {major}.{minor} or newer. Install it with: {PYTHON_INSTALL}{major}.{minor}\n\n{found}"
             );
             eprintln!("{message}");
             rfd::MessageDialog::new()
@@ -177,15 +291,23 @@ fn start_server(app: &AppHandle) -> std::io::Result<()> {
     let sidecar = app.state::<Sidecar>();
     let port = pick_port()?;
     let mut command = Command::new(&sidecar.python);
-    // A __pycache__ written next to the bundled scripts would break the app's code signature. The server gets a
-    // process group of its own, so that `end_server` can end it with whatever it started in its group.
+    // A __pycache__ written next to the bundled scripts would break the app's code signature. On POSIX the server
+    // gets a process group of its own, so that `end_server` can end it with whatever it started in its group.
     command
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .arg(&sidecar.script)
         .arg(port.to_string())
         .arg("--exit-with-parent")
-        .process_group(0)
         .stdout(Stdio::piped());
+    #[cfg(unix)]
+    command.process_group(0);
+    // An app without a console hands its children invalid standard handles, and the server's writes to an invalid
+    // stderr fail every request it answers; the null device takes them until --log sends stderr to the log.
+    #[cfg(windows)]
+    command
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
     if let Some(path) = server_log() {
         command.arg("--log").arg(path);
     }
@@ -295,9 +417,16 @@ const OPEN_SETTINGS: &str = "open-settings";
 
 // Tauri's default menu binds Cmd+W to "Close Window", and closing the only window quits the app. This is the default
 // menu with Cmd+W on "Close Tab", which tells the tab shell to close its active tab, and "Close Window" on Cmd+Shift+W,
-// and with "Settings…" (Cmd+,) in the app menu after "About", which tells the shell to open its settings.
+// and with "Settings…" (Cmd+,) in the app menu after "About", which tells the shell to open its settings. Windows has
+// no app menu, so there "Settings…" opens the File menu, and its default menu calls "Close Window" "Close".
 fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    const PREDEFINED_CLOSE: &str = if cfg!(windows) {
+        "Close"
+    } else {
+        "Close Window"
+    };
     let menu = Menu::default(app)?;
+    #[cfg(target_os = "macos")]
     if let Some(MenuItemKind::Submenu(app_submenu)) = menu.items()?.first() {
         app_submenu.insert_items(
             &[
@@ -316,7 +445,7 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             let MenuItemKind::Predefined(close) = entry else {
                 continue;
             };
-            if close.text()? != "Close Window" {
+            if close.text()? != PREDEFINED_CLOSE {
                 continue;
             }
             submenu.remove(close)?;
@@ -339,6 +468,15 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                     Some("CmdOrCtrl+Shift+W"),
                 )?,
             ])?;
+            #[cfg(not(target_os = "macos"))]
+            submenu.insert_items(
+                &[
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, OPEN_SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?,
+                    &PredefinedMenuItem::separator(app)?,
+                ],
+                2,
+            )?;
         }
     }
     Ok(menu)
@@ -346,7 +484,17 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 
 fn main() {
     let _ = fix_path_env::fix();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows starts another copy of the app for each differ:// link; this one hands the link to the copy that runs,
+    // through the deep-link plugin, and quits. It goes first, before anything else starts.
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }));
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
@@ -386,17 +534,22 @@ fn main() {
                 open_links(app.handle(), &urls);
             }
             let handle = app.handle().clone();
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("differ")
-                .theme(Some(Theme::Dark))
-                .inner_size(1440.0, 900.0)
-                // The page's default 420px sidebar plus a diff pane wide enough for a whole file header.
-                .min_inner_size(1024.0, 640.0)
+            let window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("differ")
+                    .theme(Some(Theme::Dark))
+                    .inner_size(1440.0, 900.0)
+                    // The page's default 420px sidebar plus a diff pane wide enough for a whole file header.
+                    .min_inner_size(1024.0, 640.0)
+                    .initialization_script(PAGE_SETUP);
+            #[cfg(target_os = "macos")]
+            let window = window
                 .title_bar_style(TitleBarStyle::Overlay)
                 .hidden_title(true)
                 // Centred on the 40px tab strip the shell draws across the title bar.
                 .traffic_light_position(LogicalPosition::new(13.0, 20.0))
-                .initialization_script(PAGE_SETUP)
+                .initialization_script(TITLE_BAR_SETUP);
+            window
                 .on_navigation(move |target| {
                     let port = handle.state::<Sidecar>().port.load(Ordering::Relaxed);
                     let is_local =
@@ -428,6 +581,7 @@ fn main() {
 // exiting, then SIGKILL to whatever is left after ten seconds. Each session has a process group of its own, so only
 // the server ends the sessions, and it gets the time its signals to them take: three for the hangup, two for
 // SIGTERM and two for SIGKILL.
+#[cfg(unix)]
 fn end_server(child: &mut Child) {
     let group = child.id() as libc::pid_t;
     unsafe {
@@ -442,6 +596,14 @@ fn end_server(child: &mut Child) {
     unsafe {
         libc::killpg(group, libc::SIGKILL);
     }
+    let _ = child.wait();
+}
+
+// Ends the server. Windows has no signal for it to answer, but each Claude session runs in a job object that ends
+// its processes once the last handle to it closes, and the server's handles close as it ends.
+#[cfg(windows)]
+fn end_server(child: &mut Child) {
+    let _ = child.kill();
     let _ = child.wait();
 }
 
@@ -498,5 +660,37 @@ mod tests {
             .unwrap()
             .port();
         assert!(!answers(port));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn orders_python_folders_by_the_version_after_their_prefix() {
+        // As the folder listing gives them: by name.
+        let names = [
+            "Launcher",
+            "Python310",
+            "Python313",
+            "Python313-32",
+            "Python39",
+            "cpython-3.13.18-windows-x86_64-none",
+        ];
+        let sorted = super::by_version(names.iter().map(|name| name.to_string()), "Python");
+        assert_eq!(
+            sorted,
+            ["Python313", "Python313-32", "Python310", "Python39"]
+        );
+        let uv = [
+            "cpython-3.9.20-windows-x86_64-none",
+            "cpython-3.13.1-windows-x86_64-none",
+            "cpython-3.13.18-windows-x86_64-none",
+        ];
+        let sorted = super::by_version(uv.iter().map(|name| name.to_string()), "cpython-");
+        assert_eq!(
+            sorted,
+            [
+                "cpython-3.13.18-windows-x86_64-none",
+                "cpython-3.13.1-windows-x86_64-none",
+                "cpython-3.9.20-windows-x86_64-none",
+            ]
+        );
     }
 }

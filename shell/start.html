@@ -52,6 +52,7 @@ const markAll = () => lists().forEach(mark);
 const redraw = (h) => {
   const scrolled = new Map([...lists()].map(list => [listKey(list), list.scrollTop]));
   board.innerHTML = h;
+  Keys.relabel(board);
   for (const folded of board.querySelectorAll('.folded')) folded.open = openedColumns.has(folded.dataset.key);
   for (const list of lists()) list.scrollTop = scrolled.get(listKey(list)) ?? 0;
   markAll();
@@ -106,6 +107,7 @@ const setUpdate = (html) => {
   if (!updated) return;
   updated.style.minWidth = `${updated.offsetWidth}px`;
   updated.innerHTML = html;
+  Keys.relabel(updated);
 };
 // The board's HTML, or an error that says why the server sent none: a plain text answer gives the reason.
 const fetchBoard = async (query, signal) => {
@@ -148,7 +150,7 @@ const update = () => {
   loadBoard();
 };
 document.addEventListener('keydown', (e) => {
-  if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r') { e.preventDefault(); update(); }
+  if (Keys.primary(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'r') { e.preventDefault(); update(); }
 });
 // The server drew the board with every row, so saved toggles first need a cached load.
 loadBoard(on.length > 0);

@@ -5,8 +5,11 @@ worktree of each pull request, made from the bare mirror, that a Claude session 
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 import subprocess
+import sys
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -88,7 +91,7 @@ def _add_worktree(mirror: Path, ref: PullRef, head: str) -> Path:
     folder = worktree_of(ref)
     build.git(mirror, "worktree", "prune")
     if folder.exists() and _try_git(folder, "rev-parse", "--git-dir").returncode != 0:
-        shutil.rmtree(folder)
+        remove_tree(folder)
         build.git(mirror, "worktree", "prune")
     if not folder.exists():
         folder.parent.mkdir(parents=True, exist_ok=True)
@@ -117,13 +120,34 @@ def _drop_copied_branch(mirror: Path, branch: str) -> None:
         _try_git(mirror, "branch", "-D", branch)
 
 
+def remove_tree(folder: Path, ignore_errors: bool = False) -> None:
+    """Delete the folder with whatever it holds. Git makes its object files read-only, which Windows, unlike POSIX,
+    refuses to delete, so there a file or folder that does not go is made writable and deleted again."""
+    if sys.platform != "win32":
+        shutil.rmtree(folder, ignore_errors=ignore_errors)
+        return
+
+    def writable_again(delete: Callable[[str], object], path: str, error: BaseException) -> None:
+        if delete in (os.unlink, os.rmdir):
+            try:
+                os.chmod(path, stat.S_IWRITE)
+                delete(path)
+                return
+            except OSError:
+                pass
+        if not ignore_errors:
+            raise error
+
+    shutil.rmtree(folder, onexc=writable_again)
+
+
 def remove_worktree(ref: PullRef) -> None:
     """Delete the pull request's worktree, if it has one, with whatever it holds."""
     folder, mirror = worktree_of(ref), build.mirror_of(ref)
     with _mirror_lock(mirror):
         if folder.exists() and mirror.exists():
             _try_git(mirror, "worktree", "remove", "--force", str(folder))
-        shutil.rmtree(folder, ignore_errors=True)
+        remove_tree(folder, ignore_errors=True)
         if mirror.exists():
             _try_git(mirror, "worktree", "prune")
 
@@ -197,7 +221,7 @@ class Checkouts:
         if folder.exists():
             return
         partial = folder.with_name(f"{folder.name}~partial")
-        shutil.rmtree(partial, ignore_errors=True)
+        remove_tree(partial, ignore_errors=True)
         github.gh("repo", "clone", ref.slug, str(partial), "--", "--quiet", timeout=commands.LONG_TIMEOUT)
         github.gh("repo", "set-default", ref.slug, cwd=partial)
         partial.rename(folder)

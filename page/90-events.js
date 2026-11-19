@@ -163,8 +163,8 @@ function stepFile(dir) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? openFileSearch() : openSearch(); return; }
-  if (API && e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r') { e.preventDefault(); rebuild(); return; }
+  if (Keys.primary(e) && !e.altKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.shiftKey ? openFileSearch() : openSearch(); return; }
+  if (API && Keys.primary(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'r') { e.preventDefault(); rebuild(); return; }
   // The terminal takes every other key while it has focus; xterm.js types through a hidden textarea.
   if (e.target.closest && e.target.closest('.xterm')) return;
   if (e.target.tagName === 'TEXTAREA') { textareaKey(e); return; }

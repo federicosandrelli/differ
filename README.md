@@ -36,6 +36,10 @@ python3 server.py
 Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
 `python3 server.py 9000` serves on another port.
 
+On Windows 10 (1809) or later, start it with `py -3.13 server.py`. The Claude
+session runs in a Windows pseudo console, and shortcuts take Ctrl where this
+README says Cmd.
+
 ## What it does
 
 - The start page lists the pull requests that need you, your drafts, the ones
@@ -124,6 +128,10 @@ npm install
 npx tauri dev      # run from source
 npx tauri build    # differ.app and a .dmg under src-tauri/target/release/bundle/
 ```
+
+On Windows, `npx tauri build` makes `differ.exe` and an NSIS installer instead, and needs the
+MSVC build tools. The app runs `server.py` with Python 3.13 from the python.org installer
+(`winget install Python.Python.3.13`), from uv, or from the PATH.
 
 ## Release
 

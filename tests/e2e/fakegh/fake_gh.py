@@ -224,8 +224,7 @@ def mutate(args: list[str], request: dict) -> None:
         fail_if_listed(args)
         comments_file = state_dir() / "comments.json"
         state = json.loads(comments_file.read_text())
-        with (state_dir() / "mutations.log").open("a") as log:
-            log.write(json.dumps(request) + "\n")
+        append_line("mutations.log", json.dumps(request))
         data: dict = {}
         move(query, variables)
         if "addPullRequestReview(" in query:
@@ -290,9 +289,29 @@ def graphql(args: list[str]) -> None:
     print(json.dumps({"data": {"viewer": {"login": "tester", "id": "U_tester"}, "repository": {"pullRequest": pr}}}))
 
 
+def append_line(name: str, line: str) -> None:
+    """Add a line to a log in the state folder. The page starts several calls at once, and Windows, unlike POSIX,
+    lets two processes' appends land on the same bytes, so the writers take turns by creating a lock file."""
+    lock = state_dir() / f"{name}.lock"
+    deadline = time.time() + 10
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except (FileExistsError, PermissionError):
+            if time.time() > deadline:
+                raise
+            time.sleep(0.005)
+    try:
+        with (state_dir() / name).open("a", encoding="utf-8") as log:
+            log.write(line + "\n")
+    finally:
+        os.close(fd)
+        os.unlink(lock)
+
+
 def log_and_fail(args: list[str]) -> None:
-    with (state_dir() / "calls.log").open("a") as log:
-        log.write(json.dumps(args) + "\n")
+    append_line("calls.log", json.dumps(args))
     fail_if_listed(args)
 
 

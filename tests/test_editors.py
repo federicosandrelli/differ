@@ -1,14 +1,17 @@
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 
@@ -20,13 +23,25 @@ from github import PullRef
 from test_server import request, response
 
 REF = PullRef("o", "r", 7)
-TOOLS = {
-    "vscode": "Visual Studio Code.app/Contents/Resources/app/bin/code",
-    "cursor": "Cursor.app/Contents/Resources/app/bin/cursor",
-    "pycharm": "PyCharm CE.app/Contents/MacOS/pycharm",
-    "webstorm": "WebStorm.app/Contents/MacOS/webstorm",
-    "goland": "GoLand.app/Contents/MacOS/goland",
-}
+TOOLS = (
+    {
+        "vscode": "Microsoft VS Code/Code.exe",
+        "cursor": "cursor/Cursor.exe",
+        "pycharm": "PyCharm Community Edition 2026.2/bin/pycharm64.exe",
+        "webstorm": "JetBrains/WebStorm 2026.2/bin/webstorm64.exe",
+        "goland": "GoLand/bin/goland64.exe",
+    }
+    if sys.platform == "win32"
+    else {
+        "vscode": "Visual Studio Code.app/Contents/Resources/app/bin/code",
+        "cursor": "Cursor.app/Contents/Resources/app/bin/cursor",
+        "pycharm": "PyCharm CE.app/Contents/MacOS/pycharm",
+        "webstorm": "WebStorm.app/Contents/MacOS/webstorm",
+        "goland": "GoLand.app/Contents/MacOS/goland",
+    }
+)
+# Another install of PyCharm than TOOLS names.
+OTHER_PYCHARM = "PyCharm 2026.1/bin/pycharm64.exe" if sys.platform == "win32" else "PyCharm.app/Contents/MacOS/pycharm"
 
 
 @dataclass
@@ -189,7 +204,7 @@ def test_a_running_jetbrains_ide_with_the_project_open_gets_the_file_through_its
         )
     editors.open_file(REF, "pycharm", "src/a b.py", 4)
     file = clone.folder / "src/a b.py"
-    url = ["open", f"pycharm://open?file={clone.folder}/src/a%20b.py&line=4"]
+    url = [editors.URL_OPENER, f"pycharm://open?file={quote(clone.folder.as_posix())}/src/a%20b.py&line=4"]
     launcher = [str(editors.APP_FOLDERS[0] / TOOLS["pycharm"]), str(clone.folder), "--line", "4", str(file)]
     assert fake.started == [url if by_url else launcher]
 
@@ -200,7 +215,7 @@ def test_github_opens_the_file_at_the_pull_request_s_head_in_the_browser_without
     monkeypatch.setattr(editors.build, "recent_head", lambda ref: "c0ffee" if ref == REF else pytest.fail())
     monkeypatch.setattr(clone, "held", lambda ref: pytest.fail("GitHub waited for the repository's lock"))
     editors.open_file(REF, "github", "src/a b.py", 4)
-    assert fake.started == [["open", "https://github.com/o/r/blob/c0ffee/src/a%20b.py#L4"]]
+    assert fake.started == [[editors.URL_OPENER, "https://github.com/o/r/blob/c0ffee/src/a%20b.py#L4"]]
 
 
 def test_installed_lists_the_installed_editors_of_every_app_folder_in_the_order_of_known(
@@ -217,11 +232,21 @@ def test_installed_lists_the_installed_editors_of_every_app_folder_in_the_order_
 def test_an_open_runs_the_tool_of_the_first_app_folder_that_holds_the_editor(
     fake: FakeProcesses, clone: StubCheckouts
 ) -> None:
-    other = editors.APP_FOLDERS[1] / "PyCharm.app/Contents/MacOS/pycharm"
+    other = editors.APP_FOLDERS[1] / OTHER_PYCHARM
     other.parent.mkdir(parents=True)
     other.touch()
     editors.open_file(REF, "pycharm", "a.py", 1)
     assert fake.started[0][0] == str(editors.APP_FOLDERS[0] / TOOLS["pycharm"])
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Install folders that name the version are Windows's")
+def test_of_two_versions_in_one_app_folder_the_newest_opens(fake: FakeProcesses, clone: StubCheckouts) -> None:
+    newest = editors.APP_FOLDERS[0] / "PyCharm 2026.10/bin/pycharm64.exe"
+    for tool in (newest, editors.APP_FOLDERS[0] / "PyCharm 2026.9/bin/pycharm64.exe"):
+        tool.parent.mkdir(parents=True)
+        tool.touch()
+    editors.open_file(REF, "pycharm", "a.py", 1)
+    assert fake.started[0][0] == str(newest)
 
 
 def test_prepare_warms_the_clone(fake: FakeProcesses, clone: StubCheckouts, at_once: None) -> None:
@@ -261,7 +286,16 @@ def test_an_editor_outside_the_installed_ones_is_refused_before_the_repository_l
     assert fake.started == []
 
 
-@pytest.mark.parametrize("path", ["", "/etc/passwd", "../other/a.py", "src/../../a.py"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "/etc/passwd",
+        "../other/a.py",
+        "src/../../a.py",
+        *([r"..\other\a.py", "C:/Windows/a.py", "C:a.py", r"\\host\share\a.py"] if sys.platform == "win32" else []),
+    ],
+)
 def test_a_path_outside_the_repository_is_refused_before_the_repository_lock(
     fake: FakeProcesses, clone: StubCheckouts, monkeypatch: pytest.MonkeyPatch, path: str
 ) -> None:
@@ -323,19 +357,25 @@ def test_a_jetbrains_hand_over_in_progress_leaves_another_editor_free_to_open_th
 
 @pytest.fixture
 def running_tool(tmp_path: Path) -> Iterator[tuple[Path, int]]:
-    """Python run through a link at the same path as the tool but with "x" in place of the dot, then twice through a
-    link at the tool's path, which holds a dot and a space; all three sleep until the test ends. Yields the tool and
-    the pid of its first process. macOS kills a copy of a system binary, so the tool is a link. The link points at
-    Python, which runs under any name: a multicall coreutils, such as Ubuntu 26.04's, picks the tool by its name."""
+    """A program run from a copy at the same path as the tool but with "x" in place of the dot, then twice from a
+    copy at the tool's path, which holds a dot and a space; all three wait until the test ends. Yields the tool and
+    the pid of its first process. On macOS and Linux the copies are links to Python, since macOS kills a copy of a
+    system binary and a multicall coreutils, such as Ubuntu 26.04's, picks the tool by its name; Windows makes a link
+    only with Developer Mode, and a copy of Python finds none of its libraries, so there they are copies of ping."""
     tool = tmp_path / "a b.app/sl.eep"
     other = tmp_path / "a bxapp/sl.eep"
     procs: list[subprocess.Popen[bytes]] = []
+    windows = sys.platform == "win32"
     try:
         for path in (other, tool):
             path.parent.mkdir()
-            path.symlink_to(os.path.realpath(sys.executable))
+            if windows:
+                shutil.copy(Path(os.environ["SystemRoot"]) / "System32" / "PING.EXE", path)
+            else:
+                path.symlink_to(os.path.realpath(sys.executable))
+        args = ["-n", "30", "127.0.0.1"] if windows else ["-c", "import time; time.sleep(30)"]
         for path in (other, tool, tool):
-            procs.append(subprocess.Popen([str(path), "-c", "import time; time.sleep(30)"]))
+            procs.append(subprocess.Popen([str(path), *args], stdout=subprocess.DEVNULL))
         yield tool, procs[1].pid
     finally:
         for p in procs:
@@ -350,23 +390,23 @@ def test_oldest_finds_the_process_that_runs_the_tool_at_this_exact_path(running_
 
 def test_oldest_finds_no_process_with_the_tool_only_as_an_argument(tmp_path: Path) -> None:
     tool = tmp_path / "a b.app/sl.eep"
-    with subprocess.Popen(["/bin/sh", "-c", "sleep 30; true", str(tool)], start_new_session=True) as p:
+    with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", str(tool)]) as p:
         try:
             assert editors.SystemProcesses().oldest(tool) is None
         finally:
-            os.killpg(p.pid, signal.SIGKILL)
+            p.kill()
 
 
 def test_a_started_process_runs_until_it_exits() -> None:
-    launch = editors.SystemProcesses().start(["/bin/sleep", "30"])
+    launch = editors.SystemProcesses().start([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
         assert launch.poll() is None
     finally:
-        subprocess.run(["kill", str(launch.pid)], check=True)
+        os.kill(launch.pid, signal.SIGTERM)
     for _ in range(100):
         if launch.poll() is not None:
             break
-        subprocess.run(["sleep", "0.05"])
+        time.sleep(0.05)
     assert launch.poll() is not None
 
 
@@ -379,7 +419,7 @@ def post_open(body: dict) -> tuple[int, dict]:
 
 def test_the_open_route_opens_the_file(fake: FakeProcesses) -> None:
     assert post_open({"editor": "vscode", "path": "a.py", "line": 4}) == (200, {})
-    assert fake.started[0][-1].endswith("/o/r/a.py:4")
+    assert fake.started[0][-1].endswith(f"{os.sep}{Path('o/r/a.py')}:4")
 
 
 def test_the_open_route_answers_a_refusal_with_its_reason(fake: FakeProcesses, clone: StubCheckouts) -> None:

@@ -434,11 +434,13 @@ def search_clear_css() -> str:
 
 
 def theme_head() -> str:
-    """The theme variables, the status and reason icons, the base stylesheet, the search clear button and the scripts that
-    apply the saved theme, draw the tooltip and draw notices, for the head of a document so it never flashes the
-    default theme. The base stylesheet comes after the icons, so a component can recolour the icon it holds."""
-    css = "\n".join([theme_css(), icon_css(), (SHELL_DIR / "base.css").read_text(), search_clear_css()])
-    js = "\n".join((SHELL_DIR / name).read_text() for name in ("theme.js", "tooltip.js", "notice.js"))
+    """The theme variables, the status and reason icons, the base stylesheet, the search clear button and the scripts
+    that apply the saved theme, name the shortcuts' keys, draw the tooltip and draw notices, for the head of a document
+    so it never flashes the default theme. The base stylesheet comes after the icons, so a component can recolour the icon it holds."""
+    css = "\n".join([theme_css(), icon_css(), (SHELL_DIR / "base.css").read_text(encoding="utf-8"), search_clear_css()])
+    js = "\n".join(
+        (SHELL_DIR / name).read_text(encoding="utf-8") for name in ("theme.js", "keys.js", "tooltip.js", "notice.js")
+    )
     return f"<style>{css}</style>\n<script>{js}</script>"
 
 
@@ -495,6 +497,7 @@ def sources() -> list[Path]:
         PAGE_DIR / "page.css",
         SHELL_DIR / "base.css",
         SHELL_DIR / "theme.js",
+        SHELL_DIR / "keys.js",
         SHELL_DIR / "tooltip.js",
         SHELL_DIR / "notice.js",
         *page_scripts(),
@@ -524,14 +527,16 @@ def render_page(classified: dict, pr: dict) -> str:
     data = {**classified, "pr": pr}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     title = f"#{pr['number']} {pr['title']}"
-    js = "\n".join(f"// ---- {path.relative_to(ROOT)}\n{path.read_text()}" for path in page_scripts())
+    js = "\n".join(
+        f"// ---- {path.relative_to(ROOT).as_posix()}\n{path.read_text(encoding='utf-8')}" for path in page_scripts()
+    )
     return fill(
         TEMPLATE,
         TITLE=html.escape(title),
         STATUS=pr["status"],
         AUTHOR=html.escape(pr["author"]),
         THEME=theme_head(),
-        CSS=(PAGE_DIR / "page.css").read_text(),
+        CSS=(PAGE_DIR / "page.css").read_text(encoding="utf-8"),
         JS=js,
         DATA=payload,
     )
@@ -540,7 +545,7 @@ def render_page(classified: dict, pr: dict) -> str:
 def main() -> None:
     if sys.argv[1:] != ["--splash"]:
         sys.exit(__doc__)
-    (ROOT / "web" / "index.html").write_text(splash_html())
+    (ROOT / "web" / "index.html").write_text(splash_html(), encoding="utf-8", newline="")
 
 
 if __name__ == "__main__":

@@ -142,7 +142,7 @@ function renderSide() {
     ${commentNotices()}${mergeNotice()}${EDITOR.error ? `<div class="notice err">Open in editor: ${esc(EDITOR.error)} · <a href="#" data-editor-dismiss>dismiss</a></div>` : ''}${state.reviewPanel ? reviewPanelHtml() : ''}${state.mergePanel && isOwn() ? mergePanelHtml() : ''}</div>
     <div class="scroll">${sectionHtml('filters', `<div class="controls">${filterButton('all', 'All')}${filterButton('implementation', 'Implementation')}${filterButton('test', 'Tests')}${filterButton('docs', 'Docs')}</div>`)}
     ${sectionHtml('search', `<div class="searchbar">
-      <input type="search" class="search" placeholder="⌘F to search or ⇧⌘F to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
+      <input type="search" class="search" placeholder="${Keys.label('F')} to search or ${Keys.label('F', true)} to search files" value="${esc(typed)}" spellcheck="false" title="Enter: next ${state.fileSearch ? 'file' : 'hit'} · Shift+Enter: previous">
       ${state.fileSearch ? '<span class="count mode">Files</span>' : ''}<span class="meta" id="searchmeta"></span></div>`)}
     <div class="list" tabindex="0">${renderList()}</div></div>${termSlotHtml()}${claudeFootHtml()}<div class="grip"></div>`;
   const scrolls = SIDE_SCROLLS.map((sel) => document.querySelector(`#side ${sel}`)?.scrollTop || 0);
