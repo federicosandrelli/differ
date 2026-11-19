@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -7,7 +8,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -19,12 +20,15 @@ import build
 import checkout
 import claude
 import github
+import launcher
 import records
 import server
 import session
+import terminal
 from github import PullRef
+from helpers import alive, wait_for
 
-FAKE = Path(__file__).resolve().parent / "fakeclaude"
+FAKE = launcher.fake_claude()
 REF = PullRef("acme", "widgets", 1)
 PR = github.PullRequest(
     title="Greet",
@@ -87,15 +91,6 @@ def starts(log: Path) -> list[dict]:
     return [json.loads(line) for line in log.read_text().splitlines(keepends=True) if line.endswith("\n")]
 
 
-def wait_for(condition: Callable[[], bool], timeout: float = 15) -> None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if condition():
-            return
-        time.sleep(0.05)
-    raise AssertionError("timed out")
-
-
 def output() -> str:
     with session.lock:
         return bytes(session.session_of(REF).output).decode(errors="replace")
@@ -110,23 +105,37 @@ def typing_ready() -> bool:
     return running() and "fake claude" in output()
 
 
-def alive(pid: int) -> bool:
+def trust_key(folder: Path | str) -> str:
+    """The key Claude Code's config file gives a folder: its real path, with forward slashes on Windows too."""
+    return Path(os.path.realpath(folder)).as_posix()
+
+
+def symlink(link: Path, target: Path) -> None:
     try:
-        os.kill(pid, 0)
+        link.symlink_to(target)
     except OSError:
-        return False
-    return (
-        subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()[:1] != "Z"
-    )
+        pytest.skip("Creating a symbolic link on Windows needs Developer Mode or an administrator")
+
+
+# The fake claude echoes what the terminal types, and these tests type escape sequences, such as a title, for it to
+# send back. A Windows pseudo console keeps the escape sequences typed into it to itself instead of passing them on to
+# the process, so there they cannot; test_terminal checks what the sessions rely on there.
+ECHOES = pytest.mark.skipif(
+    sys.platform == "win32", reason="A Windows pseudo console does not pass escape sequences typed into it on"
+)
 
 
 def test_the_binary_is_the_one_differ_claude_names_else_the_first_on_the_path(monkeypatch: pytest.MonkeyPatch) -> None:
     assert session.binary() == FAKE
     monkeypatch.delenv("DIFFER_CLAUDE")
-    monkeypatch.setattr(session.shutil, "which", lambda name: "/opt/bin/claude" if name == "claude" else None)
-    assert session.binary() == Path("/opt/bin/claude")
-    monkeypatch.setattr(session.shutil, "which", lambda name: None)
+    name = "claude.exe" if sys.platform == "win32" else "claude"
+    monkeypatch.setattr(session.shutil, "which", lambda asked: f"/opt/bin/{name}" if asked == name else None)
+    assert session.binary() == Path(f"/opt/bin/{name}")
     monkeypatch.setattr(Path, "home", lambda: Path("/nowhere"))
+    # On Windows only claude.exe will do, not the claude.cmd an npm install puts on the PATH.
+    monkeypatch.setattr(session.shutil, "which", lambda asked: "/npm/claude.CMD" if asked == "claude" else None)
+    assert session.binary() == (None if sys.platform == "win32" else Path("/npm/claude.CMD"))
+    monkeypatch.setattr(session.shutil, "which", lambda asked: None)
     assert session.binary() is None
 
 
@@ -155,7 +164,11 @@ def test_a_start_without_claude_needs_an_install_which_starts_the_session_once_i
 ) -> None:
     installed = tmp_path / "installed"
     monkeypatch.setattr(session, "binary", lambda: FAKE if installed.exists() else None)
-    monkeypatch.setattr(session, "INSTALL_COMMAND", ["bash", "-c", f"echo installing; touch {installed}"])
+    monkeypatch.setattr(
+        session,
+        "INSTALL_COMMAND",
+        [sys.executable, "-c", f"import pathlib; print('installing'); pathlib.Path({str(installed)!r}).touch()"],
+    )
     session.start(REF, fake.port, 80, 24)
     wait_for(lambda: not session.status(REF)["starting"])
     status = session.status(REF)
@@ -172,16 +185,19 @@ def test_an_install_that_fails_says_so_and_starts_nothing(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(session, "binary", lambda: None)
-    monkeypatch.setattr(session, "INSTALL_COMMAND", ["bash", "-c", "read -r answer; echo no network; exit 3"])
+    monkeypatch.setattr(
+        session, "INSTALL_COMMAND", [sys.executable, "-c", "input(); print('no network'); raise SystemExit(3)"]
+    )
     session.start(REF, fake.port, 80, 24)
     wait_for(lambda: session.status(REF)["setup"] == "missing")
     assert session.install(REF, fake.port, 80, 24)["installing"]
     assert not running() and session.start(REF, fake.port, 80, 24)["installing"]
     session.write(REF, b"y\r")
-    wait_for(lambda: not session.status(REF)["installing"])
+    # The status stops saying `installing` once the process exits, which can be before the relay has read its end.
+    wait_for(lambda: session.status(REF)["error"])
     status = session.status(REF)
     assert status["error"] == "The install ended with code 3. The terminal shows why." and status["setup"] == "missing"
-    assert "no network" in output() and not status["running"] and starts(fake.log) == []
+    assert not status["installing"] and "no network" in output() and not status["running"] and starts(fake.log) == []
 
 
 def test_a_too_old_claude_updates_itself(fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -190,13 +206,13 @@ def test_a_too_old_claude_updates_itself(fake: SimpleNamespace, monkeypatch: pyt
     wait_for(lambda: session.status(REF)["setup"] == "old")
     opened: list[list[str]] = []
 
-    def refuse(s: session.Session, args: list[str], folder: Path) -> tuple[subprocess.Popen[bytes], int]:
+    def refuse(s: session.Session, args: list[str], folder: Path) -> terminal.Terminal:
         opened.append(args)
         raise OSError("x")
 
     monkeypatch.setattr(session, "_open", refuse)
     assert session.status(REF)["command"] == "claude update"
-    with pytest.raises(RuntimeError, match=f"Could not run {FAKE}: x"):
+    with pytest.raises(RuntimeError, match=re.escape(f"Could not run {FAKE}: x")):
         session.install(REF, fake.port, 80, 24)
     assert opened == [[str(FAKE), "update"]]
 
@@ -212,7 +228,7 @@ def test_an_install_after_claude_was_installed_by_hand_starts_the_session(
 ) -> None:
     installed = tmp_path / "installed"
     monkeypatch.setattr(session, "binary", lambda: FAKE if installed.exists() else None)
-    monkeypatch.setattr(session, "INSTALL_COMMAND", ["bash", "-c", "exit 9"])
+    monkeypatch.setattr(session, "INSTALL_COMMAND", [sys.executable, "-c", "raise SystemExit(9)"])
     session.start(REF, fake.port, 80, 24)
     wait_for(lambda: session.status(REF)["setup"] == "missing")
     installed.touch()
@@ -243,7 +259,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
     assert f"ws://127.0.0.1:{fake.port}/api/acme/widgets/1/listen" in args[-1] and "greeting" in args[-1]
     assert start["env"]["TERM"] == "xterm-256color" and "CLAUDECODE" not in start["env"]
     saved = records.SESSIONS.read(REF, dict)
-    assert saved == {"id": session_id, "resume": False, "pid": start["pid"]}
+    assert saved == {"id": session_id, "resume": False, "pid": launcher.started_pid(start)}
     status = session.status(REF)
     assert status == {
         "starting": False,
@@ -262,7 +278,7 @@ def test_a_start_runs_claude_in_the_worktree_with_a_new_id_and_the_flags(fake: S
         "installing": False,
     }
     trusted = json.loads(session.config_path().read_text())["projects"]
-    assert trusted == {os.path.realpath(build.mirror_of(REF)): {"hasTrustDialogAccepted": True}}
+    assert trusted == {trust_key(build.mirror_of(REF)): {"hasTrustDialogAccepted": True}}
 
 
 def test_a_second_open_while_the_session_runs_starts_nothing(fake: SimpleNamespace) -> None:
@@ -333,6 +349,7 @@ def test_two_pastes_at_once_go_in_one_after_the_other_each_with_its_enter(monkey
     assert sorted([calls[0], calls[2]]) == [b"\x1b[200~one\x1b[201~", b"\x1b[200~two\x1b[201~"]
 
 
+@ECHOES
 def test_what_the_terminal_types_comes_back_a_paste_is_bracketed_and_a_submit_presses_enter(
     fake: SimpleNamespace,
 ) -> None:
@@ -351,6 +368,7 @@ def test_what_the_terminal_types_comes_back_a_paste_is_bracketed_and_a_submit_pr
     session.detach(REF, frames.append)
 
 
+@ECHOES
 def test_the_terminal_title_says_whether_claude_works_and_on_what_task(fake: SimpleNamespace) -> None:
     session.start(REF, fake.port, 80, 24)
     wait_for(running)
@@ -409,6 +427,7 @@ def asking() -> bool:
     return session.status(REF)["asking"]
 
 
+@ECHOES
 def test_the_question_tools_hooks_say_whether_claude_asks_the_reader(fake: SimpleNamespace) -> None:
     session.start(REF, fake.port, 80, 24)
     wait_for(typing_ready)
@@ -467,6 +486,7 @@ def set_title(title: str, working: bool) -> None:
     wait_for(lambda: session.status(REF)["working"] == working)
 
 
+@ECHOES
 def test_addresses_wait_in_a_queue_and_each_goes_to_claude_once_it_waits_at_its_prompt(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -510,6 +530,7 @@ def test_addresses_wait_in_a_queue_and_each_goes_to_claude_once_it_waits_at_its_
     assert addresses() == {}
 
 
+@ECHOES
 def test_an_address_waits_while_the_reader_has_typed_into_the_terminal_without_an_enter(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -550,6 +571,7 @@ def test_an_address_claude_never_starts_on_leaves_the_queue_for_the_next(
     wait_for(lambda: addresses() == {})
 
 
+@ECHOES
 def test_cancelling_a_question_ends_the_address_and_pastes_the_next(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -571,6 +593,7 @@ def test_cancelling_a_question_ends_the_address_and_pastes_the_next(
     assert addresses() == {"T2": "queued"}
 
 
+@ECHOES
 def test_a_turn_to_working_while_an_address_settles_keeps_it_for_the_next_wait(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -623,6 +646,7 @@ def test_only_text_the_reader_left_unsent_holds_the_queue_and_an_enter_releases_
     wait_for(lambda: pasted == ["address T1"])
 
 
+@ECHOES
 def test_the_status_says_since_when_claude_works(fake: SimpleNamespace) -> None:
     session.start(REF, fake.port, 80, 24)
     wait_for(typing_ready)
@@ -788,6 +812,7 @@ def test_a_process_that_ends_on_its_own_leaves_an_error_and_the_next_open_starts
     assert session.status(REF)["error"] == ""
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="On Windows a session's processes end with its server")
 def test_reap_orphans_ends_a_claude_with_the_session_id_whose_parent_is_gone_and_leaves_the_rest_alone() -> None:
     other = PullRef("acme", "widgets", 2)
     sleeper = ["-c", "import time; time.sleep(60)", "claude", "--resume"]
@@ -812,7 +837,7 @@ def test_reap_orphans_ends_a_claude_with_the_session_id_whose_parent_is_gone_and
         assert records.SESSIONS.read(REF, dict)["pid"] == 0 and records.SESSIONS.read(other, dict)["pid"] == 0
     finally:
         try:
-            os.killpg(orphan_pid, 9)
+            os.killpg(orphan_pid, 9)  # pyright: ignore[reportAttributeAccessIssue] - a POSIX-only test
         except OSError:
             pass
         bystander.kill()
@@ -904,6 +929,9 @@ def test_a_merged_or_closed_pull_request_gets_a_session_in_a_detached_worktree_t
     session.close(REF)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="A Windows pseudo console reads its input whether or not the process does"
+)
 def test_a_paste_the_session_does_not_read_holds_up_nothing_else(
     fake: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1008,10 +1036,12 @@ def test_trust_adds_the_mirror_to_the_config_and_keeps_the_rest(tmp_path: Path) 
         "numStartups": 3,
         "projects": {
             "/elsewhere": {"allowedTools": ["Bash"]},
-            os.path.realpath(mirror): {"hasTrustDialogAccepted": True},
+            trust_key(mirror): {"hasTrustDialogAccepted": True},
         },
     }
-    assert config.stat().st_mode & 0o777 == 0o600
+    # Windows keeps no permission bits beyond read-only.
+    if sys.platform != "win32":
+        assert config.stat().st_mode & 0o777 == 0o600
     assert list(config.parent.iterdir()) == [config]
 
 
@@ -1019,7 +1049,7 @@ def test_trust_keeps_the_rest_of_an_entry_and_leaves_a_trusted_one_alone(tmp_pat
     config = session.config_path()
     config.parent.mkdir()
     mirror = tmp_path / "repos" / "acme" / "widgets.git"
-    key = os.path.realpath(mirror)
+    key = trust_key(mirror)
     config.write_text(json.dumps({"projects": {key: {"allowedTools": ["Bash"], "hasTrustDialogAccepted": False}}}))
     session.trust(mirror)
     assert json.loads(config.read_text())["projects"] == {
@@ -1036,7 +1066,7 @@ def test_trust_writes_nothing_when_there_is_no_config(tmp_path: Path) -> None:
     session.trust(tmp_path / "repos" / "acme" / "widgets.git")
     assert not config.exists() and not config.parent.exists()
     config.parent.mkdir()
-    config.symlink_to(tmp_path / "missing" / "claude.json")
+    symlink(config, tmp_path / "missing" / "claude.json")
     session.trust(tmp_path / "repos" / "acme" / "widgets.git")
     assert not (tmp_path / "missing").exists()
 
@@ -1068,11 +1098,11 @@ def test_trust_writes_through_a_symbolic_link(tmp_path: Path) -> None:
     target = tmp_path / "dotfiles" / "claude.json"
     target.parent.mkdir()
     target.write_text(json.dumps({"numStartups": 1}))
-    config.symlink_to(target)
+    symlink(config, target)
     mirror = tmp_path / "repos" / "acme" / "widgets.git"
     session.trust(mirror)
     assert config.is_symlink()
-    assert json.loads(target.read_text())["projects"] == {os.path.realpath(mirror): {"hasTrustDialogAccepted": True}}
+    assert json.loads(target.read_text())["projects"] == {trust_key(mirror): {"hasTrustDialogAccepted": True}}
 
 
 def test_trust_from_two_threads_keeps_both_mirrors(tmp_path: Path) -> None:
@@ -1085,7 +1115,7 @@ def test_trust_from_two_threads_keeps_both_mirrors(tmp_path: Path) -> None:
         thread.start()
     for thread in threads:
         thread.join()
-    assert set(json.loads(config.read_text())["projects"]) == {os.path.realpath(m) for m in mirrors}
+    assert set(json.loads(config.read_text())["projects"]) == {trust_key(m) for m in mirrors}
     assert list(config.parent.iterdir()) == [config]
 
 
@@ -1109,7 +1139,7 @@ def test_trust_keeps_a_change_another_process_made_while_it_wrote(
     assert json.loads(config.read_text()) == {
         "numStartups": 2,
         "theme": "light",
-        "projects": {os.path.realpath(mirror): {"hasTrustDialogAccepted": True}},
+        "projects": {trust_key(mirror): {"hasTrustDialogAccepted": True}},
     }
 
 

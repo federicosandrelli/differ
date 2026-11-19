@@ -9,11 +9,18 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
+import time
 from pathlib import Path
 
 import build
 from github import PullRef
+
+# Windows refuses to replace a file another thread or process has open, as a reader has a record for a moment, so a
+# replace there tries again this many times, REPLACE_WAIT seconds apart.
+REPLACE_TRIES = 50
+REPLACE_WAIT = 0.01
 
 
 def write_json(path: Path, data: object) -> None:
@@ -25,11 +32,25 @@ def write_json(path: Path, data: object) -> None:
     text = json.dumps(data)
     tmp = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.tmp")
     try:
-        tmp.write_text(text)
-        os.replace(tmp, path)
+        tmp.write_text(text, encoding="utf-8", newline="")
+        _replace(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def _replace(tmp: Path, path: Path) -> None:
+    """Move the file into place. Windows refuses the move while a reader has the old file open, so there it tries
+    again a few times."""
+    for _ in range(REPLACE_TRIES - 1):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if sys.platform != "win32":
+                raise
+            time.sleep(REPLACE_WAIT)
+    os.replace(tmp, path)
 
 
 class Record:
@@ -45,7 +66,7 @@ class Record:
         """The pull request's record; an empty one when it has none, or when its file is broken or holds JSON of
         another shape."""
         try:
-            data = json.loads(self.path(ref).read_text())
+            data = json.loads(self.path(ref).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return shape()
         return data if isinstance(data, shape) else shape()

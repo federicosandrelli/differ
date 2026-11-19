@@ -359,7 +359,7 @@ def load() -> Board:
     """The saved board; an empty one when board.json is missing, broken, or from a version with rows that lack a
     field of `Row`."""
     try:
-        data = json.loads(PATH.read_text())
+        data = json.loads(PATH.read_text(encoding="utf-8"))
         if not isinstance(data["sections"], dict) or not all(
             isinstance(r, dict) and Row.__required_keys__ <= r.keys()
             for rows in data["sections"].values()
@@ -556,7 +556,7 @@ def updated_html(board: Board) -> str:
     shortcut, inside a box marked `data-updated`."""
     return (
         f'<div class="updated" data-updated><div class="notice">Updated {html.escape(ago(board["fetched"]))}'
-        ' · <a href="#" data-update>update</a> (⌘R)</div></div>'
+        ' · <a href="#" data-update>update</a> (<span class="chord">⌘R</span>)</div></div>'
     )
 
 
