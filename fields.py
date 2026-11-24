@@ -4,8 +4,13 @@ what is wrong with it, which an action answers with 400 and a tool with an error
 
 from __future__ import annotations
 
+import base64
+import re
 from collections.abc import Callable
 from typing import Any, get_args
+
+# The media type of an image, such as image/png or image/svg+xml.
+IMAGE_TYPE = re.compile(r"image/[\w.+-]+")
 
 
 class Invalid(ValueError):
@@ -81,3 +86,21 @@ def string_of(value: object) -> str:
     if not isinstance(value, str):
         raise Invalid(f"{value!r} is not a string")
     return value
+
+
+def image_type(value: object) -> str:
+    """The media type of an image a field names; else Invalid."""
+    if not isinstance(value, str) or not IMAGE_TYPE.fullmatch(value):
+        raise Invalid(f"{value!r} is not the media type of an image")
+    return value
+
+
+def bytes_of(value: object) -> bytes:
+    """The bytes a field holds in base64; else Invalid, as for no bytes."""
+    try:
+        data = base64.b64decode(value, validate=True) if isinstance(value, str) else b""
+    except ValueError:
+        data = b""
+    if not data:
+        raise Invalid("the field holds no bytes in base64")
+    return data

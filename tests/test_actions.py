@@ -36,6 +36,14 @@ REF = PullRef("o", "r", 1)
         ("claude_paste", {"text": " "}, "' ' is not a text"),
         ("claude", {"path": "a.py", "line": 1, "commit": "c", "body": "b", "code": [1]}, "[1] is not a list of lines"),
         ("claude_reply", {"id": "c1", "body": "b", "seen": True}, "True is not a count"),
+        (
+            "attach",
+            {"name": "a.png", "type": "text/html", "data": "iVBORw=="},
+            "'text/html' is not the media type of an image",
+        ),
+        ("attach", {"name": "a.png", "type": "image/png", "data": "not base64!"}, "the field holds no bytes"),
+        ("attach", {"name": "a.png", "type": "image/png", "data": ""}, "the field holds no bytes"),
+        ("attach", {"name": "a.png", "type": "image/png", "data": "é"}, "the field holds no bytes"),
     ],
 )
 def test_a_field_outside_its_type_answers_400_and_runs_nothing(
@@ -47,6 +55,7 @@ def test_a_field_outside_its_type_answers_400_and_runs_nothing(
     monkeypatch.setattr(actions.comments, "graphql", ran)
     monkeypatch.setattr(actions.merge, "graphql", ran)
     monkeypatch.setattr(actions.merge.github, "gh", ran)
+    monkeypatch.setattr(actions.github, "attach", ran)
     for name in ("start", "paste"):
         monkeypatch.setattr(actions.session, name, ran)
     for name in ("add", "reply"):

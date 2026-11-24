@@ -141,7 +141,7 @@ function claudeThreadHtml(f, t) {
     return `<div class="comment"><div class="chead">${who}<span class="hint">${ago(m.at)}</span>
       ${i === last ? tag : ''}${del}</div><div class="cbody">${renderMarkdown(m.body, ctx)}</div></div>`;
   }).join('');
-  const reply = replyHtml(t, 'Reply to Claude', btn(`data-claude-follow="${esc(c.id)}"`, 'Send to Claude'));
+  const reply = replyHtml(t, 'Reply to Claude', btn(`data-claude-follow="${esc(c.id)}"`, 'Send to Claude', false, uploading(state.replyOpen.get(t.id) || '')));
   return `<div class="thread card" data-thread="${esc(t.id)}">${threadHead(t)}${messages}${reply}</div>`;
 }
 // The description Claude gave the file; empty when it has none, or while comments can't go to Claude.

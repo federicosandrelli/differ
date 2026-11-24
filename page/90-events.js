@@ -103,6 +103,16 @@ document.addEventListener('input', (e) => {
   render();
 });
 document.addEventListener('input', () => { if (SHELL) SHELL.draft(hasDraft()); });
+// An image pasted into a comment box goes to GitHub, and its link into the box. A paste that holds text as well, such
+// as cells copied from a spreadsheet, pastes the text.
+document.addEventListener('paste', (e) => {
+  const box = e.target, data = e.clipboardData;
+  if (!API || !box.matches || !box.matches(COMMENT_BOXES) || !data || data.types.includes('text/plain')) return;
+  const images = [...data.files].filter(f => f.type.startsWith('image/'));
+  if (!images.length) return;
+  e.preventDefault();
+  attachImages(box, images);
+});
 
 // Cmd+F searches the rows for the first line of the selected text, as an editor's find does.
 function openSearch() {

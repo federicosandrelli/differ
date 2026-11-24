@@ -1775,6 +1775,149 @@ def test_a_reply_shows_as_sending_until_github_has_it(page: Page, server_url: st
         expect(page.locator("div.thread[data-thread='T1'] .comment", has_text="Will do")).to_have_count(1)
 
 
+# The link GitHub gives a pasted file, as a pattern.
+LINK = r"https://github\.com/user-attachments/assets/[0-9a-f-]{36}"
+
+
+def paste_image(box: Locator, text: str = "", names: tuple[str, ...] = ("image.png",)) -> None:
+    """Paste PNG images with the names into the box at its selection, with the text as well when one is given."""
+    box.evaluate(
+        """(box, [text, names]) => {
+          const data = new DataTransfer();
+          for (const name of names) data.items.add(new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' }));
+          if (text) data.setData('text/plain', text);
+          box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+        }""",
+        [text, list(names)],
+    )
+
+
+def uploads(gh_state: Path) -> list[str]:
+    """The addresses of the uploads to GitHub's attachments that the fake gh received."""
+    calls = [json.loads(line) for line in (gh_state / "calls.log").read_text().splitlines()]
+    return [c[-1] for c in calls if c[-1].startswith("https://uploads.github.com/user-attachments/assets?")]
+
+
+def test_an_image_pasted_into_a_reply_uploads_and_its_link_takes_the_place_of_a_placeholder(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        box = page.locator("textarea[data-reply-text='T1']")
+        box.fill("See ")
+        paste_image(box)
+        expect(box).to_have_value("See ![Uploading image.png (1)…]()")
+        expect(page.locator("button[data-reply-send='T1']")).to_be_disabled()
+        page.keyboard.type(" here")
+        release()
+        expect(box).to_have_value(re.compile(r"^See !\[image\]\(" + LINK + r"\) here$"))
+        expect(page.locator("button[data-reply-send='T1']")).to_be_enabled()
+    assert uploads(gh_state)[-1].endswith("?name=image.png&content_type=image%2Fpng&repository_id=42")
+
+
+def test_every_image_of_one_paste_gets_a_line_of_its_own(page: Page, server_url: str, gh_state: Path) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        box = page.locator("textarea[data-conv-text]")
+        paste_image(box, names=("a.png", "b.png"))
+        expect(box).to_have_value(
+            re.compile(r"^!\[Uploading a\.png \(\d+\)…\]\(\)\n!\[Uploading b\.png \(\d+\)…\]\(\)$")
+        )
+        release()
+        expect(box).to_have_value(re.compile(r"^!\[a\]\(" + LINK + r"\)\n!\[b\]\(" + LINK + r"\)$"))
+
+
+def test_a_caption_typed_before_a_later_image_keeps_its_link(page: Page, server_url: str, gh_state: Path) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        box = page.locator("textarea[data-conv-text]")
+        paste_image(box, names=("a.png", "b.png"))
+        expect(box).to_have_value(re.compile(r"\n!\[Uploading b\.png"))
+        box.evaluate("box => { const at = box.value.indexOf('\\n') + 1; box.focus(); box.setSelectionRange(at, at); }")
+        page.keyboard.type("Also: ")
+        release()
+        expect(box).to_have_value(re.compile(r"^!\[a\]\(" + LINK + r"\)\nAlso: !\[b\]\(" + LINK + r"\)$"))
+
+
+def test_the_page_sends_no_action_that_holds_the_placeholder_of_an_uploading_image(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        mutations = gh_state / "mutations.log"
+        before = mutations.read_text() if mutations.exists() else ""
+        box = page.locator("textarea[data-conv-text]")
+        paste_image(box)
+        expect(box).to_have_value(re.compile("Uploading"))
+        refusal = page.evaluate("api('conversation', { body: state.convText }).then(() => '', (e) => e.message)")
+        assert refusal == "An image you pasted is still uploading"
+        release()
+        expect(box).not_to_have_value(re.compile("Uploading"))
+        assert (mutations.read_text() if mutations.exists() else "") == before
+
+
+def test_cmd_enter_sends_nothing_while_an_image_uploads(page: Page, server_url: str, gh_state: Path) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        mutations = gh_state / "mutations.log"
+        before = mutations.read_text() if mutations.exists() else ""
+        box = page.locator("textarea[data-reply-text='T1']")
+        box.fill("See ")
+        paste_image(box)
+        expect(box).to_have_value(re.compile("Uploading"))
+        page.keyboard.press("Meta+Enter")
+        page.wait_for_timeout(300)
+        expect(page.locator("#side .notice.err", has_text="Comments:")).to_have_count(0)
+        release()
+        expect(box).to_have_value(re.compile(r"^See !\[image\]\(" + LINK + r"\)$"))
+        assert (mutations.read_text() if mutations.exists() else "") == before
+
+
+def test_an_image_pasted_into_a_comment_box_reaches_its_draft_when_another_line_takes_the_box(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    with held_mutations(gh_state) as release:
+        open_pr(page, server_url)
+        section = page.locator(APP)
+        section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+        paste_image(page.locator("textarea[data-compose-text]"))
+        expect(page.locator("textarea[data-compose-text]")).to_have_value(re.compile("Uploading"))
+        section.locator("tr.ctx", has_text="def main():").locator("td.n.key").click()
+        expect(page.locator("textarea[data-compose-text]")).to_have_value("")
+        release()
+        section.locator("tr.add", has_text='print("hello")').locator("td.n.key").click()
+        expect(page.locator("textarea[data-compose-text]")).to_have_value(re.compile(r"^!\[image\]\(" + LINK + r"\)$"))
+
+
+def test_an_image_github_refuses_leaves_the_box_and_says_why(page: Page, server_url: str, gh_state: Path) -> None:
+    open_pr(page, server_url)
+    box = page.locator("textarea[data-conv-text]")
+    box.fill("Look:")
+    (gh_state / "fail.txt").write_text("api -X POST\n")
+    try:
+        paste_image(box)
+        notice = page.locator("#side .notice.err", has_text="Image:")
+        expect(notice).to_contain_text("GitHub did not take the image: fake gh: injected failure")
+    finally:
+        (gh_state / "fail.txt").unlink()
+    expect(box).to_have_value("Look:")
+    expect(page.locator("button[data-conv-send]")).to_be_enabled()
+    notice.locator("a[data-attach-dismiss]").click()
+    expect(notice).to_have_count(0)
+
+
+def test_a_paste_that_holds_text_as_well_as_an_image_uploads_nothing(
+    page: Page, server_url: str, gh_state: Path
+) -> None:
+    open_pr(page, server_url)
+    before = len(uploads(gh_state))
+    box = page.locator("textarea[data-conv-text]")
+    paste_image(box, "A1\tB1")
+    page.wait_for_timeout(300)
+    assert len(uploads(gh_state)) == before
+    expect(box).not_to_have_value(re.compile("Uploading"))
+
+
 def hold_requests(page: Page, pattern: str) -> list[tuple[Route, APIResponse]]:
     """Send each request to a URL matching pattern on to the server at once, and hold its answer back from the page.
     Returns the held requests with their answers, in the order they came."""
