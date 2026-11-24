@@ -378,23 +378,11 @@ def test_collect_renames_needs_two_runs_or_a_file_rename() -> None:
     once = FileDiff(old_path="b.py", new_path="b.py", status="M")
     once.runs = [run_of(["y = lone()"], ["y = alone()"])]
     moved = FileDiff(old_path="pkg/before.py", new_path="pkg/after.py", status="R")
-    renames = classify.collect_renames([twice, once, moved])
-    assert renames == {
-        ("old", "new"): None,
-        ("pkg.before", "pkg.after"): "pkg/after.py",
-        ("before", "after"): "pkg/after.py",
+    assert classify.collect_renames([twice, once, moved]) == {
+        ("old", "new"),
+        ("pkg.before", "pkg.after"),
+        ("before", "after"),
     }
-
-
-def test_a_rename_that_follows_a_renamed_file_has_that_file_as_its_origin(tmp_path: Path) -> None:
-    diff = make_diff(
-        tmp_path,
-        old={"a/one.py": "x = 1\n", "b/two.py": "y = 2\n", "f.py": "one.f()\n", "g.py": "two.g()\n"},
-        new={"a/uno.py": "x = 1\n", "b/dos.py": "y = 2\n", "f.py": "uno.f()\n", "g.py": "dos.g()\n"},
-    )
-    origins = {(r["from"], r["to"]): r["origin"] for r in classify.classify(diff)["renames"]}
-    assert origins[("one", "uno")] == {"path": "a/uno.py", "line": 1, "side": "new", "text": "renamed from a/one.py"}
-    assert origins[("two", "dos")] == {"path": "b/dos.py", "line": 1, "side": "new", "text": "renamed from b/two.py"}
 
 
 def test_apply_renames_respects_word_boundaries() -> None:
@@ -639,8 +627,7 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
             "docs/notes.txt": "Widgets are small.\n",
         },
     )
-    result = classify.classify(diff)
-    files = {f["path"]: f for f in result["files"]}
+    files = {f["path"]: f for f in classify.classify(diff)["files"]}
 
     assert [(r["class"], r["noise"]) for r in files["app.py"]["runs"]] == [
         ("import", True),
@@ -660,11 +647,6 @@ def test_classify_a_small_pull_request(tmp_path: Path) -> None:
     assert files["README.md"]["status"] == "A" and files["README.md"]["kind"] == "docs"
     noise_only = {path for path, f in files.items() if f["noise_only"]}
     assert noise_only == {"cli.py", "docs/notes.txt"}
-
-    (rename,) = result["renames"]
-    assert rename["from"] == "old_name" and rename["to"] == "new_name"
-    assert rename["runs"] == 3 and rename["files"] == ["app.py", "cli.py"]
-    assert rename["origin"] == {"path": "app.py", "line": 5, "side": "new", "text": "def new_name(x):"}
 
 
 def test_python_structure_finds_the_imports_in_an_except_block() -> None:

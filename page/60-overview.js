@@ -1,4 +1,4 @@
-// The overview at the top of the main pane: the PR description, the renames and the conversation.
+// The overview at the top of the main pane: the PR description and the conversation.
 
 // GitHub sends a file of a private repository, and a file pasted into a description or a comment, only to a signed-in
 // browser, so the server reads such an image with gh's sign-in.
@@ -53,17 +53,6 @@ function renderMarkdown(md, ctx) {
   return out.join('');
 }
 
-function renamesHtml() {
-  if (!D.renames.length) return '';
-  let h = `<h2>Renames</h2><div class="scrollx"><table class="plain"><tr><th class="kind">From</th><th class="kind">To</th><th class="kind">Blocks</th><th class="kind">Files</th><th class="kind">Origin</th></tr>`;
-  for (const r of D.renames) {
-    const o = r.origin;
-    h += `<tr><td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${r.runs}</td><td>${r.files.length}</td>
-      <td>${o ? `<a href="#" data-path="${esc(o.path)}" data-line="${o.line}" data-side="${o.side}" class="mono">${esc(o.path.split('/').pop())}:${o.line}</a> <span class="hint">${esc(o.text.slice(0, 60))}</span>` : '<span class="hint">not in this diff</span>'}</td></tr>`;
-  }
-  return h + `</table></div>`;
-}
-
 function overviewHtml() {
   const github = new URL(PR.url).origin;
   const commit = (sha) => `<a href="${github}/${PR.repo}/commit/${sha}" target="_blank">${sha.slice(0, 8)}</a>`;
@@ -72,7 +61,7 @@ function overviewHtml() {
   return `<h1>${esc(PR.title)}</h1>
     <div class="meta"><a href="${PR.url}" target="_blank">${esc(PR.repo)}#${PR.number}</a>${author} · ${plural(PR.commits, 'commit')} · <span class="mono">${commit(PR.base)}…${commit(PR.head)}</span></div>
     <div class="prbody">${bodyHtml({ body: PR.body || '', html: C.body_html })}</div>
-    ${renamesHtml()}${conversationHtml()}${claudeOrphansHtml()}`;
+    ${conversationHtml()}${claudeOrphansHtml()}`;
 }
 // Everything the overview's HTML depends on, so it is rebuilt only when one of them changes.
 function overviewKey() {
