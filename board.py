@@ -51,15 +51,15 @@ class Group(NamedTuple):
 GROUPS = (
     Group(
         (
-            Column("Your pull requests", ("action", "ci", "review")),
-            Column("Waiting for your review", ("reviewing",)),
+            Column("In review", ("action", "ci", "review")),
+            Column("You are reviewing", ("reviewing", "reviewed")),
         ),
     ),
     Group(
         (
             Column("Drafts", ("draft",)),
             Column("Waiting for a reviewer", ("unreviewed",)),
-            Column("Being reviewed", ("reviewed", "others")),
+            Column("Being reviewed", ("others",)),
             Column("Merged today", ("merged", "merged_others"), quiet=True, folded=True),
         ),
     ),
