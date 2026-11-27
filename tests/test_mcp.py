@@ -155,7 +155,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(github, "pull_request", lambda ref: pr)
     monkeypatch.setattr(build, "ensure_repo", lambda ref, log: root)
     monkeypatch.setattr(build, "fetch", lambda *args: None)
-    (tmp_path / "base.txt").write_text(base)
+    (tmp_path / "base.txt").write_text(base, encoding="utf-8", newline="")
     return root
 
 

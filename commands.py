@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 TIMEOUT = 120
@@ -47,7 +48,15 @@ def start(args: list[str]) -> subprocess.Popen[bytes]:
     exits. Raises CommandError when it is not installed."""
     try:
         return subprocess.Popen(
-            args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            args,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            # Windows has no sessions; there the command gets a process group of its own and no console.
+            creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
+            if sys.platform == "win32"
+            else 0,
         )
     except FileNotFoundError:
         raise CommandError(f"{args[0]} is not installed") from None

@@ -9,13 +9,14 @@ a folder. The adapters start and look up processes through `processes`, a `Proce
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 import threading
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Protocol
 from urllib.parse import quote
 
@@ -25,8 +26,49 @@ import commands
 from checkout import Refused
 from github import PullRef
 
-APP_FOLDERS = (Path("/Applications"), Path.home() / "Applications")
-JETBRAINS_CONFIG = Path.home() / "Library/Application Support/JetBrains"
+if sys.platform == "win32":
+    APP_FOLDERS = tuple(
+        Path(folder)
+        for folder in (
+            Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Programs",
+            os.environ.get("ProgramFiles") or r"C:\Program Files",
+            os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)",
+        )
+    )
+    JETBRAINS_CONFIG = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "JetBrains"
+    # The program that opens a URL in the app the system chose for its scheme.
+    URL_OPENER = "explorer.exe"
+    # Each local editor's install folders, and the program inside them the editor runs as, which takes the command
+    # line tool's arguments.
+    BUNDLES: dict[str, tuple[tuple[str, ...], str]] = {
+        "vscode": (("Microsoft VS Code",), "Code.exe"),
+        "cursor": (("cursor",), "Cursor.exe"),
+        "pycharm": (("PyCharm*", "JetBrains/PyCharm*"), "bin/pycharm64.exe"),
+        "idea": (("IntelliJ IDEA*", "JetBrains/IntelliJ IDEA*"), "bin/idea64.exe"),
+        "webstorm": (("WebStorm*", "JetBrains/WebStorm*"), "bin/webstorm64.exe"),
+        "goland": (("GoLand*", "JetBrains/GoLand*"), "bin/goland64.exe"),
+    }
+else:
+    APP_FOLDERS = (Path("/Applications"), Path.home() / "Applications")
+    JETBRAINS_CONFIG = Path.home() / "Library/Application Support/JetBrains"
+    URL_OPENER = "open"
+    # Each local editor's app bundles, and the command line tool inside them.
+    BUNDLES = {
+        "vscode": (("Visual Studio Code.app",), "Contents/Resources/app/bin/code"),
+        "cursor": (("Cursor.app",), "Contents/Resources/app/bin/cursor"),
+        "pycharm": (
+            (
+                "PyCharm.app",
+                "PyCharm CE.app",
+                "PyCharm Professional Edition.app",
+                "PyCharm Community Edition.app",
+            ),
+            "Contents/MacOS/pycharm",
+        ),
+        "idea": (("IntelliJ IDEA.app", "IntelliJ IDEA CE.app", "IntelliJ IDEA Ultimate.app"), "Contents/MacOS/idea"),
+        "webstorm": (("WebStorm.app",), "Contents/MacOS/webstorm"),
+        "goland": (("GoLand.app",), "Contents/MacOS/goland"),
+    }
 
 
 @dataclass(frozen=True)
@@ -61,6 +103,14 @@ class SystemProcesses:
     def oldest(self, command: Path) -> int | None:
         """The oldest process that runs the command line tool at this path, or None. For a JetBrains IDE that is the
         IDE itself, since a launcher that finds the IDE running hands its request over and exits."""
+        if sys.platform == "win32":
+            quoted = "'" + str(command).replace("'", "''") + "'"
+            script = (
+                f"Get-Process | Where-Object {{ $_.Path -eq {quoted} }} | Sort-Object StartTime"
+                " | Select-Object -First 1 -ExpandProperty Id"
+            )
+            pid = commands.call(["powershell", "-NoProfile", "-NonInteractive", "-Command", script]).stdout.strip()
+            return int(pid) if pid.isdigit() else None
         pattern = "^" + re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", str(command))
         pid = commands.call(["pgrep", "-o", "-f", pattern]).stdout.strip()
         return int(pid) if pid else None
@@ -102,11 +152,14 @@ class _Local(_Launcher):
         return self.find() is not None
 
     def find(self) -> Path | None:
-        """The command line tool of the first of the editor's app bundles installed, or None."""
+        """The command line tool of the first of the editor's app bundles installed, or None. An app may be a pattern,
+        as a Windows install folder that names the version is, and of the folders it matches the newest version goes
+        first."""
         for folder in APP_FOLDERS:
             for app in self.apps:
-                if (path := folder / app / self.tool).exists():
-                    return path
+                for bundle in sorted(folder.glob(app), key=_version, reverse=True):
+                    if (path := bundle / self.tool).exists():
+                        return path
         return None
 
     def busy(self, folder: Path) -> bool:
@@ -145,6 +198,12 @@ class _Code(_Local):
 _launches: dict[tuple[str, Path], tuple[Path, Launch]] = {}
 
 
+def _version(bundle: Path) -> tuple[int, ...]:
+    """The numbers in the folder's name, so that 2026.10 comes after 2026.9 and the edition in a name counts for
+    nothing."""
+    return tuple(int(n) for n in re.findall(r"\d+", bundle.name))
+
+
 @dataclass(frozen=True)
 class _JetBrains(_Local):
     """The adapter for a JetBrains IDE. Its configuration folders start with one of `configs`, followed by the
@@ -171,7 +230,7 @@ class _JetBrains(_Local):
         also takes about two seconds to hand its request to a running IDE, so a file of a project the IDE has open
         goes through the IDE's URL scheme instead, which opens it at once."""
         if self.has_open(folder) and processes.oldest(command):
-            return ["open", f"{Path(self.tool).name}://open?file={quote(str(file))}&line={line}"]
+            return [URL_OPENER, f"{self.editor.id}://open?file={quote(file.as_posix())}&line={line}"]
         return [str(command), str(folder), "--line", str(line), str(file)]
 
     def has_open(self, folder: Path) -> bool:
@@ -186,7 +245,7 @@ class _JetBrains(_Local):
                 continue
             for entry in entries:
                 key = entry.get("key", "").replace("$USER_HOME$", str(Path.home()))
-                if key == str(folder) and entry.find(".//RecentProjectMetaInfo[@opened='true']") is not None:
+                if Path(key) == folder and entry.find(".//RecentProjectMetaInfo[@opened='true']") is not None:
                     return True
         return False
 
@@ -201,28 +260,18 @@ class _GitHub(_Launcher):
 
     def open(self, ref: PullRef, path: PurePosixPath, line: int) -> None:
         url = f"https://github.com/{ref.slug}/blob/{build.recent_head(ref)}/{quote(str(path))}#L{line}"
-        processes.start(["open", url])
+        processes.start([URL_OPENER, url])
 
 
 _LAUNCHERS: dict[str, _Launcher] = {
     a.editor.id: a
     for a in (
-        _Code(Editor("vscode", "VS Code"), ("Visual Studio Code.app",), "Contents/Resources/app/bin/code"),
-        _Code(Editor("cursor", "Cursor"), ("Cursor.app",), "Contents/Resources/app/bin/cursor"),
-        _JetBrains(
-            Editor("pycharm", "PyCharm"),
-            ("PyCharm.app", "PyCharm CE.app", "PyCharm Professional Edition.app", "PyCharm Community Edition.app"),
-            "Contents/MacOS/pycharm",
-            ("PyCharm",),
-        ),
-        _JetBrains(
-            Editor("idea", "IntelliJ IDEA"),
-            ("IntelliJ IDEA.app", "IntelliJ IDEA CE.app", "IntelliJ IDEA Ultimate.app"),
-            "Contents/MacOS/idea",
-            ("IntelliJIdea", "IdeaIC"),
-        ),
-        _JetBrains(Editor("webstorm", "WebStorm"), ("WebStorm.app",), "Contents/MacOS/webstorm", ("WebStorm",)),
-        _JetBrains(Editor("goland", "GoLand"), ("GoLand.app",), "Contents/MacOS/goland", ("GoLand",)),
+        _Code(Editor("vscode", "VS Code"), *BUNDLES["vscode"]),
+        _Code(Editor("cursor", "Cursor"), *BUNDLES["cursor"]),
+        _JetBrains(Editor("pycharm", "PyCharm"), *BUNDLES["pycharm"], ("PyCharm",)),
+        _JetBrains(Editor("idea", "IntelliJ IDEA"), *BUNDLES["idea"], ("IntelliJIdea", "IdeaIC")),
+        _JetBrains(Editor("webstorm", "WebStorm"), *BUNDLES["webstorm"], ("WebStorm",)),
+        _JetBrains(Editor("goland", "GoLand"), *BUNDLES["goland"], ("GoLand",)),
         _GitHub(Editor("github", "GitHub", local=False)),
     )
 }
@@ -266,6 +315,13 @@ def open_file(ref: PullRef, editor_id: str, path: str, line: int) -> None:
         names = ", ".join(repr(e.id) for e in installed()) or "none"
         raise ValueError(f"{editor_id!r} is not an installed editor (installed: {names})")
     relative = PurePosixPath(path)
-    if not path or relative.is_absolute() or ".." in relative.parts:
+    # Windows also reads a backslash as a separator and a drive as a root, either of which leads out of the clone.
+    windows = PureWindowsPath(path)
+    if (
+        not path
+        or relative.is_absolute()
+        or ".." in relative.parts
+        or (sys.platform == "win32" and (windows.anchor or ".." in windows.parts))
+    ):
         raise ValueError(f"{path!r} is not a path inside the repository")
     launcher.open(ref, relative, line)

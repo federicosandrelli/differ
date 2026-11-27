@@ -32,7 +32,7 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
     assert markers[:2] == ["// ---- page/vendor/highlight.min.js", "// ---- shell/frame.js"]
     assert markers[2:] == sorted(f"// ---- page/{p.name}" for p in render.PAGE_DIR.glob("*.js"))
     assert ':root[data-theme="light"]' in html
-    assert (render.PAGE_DIR / "page.css").read_text() in html
+    assert (render.PAGE_DIR / "page.css").read_text(encoding="utf-8") in html
 
 
 def test_read_head_reads_back_the_title_status_and_author_render_page_writes() -> None:
@@ -45,8 +45,8 @@ def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
     html = render.render_page({"files": []}, PR)
     assert "<script src=" not in html
     assert "<link " not in html
-    assert (render.VENDOR_DIR / "highlight.min.js").read_text() in html
-    assert (render.VENDOR_DIR / "LICENSE").read_text().startswith("BSD 3-Clause License")
+    assert (render.VENDOR_DIR / "highlight.min.js").read_text(encoding="utf-8") in html
+    assert (render.VENDOR_DIR / "LICENSE").read_text(encoding="utf-8").startswith("BSD 3-Clause License")
 
 
 def test_sources_lists_every_file_a_page_inlines() -> None:
@@ -57,6 +57,7 @@ def test_sources_lists_every_file_a_page_inlines() -> None:
         "page.css",
         "base.css",
         "theme.js",
+        "keys.js",
         "tooltip.js",
         "notice.js",
         "highlight.min.js",
@@ -67,7 +68,9 @@ def test_sources_lists_every_file_a_page_inlines() -> None:
 
 
 def test_splash_page_is_written_from_the_dark_palette() -> None:
-    assert (render.ROOT / "web" / "index.html").read_text() == render.splash_html(), "run: python3 render.py --splash"
+    assert (render.ROOT / "web" / "index.html").read_text(encoding="utf-8") == render.splash_html(), (
+        "run: python3 render.py --splash"
+    )
 
 
 def test_every_token_is_used_and_every_used_token_is_defined() -> None:
@@ -92,7 +95,7 @@ def test_every_token_is_used_and_every_used_token_is_defined() -> None:
     non_colour |= {"--radius-sm", "--radius", "--radius-lg", "--radius-pill", "--control-font", "--control-line"}
     used: set[str] = set()
     for path in styled_sources():
-        used |= set(re.findall(r"var\((--[a-z0-9-]+)", path.read_text()))
+        used |= set(re.findall(r"var\((--[a-z0-9-]+)", path.read_text(encoding="utf-8")))
     assert used - non_colour == defined
 
 
@@ -105,7 +108,7 @@ def test_colours_live_only_in_the_palettes() -> None:
     found = [
         f"{p}:{n}"
         for p in styled_sources()
-        for n, line in enumerate(p.read_text().splitlines(), 1)
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
         if literal.search(line)
     ]
     assert found == []

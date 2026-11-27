@@ -147,7 +147,7 @@ def gh_banner() -> str:
 
 
 def shell_file(name: str) -> str:
-    return (render.SHELL_DIR / name).read_text()
+    return (render.SHELL_DIR / name).read_text(encoding="utf-8")
 
 
 def shell(title: str, body: str) -> bytes:
@@ -583,7 +583,7 @@ def open_log(path: Path) -> TextIO:
     """The log file at path, opened for appending, or started over when it already holds more than LOG_MAX bytes."""
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = "w" if path.exists() and path.stat().st_size > LOG_MAX else "a"
-    return path.open(mode, buffering=1)
+    return path.open(mode, buffering=1, encoding="utf-8")
 
 
 def log_to(path: Path) -> None:

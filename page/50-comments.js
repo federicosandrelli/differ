@@ -394,10 +394,10 @@ function rebuildNotice() {
   if (!API) return '';
   const { phase, error, log } = REBUILD;
   if (phase === 'building') return Notice.busy('Rebuilding the page…', log);
-  if (phase === 'ready') return '<div class="notice">The rebuilt page is ready · <a href="#" data-rebuild>load it</a> (⌘R)</div>';
+  if (phase === 'ready') return '<div class="notice">The rebuilt page is ready · <a href="#" data-rebuild>load it</a> (' + Keys.label('R') + ')</div>';
   if (phase === 'current') return '<div class="notice">No new commits · the page is up to date</div>';
   if (phase === 'error') return Notice.failed('Rebuild', error, 'data-rebuild');
-  return hasNewCommits() ? '<div class="notice err">The pull request has new commits · <a href="#" data-rebuild>rebuild the page</a> (⌘R)</div>' : '';
+  return hasNewCommits() ? '<div class="notice err">The pull request has new commits · <a href="#" data-rebuild>rebuild the page</a> (' + Keys.label('R') + ')</div>' : '';
 }
 function reviewPanelHtml() {
   const n = pendingCount();

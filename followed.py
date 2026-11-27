@@ -40,7 +40,7 @@ def names(texts: list[str]) -> list[str]:
 def read() -> list[str] | None:
     """The saved list; None before the first save, and empty when the file is broken."""
     try:
-        data = json.loads(PATH.read_text())
+        data = json.loads(PATH.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
