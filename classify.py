@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, TypedDict
@@ -97,15 +97,6 @@ class FileDiff:
     @property
     def path(self) -> str:
         return self.new_path or self.old_path or ""
-
-
-class Origin(TypedDict):
-    """Where a rename is defined."""
-
-    path: str
-    line: int
-    side: Side
-    text: str
 
 
 @dataclass(frozen=True)
@@ -293,24 +284,24 @@ def strip_common_segments(a: str, b: str) -> Pair:
     return ".".join(sa), ".".join(sb)
 
 
-def collect_renames(files: list[FileDiff]) -> dict[Pair, str | None]:
-    """Every rename of the pull request, with the path of the renamed file it follows, if any. A rename is a name
-    that changes the same way in at least two runs, or the module or file name of a renamed file."""
+def collect_renames(files: list[FileDiff]) -> set[Pair]:
+    """Every rename of the pull request. A rename is a name that changes the same way in at least two runs, or the
+    module or file name of a renamed file."""
     runs: Counter[Pair] = Counter()
-    of_files: dict[Pair, str] = {}
+    of_files: set[Pair] = set()
     for fd in files:
         if fd.status == "R" and fd.old_path and fd.new_path:
             old_module = file_types.language_support_of(fd.old_path).module_name(fd.old_path)
             new_module = file_types.language_support_of(fd.new_path).module_name(fd.new_path)
-            of_files[(old_module, new_module)] = fd.path
+            of_files.add((old_module, new_module))
             ob, nb = Path(fd.old_path).stem, Path(fd.new_path).stem
             if ob != nb:
-                of_files[(ob, nb)] = fd.path
+                of_files.add((ob, nb))
         for run in fd.runs:
             if len(run.removed) == len(run.added):
                 pairs = (token_diff(o, n) for (_, o), (_, n) in zip(run.removed, run.added, strict=True))
                 runs.update({pair for pair in pairs if pair})
-    return {pair: of_files.get(pair) for pair, n in runs.items() if n >= 2 or pair in of_files} | of_files
+    return {pair for pair, n in runs.items() if n >= 2} | of_files
 
 
 def apply_renames(line: str, renames: list[Pair]) -> str:
@@ -474,9 +465,9 @@ def binary_sizes(diff: Diff, fd: FileDiff) -> dict[Side, int | None] | None:
     return {"old": None if old is None else len(old), "new": None if new is None else len(new)}
 
 
-def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | None]) -> list[ClassifiedFile]:
+def classify_files(diff: Diff, files: list[FileDiff], renames: set[Pair]) -> list[ClassifiedFile]:
     """Classify every run of every file."""
-    longest_first = sorted(renames, key=lambda p: -len(p[0]))
+    longest_first = sorted(renames, key=lambda p: (-len(p[0]), p))
     classified = []
     for fd in files:
         old_src = decoded(diff.old.get(fd.old_path)) if fd.old_path else ""
@@ -490,31 +481,6 @@ def classify_files(diff: Diff, files: list[FileDiff], renames: dict[Pair, str | 
         generated = is_generated(fd.path, content, diff.generated)
         classified.append(ClassifiedFile(fd, content, content_side, symbols, imports, old_imports, generated))
     return classified
-
-
-def find_origins(files: list[ClassifiedFile], renames: dict[Pair, str | None]) -> dict[Pair, Origin | None]:
-    """Where each rename is defined: the renamed file it follows, or the first class, def, annotation or assignment
-    of the new name, with implementation files searched before tests."""
-    origins: dict[Pair, Origin | None] = dict.fromkeys(renames)
-    for fd in sorted((f.diff for f in files), key=lambda fd: file_kind(fd.path) == "test"):
-        for pair, renamed_file in renames.items():
-            if renamed_file == fd.path and origins[pair] is None:
-                origins[pair] = Origin(path=fd.path, line=1, side="new", text=f"renamed from {fd.old_path}")
-        language = file_types.language_support_of(fd.path)
-        for run in fd.runs:
-            for (a, b), origin in origins.items():
-                if origin is not None:
-                    continue
-                for no, line in run.added:
-                    if language.is_definition(line, b):
-                        origins[(a, b)] = Origin(path=fd.path, line=no, side="new", text=line.strip())
-                        break
-                else:
-                    for no, line in run.removed:
-                        if language.is_definition(line, a):
-                            origins[(a, b)] = Origin(path=fd.path, line=no, side="old", text=line.strip())
-                            break
-    return origins
 
 
 def file_json(f: ClassifiedFile, diff: Diff) -> dict:
@@ -558,38 +524,11 @@ def file_json(f: ClassifiedFile, diff: Diff) -> dict:
     }
 
 
-def renames_json(files: list[FileDiff], origins: dict[Pair, Origin | None]) -> list[dict]:
-    """Every rename applied in at least one run, most used first."""
-    runs: Counter[Pair] = Counter()
-    paths: defaultdict[Pair, set[str]] = defaultdict(set)
-    for fd in files:
-        for run in fd.runs:
-            if run.rename:
-                runs[run.rename] += 1
-                paths[run.rename].add(fd.path)
-    out = [
-        {
-            "from": a,
-            "to": b,
-            "runs": runs[(a, b)],
-            "files": sorted(paths[(a, b)]),
-            "origin": origin,
-        }
-        for (a, b), origin in origins.items()
-        if runs[(a, b)]
-    ]
-    return sorted(out, key=lambda r: -r["runs"])
-
-
 def classify(diff: Diff) -> dict:
-    """The diff's files and the renames found across them."""
+    """The diff's files."""
     files = parse_patch(diff.patch)
     for fd in files:
         build_runs(fd)
     link_moves(files)
     renames = collect_renames(files)
-    classified = classify_files(diff, files, renames)
-    return {
-        "files": [file_json(f, diff) for f in classified],
-        "renames": renames_json(files, find_origins(classified, renames)),
-    }
+    return {"files": [file_json(f, diff) for f in classify_files(diff, files, renames)]}

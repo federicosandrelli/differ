@@ -44,6 +44,8 @@ Open http://localhost:8765/ and paste a pull request URL or `owner/repo#123`.
   `~/.cache/differ`. Cmd+R rebuilds it.
 - Hover a line and click `+` to comment on it. A comment goes to GitHub at once.
   Threads take replies and can be resolved.
+- Paste an image into a comment box to upload it to GitHub, as on github.com.
+  Uploads need write access to the repository.
 - On your own pull requests, the sidebar button opens the merge panel: the
   checks, the review decision, merge and auto-merge.
 - The `</>` button in a file header opens the repository in your editor (VS

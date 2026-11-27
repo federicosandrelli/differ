@@ -3,6 +3,7 @@ import io
 import json
 import subprocess
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -352,3 +353,55 @@ def test_search_prs_is_none_when_one_search_fails(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(commands.subprocess, "run", fake_run)
     assert github.search_prs(["good", "bad"]) is None
     assert github.search_prs(["good"]) == ("me", [[]])
+
+
+def fake_upload(
+    monkeypatch: pytest.MonkeyPatch, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b""
+) -> list[tuple[list[str], bytes]]:
+    """Stand in for gh: the repository's id is 42, and an upload answers as given. The uploads gh received, as
+    arguments and the bytes of the file each sent."""
+    uploads: list[tuple[list[str], bytes]] = []
+
+    def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        if args[:3] == ["gh", "api", "repos/o/r"]:
+            return subprocess.CompletedProcess(args, 0, b"42\n", b"")
+        uploads.append((args, Path(args[args.index("--input") + 1]).read_bytes()))
+        return subprocess.CompletedProcess(args, returncode, stdout, stderr)
+
+    monkeypatch.setattr(commands.subprocess, "run", run)
+    github.repository_id.cache_clear()
+    return uploads
+
+
+def test_attach_uploads_the_bytes_from_a_file_and_returns_the_link(monkeypatch: pytest.MonkeyPatch) -> None:
+    uploads = fake_upload(monkeypatch, stdout=json.dumps({"url": ASSET}).encode())
+    assert github.attach(PullRef("o", "r", 1), "shot 1.png", "image/png", b"PNG") == ASSET
+    [(args, data)] = uploads
+    assert data == b"PNG"
+    assert args[-1] == f"{github.ATTACHMENTS}?name=shot+1.png&content_type=image%2Fpng&repository_id=42"
+
+
+def test_attach_names_write_access_when_github_answers_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_upload(monkeypatch, 1, stderr=b"gh: Not Found (HTTP 404)")
+    with pytest.raises(commands.CommandError, match="GitHub takes images only from people who can write to o/r"):
+        github.attach(PullRef("o", "r", 1), "a.png", "image/png", b"PNG")
+
+
+@pytest.mark.parametrize(
+    "stdout", [b"", b"[]", b'{"url": "https://example.com/a.png"}', b'{"url": "' + ASSET.encode() + b')x"}']
+)
+def test_attach_fails_when_github_answers_without_a_link_to_a_pasted_file(
+    stdout: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_upload(monkeypatch, stdout=stdout)
+    with pytest.raises(commands.CommandError, match="answered without its link"):
+        github.attach(PullRef("o", "r", 1), "a.png", "image/png", b"PNG")
+
+
+def test_repository_id_fails_when_gh_prints_no_number(monkeypatch: pytest.MonkeyPatch) -> None:
+    github.repository_id.cache_clear()
+    monkeypatch.setattr(
+        commands.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 0, b"null\n", b"")
+    )
+    with pytest.raises(commands.CommandError, match="GitHub gave o/r no repository id: 'null'"):
+        github.repository_id("o/r")

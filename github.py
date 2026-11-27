@@ -3,9 +3,11 @@ Every gh command the app runs goes through here."""
 
 from __future__ import annotations
 
+import functools
 import http.client
 import json
 import re
+import tempfile
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -33,6 +35,9 @@ REPO_FILES = (
 USER_ATTACHMENT = re.compile(
     r"https://github\.com(?P<path>/user-attachments/assets/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})"
 )
+# Where GitHub takes a file to paste into a description or a comment, as gh's --attach flag sends it. It answers with
+# the file's USER_ATTACHMENT link, and with 404 to someone who can't write to the repository.
+ATTACHMENTS = "https://uploads.github.com/user-attachments/assets"
 # A ref of up to this many parts, such as feature/x/y, splits from the path in a link to a repository file.
 REF_PARTS = 4
 
@@ -325,3 +330,50 @@ def user_attachment(url: str) -> tuple[bytes, str]:
             return r.read(), ctype
     except (OSError, http.client.HTTPException) as exc:
         raise commands.CommandError(f"GitHub did not send {url}: {exc}") from None
+
+
+@functools.cache
+def repository_id(slug: str) -> int:
+    """The number GitHub's REST API gives the repository. Raises CommandError when gh fails or prints another
+    answer."""
+    answer = gh("api", f"repos/{slug}", "--jq", ".id").strip()
+    if not answer.isdigit():
+        raise commands.CommandError(f"GitHub gave {slug} no repository id: {answer[:200]!r}")
+    return int(answer)
+
+
+def attach(ref: PullRef, name: str, content_type: str, data: bytes) -> str:
+    """Upload a file to the pull request's repository, as a paste into a comment box on GitHub does, and return its
+    link (see USER_ATTACHMENT). Raises CommandError when GitHub refuses the file or gh fails."""
+    query = urllib.parse.urlencode(
+        {"name": name, "content_type": content_type, "repository_id": repository_id(ref.slug)}
+    )
+    with tempfile.TemporaryDirectory() as folder:
+        # GitHub refuses a body without a Content-Length, and gh sends one only for a file it reads from disk.
+        upload = Path(folder) / "upload"
+        upload.write_bytes(data)
+        r = commands.call(
+            [
+                "gh",
+                "api",
+                "-X",
+                "POST",
+                "-H",
+                "Content-Type: application/octet-stream",
+                "--input",
+                str(upload),
+                f"{ATTACHMENTS}?{query}",
+            ]
+        )
+    stderr = r.stderr.decode(errors="replace").strip()
+    if r.returncode and "HTTP 404" in stderr:
+        raise commands.CommandError(f"GitHub takes images only from people who can write to {ref.slug}")
+    if r.returncode:
+        raise commands.CommandError(f"GitHub did not take the image: {commands.tail(stderr)}")
+    try:
+        url = json.loads(r.stdout).get("url")
+    except (ValueError, AttributeError):
+        url = None
+    if not isinstance(url, str) or not USER_ATTACHMENT.fullmatch(url):
+        raise commands.CommandError(f"GitHub took the image but answered without its link: {r.stdout[:200]!r}")
+    return url

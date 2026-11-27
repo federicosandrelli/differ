@@ -20,10 +20,7 @@ def test_fill_replaces_slots_in_one_pass() -> None:
 
 
 def test_render_page_inlines_data_scripts_and_theme() -> None:
-    classified = {
-        "files": [{"path": "x.html", "content": "<script></script>"}],
-        "renames": [],
-    }
+    classified = {"files": [{"path": "x.html", "content": "<script></script>"}]}
     html = render.render_page(classified, PR)
     assert "<title>#3 Fix &lt;b&gt;&amp;&lt;/b&gt; things</title>" in html
     payload = html.split('<script id="data" type="application/json">')[1].split("</script>")[0]
@@ -39,13 +36,13 @@ def test_render_page_inlines_data_scripts_and_theme() -> None:
 
 
 def test_read_head_reads_back_the_title_status_and_author_render_page_writes() -> None:
-    page = render.render_page({"files": [], "renames": []}, PR | {"status": "merged", "author": "a&b"})
+    page = render.render_page({"files": []}, PR | {"status": "merged", "author": "a&b"})
     assert render.read_head(page.encode()) == ("Fix <b>&</b> things", "merged", "a&b")
     assert render.read_head(b"<html></html>") == (None, "", "")
 
 
 def test_page_inlines_highlight_js_and_loads_nothing_from_the_network() -> None:
-    html = render.render_page({"files": [], "renames": []}, PR)
+    html = render.render_page({"files": []}, PR)
     assert "<script src=" not in html
     assert "<link " not in html
     assert (render.VENDOR_DIR / "highlight.min.js").read_text() in html

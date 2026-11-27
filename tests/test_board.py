@@ -325,7 +325,7 @@ def test_html_draws_every_column_counts_its_sections_and_names_other_authors() -
         "reviewing",
         "draft",
         "unreviewed",
-        "reviewed",
+        "others",
         "merged",
     ]
     assert column_counts(page) == ["2", "1", "0", "0", "0", "0"]
@@ -354,9 +354,9 @@ def test_html_lists_a_column_most_urgent_section_first_and_each_section_newest_f
     save(board.classify(ME, [mine, [], asked, involved, [], [], []], ["acme/widgets"]))
     page = board.sections_html()
     assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "action")) == ["4", "3", "2", "1"]
-    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewing")) == ["5"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewing")) == ["5", "6"]
     assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "unreviewed")) == ["8"]
-    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "reviewed")) == ["6", "7"]
+    assert re.findall(r'href="/acme/widgets/pull/(\d+)"', sub(page, "others")) == ["7"]
 
 
 @pytest.mark.parametrize("sections", [None, [], "rows"])

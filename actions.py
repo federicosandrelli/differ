@@ -4,6 +4,7 @@
   comment, reply, resolve, delete      a review thread on a line, a reply in one, its resolution, a comment's removal
   submit, discard                      the viewer's pending review, sent with a verdict or thrown away
   conversation                         a comment on the conversation
+  attach                               uploads an image pasted into a comment box, and answers its link
   request_review                       adds the viewer to the requested reviewers
   viewed                               marks a file viewed or not viewed while the head is the page's
   open                                 opens a file in an editor, on the pull request's branch
@@ -39,9 +40,10 @@ import claude
 import commands
 import comments
 import editors
+import github
 import merge
 import session
-from fields import count_of, flag, line_number, lines_of, one_of, run_id, text_of
+from fields import bytes_of, count_of, flag, image_type, line_number, lines_of, one_of, run_id, text_of
 from github import PullRef
 
 # An action: the pull request, the request's JSON object and the port this server listens on, to the answer's JSON.
@@ -160,6 +162,11 @@ def _discard(ref: PullRef, body: dict, port: int) -> dict:
 @action("conversation")
 def _conversation(ref: PullRef, body: dict, port: int) -> dict:
     return comments.add_conversation_comment(ref, body=body["body"])
+
+
+@action("attach")
+def _attach(ref: PullRef, body: dict, port: int) -> dict:
+    return {"url": github.attach(ref, text_of(body["name"]), image_type(body["type"]), bytes_of(body["data"]))}
 
 
 @action("request_review")

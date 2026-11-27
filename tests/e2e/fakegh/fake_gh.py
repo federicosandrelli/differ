@@ -22,7 +22,9 @@ viewer marked viewed. Marking a file viewed or not viewed leaves that list as it
 for the next. A merge, a reopen or a mark ready moves the status in pr<n>.json; turning auto-merge on or off, and a
 rebase of the branch, which leaves it up to date, change merge<n>.json. The `requested` list of comments.json holds
 the logins GitHub asks for a review, and a review request adds the viewer to it.
-`gh api -X POST <endpoint>` does nothing.
+`gh api -X POST <endpoint>` does nothing, except an upload to GitHub's attachments, which waits while hold.txt exists
+and answers with a link to the file.
+`gh api repos/o/r --jq .id` prints 42.
 `gh api user --jq .login` prints tester.
 """
 
@@ -32,6 +34,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -213,6 +216,18 @@ def comment_node(cid: str, body: str) -> dict:
     }
 
 
+def attach() -> None:
+    """Answer an upload to GitHub's attachments with a link to the file. A held-<pid> file marks it while it runs."""
+    marker = state_dir() / f"held-{os.getpid()}"
+    marker.write_text("")
+    try:
+        while (state_dir() / "hold.txt").exists():
+            time.sleep(0.05)
+        print(json.dumps({"url": f"https://github.com/user-attachments/assets/{uuid.uuid4()}"}))
+    finally:
+        marker.unlink()
+
+
 def mutate(args: list[str], request: dict) -> None:
     """Answer a mutation. A held-<pid> file marks it while it runs."""
     query, variables = request["query"], request.get("variables") or {}
@@ -319,8 +334,12 @@ def main() -> None:
         repo_clone(args[2:])
     elif args[:2] == ["repo", "set-default"]:
         pass
+    elif args[:3] == ["api", "-X", "POST"] and args[-1].startswith("https://uploads.github.com/user-attachments/"):
+        attach()
     elif args[:3] == ["api", "-X", "POST"]:
         pass
+    elif args[:1] == ["api"] and args[2:] == ["--jq", ".id"]:
+        print(42)
     elif args[:2] == ["api", "user"]:
         print("tester")
     elif args[:2] == ["api", "graphql"]:

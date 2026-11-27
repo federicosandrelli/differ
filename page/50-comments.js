@@ -14,7 +14,9 @@ let sendingComments = [];
 let localThreads = 0;
 
 async function api(action, body) {
-  const init = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  const sent = JSON.stringify(body);
+  if (sent && UPLOADS.some(mark => sent.includes(JSON.stringify(mark).slice(1, -1)))) throw new Error('An image you pasted is still uploading');
+  const init = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: sent };
   const d = await (await fetch(`${API}/${action}`, init)).json();
   if (d.error) throw new Error(d.error);
   return d;
@@ -133,9 +135,9 @@ function submitTip(event) {
   if (r && headVerdict() === r[0]) return r[1];
   return event === 'REQUEST_CHANGES' && !hasReviewSummary() ? 'Requesting changes needs a review summary' : '';
 }
-const submitBtn = (event, label) => btn(`data-submit="${event}" title="${submitTip(event)}"`, label, false, !!submitTip(event));
+const submitBtn = (event, label) => btn(`data-submit="${event}" title="${submitTip(event)}"`, label, false, !!submitTip(event) || uploading(state.reviewText));
 function updateRequestChanges(b) {
-  b.disabled = state.busy || !!submitTip('REQUEST_CHANGES');
+  b.disabled = state.busy || !!submitTip('REQUEST_CHANGES') || uploading(state.reviewText);
   if (b.dataset.tip !== undefined) b.dataset.tip = submitTip('REQUEST_CHANGES'); else b.title = submitTip('REQUEST_CHANGES');
 }
 function pendingCount() { return C.threads.reduce((a, t) => a + t.comments.filter(c => c.pending).length, 0); }
@@ -174,9 +176,9 @@ function threadHtml(f, t) {
   if (t.resolved && !state.openThreads.has(t.id)) {
     return `<div class="thread card folded" data-thread-open="${esc(t.id)}">✓ Resolved${t.resolved_by ? ` by ${esc(t.resolved_by)}` : ''} · ${esc(first.author)}: <span class="hint">${esc(excerpt(first.body))}</span> · ${plural(n, 'comment')}</div>`;
   }
-  const head = threadHead(t);
-  const reply = t.local ? '' : replyHtml(t, t.resolved || !claudeOn() ? 'Reply' : 'Reply, or add context for Claude', `${btn(`data-reply-send="${esc(t.id)}"`, 'Reply')}
-    ${addressButton(t)}${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
+  const head = threadHead(t), held = uploading(state.replyOpen.get(t.id) || '');
+  const reply = t.local ? '' : replyHtml(t, t.resolved || !claudeOn() ? 'Reply' : 'Reply, or add context for Claude', `${btn(`data-reply-send="${esc(t.id)}"`, 'Reply', false, held)}
+    ${addressButton(t, held)}${btn(`data-resolve="${esc(t.id)}" data-resolved="${t.resolved ? 0 : 1}"`, t.resolved ? 'Unresolve' : 'Resolve')}
     ${t.resolved ? `<button data-thread-close="${esc(t.id)}">Hide</button>` : ''}`);
   return `<div class="thread card ${t.resolved ? 'is-resolved' : ''}" data-thread="${esc(t.id)}">${head}${t.comments.map(c => commentHtml(c, { file: f, thread: t })).join('')}${reply}</div>`;
 }
@@ -190,14 +192,15 @@ const ADDRESS_STATES = {
   working: ['work', 'Claude working', 'Claude is addressing this thread. The terminal shows how it goes.'],
 };
 // The button that has the Claude session address an unresolved thread, with the text of the thread's box as context.
-// While the session can't take the prompt, the button shows disabled, with the reason as its tooltip. Once clicked, it
-// says that the thread is queued for Claude, then that Claude works on it.
-function addressButton(t) {
+// While the session can't take the prompt, the button shows disabled, with the reason as its tooltip, and while `held`,
+// it shows disabled without one. Once clicked, it says that the thread is queued for Claude, then that Claude works on
+// it.
+function addressButton(t, held) {
   if (t.resolved || !claudeOn()) return '';
   const now = ADDRESS_STATES[addressState(t)];
   if (now) return `<button class="on" data-addressing title="${esc(now[2])}" disabled><span class="dot ${now[0]}"></span>${now[1]}</button>`;
   const block = quickBlock();
-  return btn(`data-address-thread="${esc(t.id)}"${block ? ` title="${esc(block)}"` : ''}`, 'Address with Claude', false, block);
+  return btn(`data-address-thread="${esc(t.id)}"${block ? ` title="${esc(block)}"` : ''}`, 'Address with Claude', false, block || held);
 }
 // The prompt that has Claude address the GitHub review thread `t`: the thread's lines and every comment of it, quoted,
 // then the reader's note on it, when they wrote one.
@@ -233,11 +236,71 @@ async function addressThread(t) {
   } catch (e) { CL.error = `Claude: ${e.message}`; restoreReply(t.id, note); } finally { ADDRESSING.delete(t.id); render(); }
 }
 function composeHtml(f, c) {
-  const where = linesText(c.startLine, c.line, c.side);
+  const where = linesText(c.startLine, c.line, c.side), held = uploading(c.text);
   return `<div class="form card compose"><div class="hint">Comment on ${where} · shift-click another line number to extend</div>
     <textarea data-compose-text="${esc(draftKey(c.path, c.side, c.line))}" placeholder="Leave a comment">${esc(c.text)}</textarea>
     <div class="actions">${c.side === 'RIGHT' && f.content_side !== 'old' ? btn('data-suggest', 'Suggest a change') : ''}<span class="spacer"></span>${btn('data-compose-cancel', 'Cancel')}
-    ${claudeOn() ? btn('data-compose-send="claude"', 'Send to Claude') : ''}${btn('data-compose-send="single"', 'Add single comment', true)}</div></div>`;
+    ${claudeOn() ? btn('data-compose-send="claude"', 'Send to Claude', false, held) : ''}${btn('data-compose-send="single"', 'Add single comment', true, held)}</div></div>`;
+}
+
+// ---------- images pasted into a comment box
+// The comment boxes an image can be pasted into.
+const COMMENT_BOXES = '[data-compose-text],[data-reply-text],[data-review-text],[data-conv-text]';
+// The placeholders of the pasted images on their way to GitHub, each in the text of its box until GitHub answers.
+const UPLOADS = [];
+let uploadsStarted = 0;
+// Why an image pasted into a comment box didn't reach GitHub, until the reader dismisses it or pastes another.
+const ATTACH = { error: '' };
+// Whether the text holds the placeholder of an image on its way to GitHub.
+const uploading = (text) => UPLOADS.some(mark => text.includes(mark));
+// Put a placeholder for each image file in the box at its selection, each after the first on a new line, and upload
+// each.
+function attachImages(box, files) {
+  ATTACH.error = '';
+  const marks = files.map(f => `![Uploading ${f.name || 'image.png'} (${++uploadsStarted})…]()`);
+  box.setRangeText(marks.join('\n'), box.selectionStart, box.selectionEnd, 'end');
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  UPLOADS.push(...marks); render();
+  files.forEach((file, i) => upload(file, marks[i]));
+}
+// Upload the image file to GitHub. Its placeholder becomes the image's link once GitHub takes the file, or leaves with
+// a line break next to it and with the reason in ATTACH.error when GitHub refuses it.
+async function upload(file, mark) {
+  const name = file.name || 'image.png';
+  try {
+    const d = await api('attach', { name, type: file.type, data: await base64Of(file) });
+    const alt = name.replace(/\.[^.]*$/, '').replace(/[[\]\\]/g, '');
+    replaceDraftText(mark, `![${alt}](${d.url})`);
+  } catch (e) {
+    for (const text of [`\n${mark}`, `${mark}\n`, mark]) replaceDraftText(text, '');
+    ATTACH.error = e.message;
+  } finally { UPLOADS.splice(UPLOADS.indexOf(mark), 1); render(); }
+}
+const base64Of = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(',') + 1));
+  reader.onerror = () => reject(reader.error);
+  reader.readAsDataURL(file);
+});
+// Replace the first `from` in each comment box's draft, and in each box on the page, with `to`. A box's selection keeps
+// its place in the text around it.
+function replaceDraftText(from, to) {
+  const swap = (text) => text.replace(from, () => to);
+  if (state.compose) state.compose.text = swap(state.compose.text);
+  for (const d of state.drafts.values()) d.text = swap(d.text);
+  for (const [id, text] of state.replyOpen) state.replyOpen.set(id, swap(text));
+  state.reviewText = swap(state.reviewText);
+  state.convText = swap(state.convText);
+  for (const box of document.querySelectorAll(COMMENT_BOXES)) {
+    const at = box.value.indexOf(from);
+    if (at < 0) continue;
+    const moved = (n) => n <= at ? n : Math.max(at + to.length, n + to.length - from.length);
+    const [start, end] = [moved(box.selectionStart), moved(box.selectionEnd)];
+    box.value = swap(box.value);
+    box.setSelectionRange(start, end);
+    if (box.classList.contains('line')) fitLine(box);
+  }
+  if (SHELL) SHELL.draft(hasDraft());
 }
 // A suggestion shows as the lines it replaces, from the file, over the lines it proposes.
 function suggestionHtml(code, ctx) {
@@ -266,7 +329,8 @@ function commentNotices() {
   if (!API) return '';
   const refused = [...state.drafts].filter(([, d]) => d.refused).map(([key, d]) =>
     `<div class="notice">${d.claude ? 'differ could not send your comment' : 'GitHub refused your comment'} on line ${d.line} of ${esc(d.path.split('/').pop())}${d.claude ? ' to Claude' : ''}. It is a draft on its line · <a href="#" data-draft-open="${esc(key)}">open it</a></div>`).join('');
-  return commentsStatus() + refused;
+  const attach = ATTACH.error ? `<div class="notice err">Image: ${esc(ATTACH.error)} · <a href="#" data-attach-dismiss>dismiss</a></div>` : '';
+  return commentsStatus() + attach + refused;
 }
 function commentsStatus() {
   if (C.error) return `<div class="notice err">Comments: ${esc(C.error)} · <a href="#" data-comments-reload>retry</a></div>`;
@@ -338,7 +402,7 @@ function rebuildNotice() {
 function reviewPanelHtml() {
   const n = pendingCount();
   return `<div class="form card review"><textarea data-review-text placeholder="Review summary">${esc(state.reviewText)}</textarea>
-    <div class="actions">${submitBtn('APPROVE', 'Approve')}${submitBtn('REQUEST_CHANGES', 'Request changes')}${btn('data-submit="COMMENT"', 'Comment')}
+    <div class="actions">${submitBtn('APPROVE', 'Approve')}${submitBtn('REQUEST_CHANGES', 'Request changes')}${submitBtn('COMMENT', 'Comment')}
     <span class="spacer"></span>${C.pending ? btn('data-discard', 'Discard') : ''}</div>
     <div class="hint">${n ? `${plural(n, 'pending comment')} ${n === 1 ? 'goes' : 'go'} out with the review.` : C.pending ? 'A review is pending without comments.' : 'No pending comments.'}</div></div>`;
 }
@@ -356,7 +420,7 @@ function conversationHtml() {
       ${it.body ? `<div class="cbody">${bodyHtml(it)}</div>` : ''}</div>`;
   }
   h += `<div class="form card conv"><textarea data-conv-text placeholder="Leave a comment on the pull request">${esc(state.convText)}</textarea>
-    <div class="actions"><span class="spacer"></span>${btn('data-conv-send', 'Comment', true)}</div></div>`;
+    <div class="actions"><span class="spacer"></span>${btn('data-conv-send', 'Comment', true, uploading(state.convText))}</div></div>`;
   const threads = C.threads;
   if (threads.length) {
     const open = threads.filter(t => !t.resolved).length;
@@ -478,7 +542,7 @@ function textareaKey(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { const b = form && form.querySelector('button.primary, button[data-submit="COMMENT"], button[data-reply-send], button[data-claude-follow]'); if (b && !b.disabled) b.click(); e.preventDefault(); }
   else if (e.key === 'Escape') e.target.blur();
 }
-const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply-send],[data-address-thread],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild]';
+const COMMENT_ATTRS = '[data-compose-cancel],[data-suggest],[data-compose-send],[data-reply-send],[data-address-thread],[data-resolve],[data-delete],[data-thread-open],[data-thread-close],[data-thread-go],[data-outdated],[data-review-panel],[data-request-review],[data-submit],[data-discard],[data-conv-send],[data-comments-reload],[data-draft-open],[data-rebuild],[data-attach-dismiss]';
 // Handle a click on a comment control; true when the element was one.
 async function commentClick(t, e) {
   const d = t.dataset;
@@ -546,5 +610,6 @@ async function commentClick(t, e) {
   }
   if (d.commentsReload !== undefined) { e.preventDefault(); C.error = ''; render(); loadComments(); return true; }
   if (d.rebuild !== undefined) { e.preventDefault(); rebuild(); return true; }
+  if (d.attachDismiss !== undefined) { e.preventDefault(); ATTACH.error = ''; render(); return true; }
   return false;
 }
