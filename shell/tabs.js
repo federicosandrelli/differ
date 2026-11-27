@@ -104,13 +104,13 @@
     const next = dir === 0 ? 1 : dir > 0 ? ZOOMS.find(z => z > zoom + 1e-6) : ZOOMS.filter(z => z < zoom - 1e-6).pop();
     if (next) setZoom(next);
   }
-  const zoomDir = (e) => !e.metaKey || e.altKey || e.ctrlKey ? null : e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
+  const zoomDir = (e) => !Keys.primary(e) || e.altKey ? null : e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
   window.addEventListener('keydown', (e) => {
     // An Escape left alone would make the macOS window leave full screen. Cancelling it also stops the open
     // dialog from closing on its own, so the shell closes it.
     if (e.key === 'Escape') { e.preventDefault(); settings.close(); return; }
-    if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
-    if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    if (Keys.primary(e) && !e.altKey && !e.shiftKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
+    if (Keys.primary(e) && e.altKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
       step(e.key === 'ArrowLeft' ? -1 : 1);
       return;
@@ -174,6 +174,7 @@
     drawModel();
     followed.saving.then(() => fetch('/settings')).then(r => r.ok ? r.text() : Promise.reject()).then((body) => {
       settings.querySelector('.state').innerHTML = body;
+      Keys.relabel(settings);
       const saved = JSON.parse(settings.querySelector('.repos').dataset.repos);
       if (followed.newest === before) followed.saved = saved;
       followed.draw(followed.newest === before ? saved : followed.repos);

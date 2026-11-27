@@ -56,7 +56,7 @@ if (SHELL) {
   }, true);
   // Cmd+Option+Left/Right steps between the shell's tabs. Focus sits inside the page, so the page forwards the chord.
   document.addEventListener('keydown', (e) => {
-    if (!e.metaKey || !e.altKey || e.ctrlKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    if (!Keys.primary(e) || !e.altKey || e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
     e.preventDefault();
     SHELL.step(e.key === 'ArrowLeft' ? -1 : 1);
   }, true);
@@ -64,15 +64,17 @@ if (SHELL) {
   // every Escape.
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); }, true);
   // Cmd+Plus, Cmd+Minus and Cmd+0 zoom the desktop app's window. The shell owns the zoom, so the page forwards the
-  // chord; it leaves the default in place, so a browser still zooms by itself.
+  // chord; it leaves the default in place, so a browser still zooms by itself. Ctrl+Minus in Claude's terminal is
+  // Claude Code's undo, so off a Mac the terminal keeps it.
   document.addEventListener('keydown', (e) => {
-    if (!e.metaKey || e.altKey || e.ctrlKey) return;
+    if (!Keys.primary(e) || e.altKey) return;
+    if (e.ctrlKey && (e.key === '-' || e.key === '_') && e.target.closest && e.target.closest('.xterm')) return;
     const dir = e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
     if (dir !== null) SHELL.zoom(dir);
   }, true);
   // Cmd+, opens the shell's settings. Focus sits inside the page, so the page forwards the chord.
   document.addEventListener('keydown', (e) => {
-    if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.key !== ',') return;
+    if (!Keys.primary(e) || e.altKey || e.shiftKey || e.key !== ',') return;
     e.preventDefault();
     SHELL.settings();
   }, true);

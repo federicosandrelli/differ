@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -55,7 +56,7 @@ def test_kept_lists_each_pull_request_with_a_record_once_and_skips_files_that_ar
 def test_a_write_that_fails_raises_and_leaves_the_old_file_and_no_temporary_file() -> None:
     records.COMMENTS.write(REF, [{"id": "a"}])
 
-    def full(self: Path, text: str) -> None:
+    def full(self: Path, text: str, **_: object) -> None:
         Path.open(self, "w").close()
         raise OSError(28, "No space left on device")
 
@@ -64,3 +65,46 @@ def test_a_write_that_fails_raises_and_leaves_the_old_file_and_no_temporary_file
         records.COMMENTS.write(REF, [{"id": "b"}])
     assert records.COMMENTS.read(REF, list) == [{"id": "a"}]
     assert [p.name for p in records.COMMENTS.path(REF).parent.iterdir()] == ["1.json"]
+
+
+def refusing_replace(monkeypatch: pytest.MonkeyPatch, refusals: int) -> list[int]:
+    """Make os.replace refuse the first `refusals` moves, as Windows does while a reader has the file open; the
+    calls it saw."""
+    real, calls = os.replace, []
+
+    def replace(src: Path, dst: Path) -> None:
+        calls.append(1)
+        if len(calls) <= refusals:
+            raise PermissionError("in use")
+        real(src, dst)
+
+    monkeypatch.setattr(records.os, "replace", replace)
+    monkeypatch.setattr(records, "REPLACE_WAIT", 0)
+    return calls
+
+
+def test_a_write_on_windows_waits_for_a_reader_to_let_go_of_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(records.sys, "platform", "win32")
+    calls = refusing_replace(monkeypatch, records.REPLACE_TRIES - 1)
+    records.SESSIONS.write(REF, {"id": "x"})
+    assert records.SESSIONS.read(REF, dict) == {"id": "x"} and len(calls) == records.REPLACE_TRIES
+
+
+def test_a_write_on_windows_that_is_refused_every_time_fails_and_leaves_no_temporary_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(records.sys, "platform", "win32")
+    refusing_replace(monkeypatch, records.REPLACE_TRIES)
+    with pytest.raises(PermissionError):
+        records.SESSIONS.write(REF, {"id": "x"})
+    assert not [p for p in tmp_path.rglob("*") if p.is_file()]
+
+
+def test_a_refused_write_elsewhere_fails_at_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(records.sys, "platform", "linux")
+    calls = refusing_replace(monkeypatch, 1)
+    with pytest.raises(PermissionError):
+        records.SESSIONS.write(REF, {"id": "x"})
+    assert len(calls) == 1

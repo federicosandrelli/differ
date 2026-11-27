@@ -142,7 +142,7 @@ def claude_code_line() -> str:
 
 def settings_html() -> str:
     return render.fill(
-        (render.SHELL_DIR / "settings.html").read_text(),
+        (render.SHELL_DIR / "settings.html").read_text(encoding="utf-8"),
         FOLLOWED=html.escape(json.dumps(followed.load())),
         DOCS_RULES=docs_rules(),
         TEST_RULES=test_rules(),

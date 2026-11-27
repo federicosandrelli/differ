@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page
 
+import launcher
 from helpers import Files, commit_tree, git, make_repo
 
 E2E = Path(__file__).resolve().parent
@@ -189,10 +190,10 @@ def server_url(gh_state: Path, cache_dir: Path, tmp_path_factory: pytest.TempPat
     port = free_port()
     env = {
         **os.environ,
-        "PATH": f"{E2E / 'fakegh'}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{launcher.fake_gh_folder()}{os.pathsep}{os.environ['PATH']}",
         "DIFFER_CACHE": str(cache_dir),
         "FAKE_GH_STATE": str(gh_state),
-        "DIFFER_CLAUDE": str(E2E.parent / "fakeclaude"),
+        "DIFFER_CLAUDE": str(launcher.fake_claude()),
         "FAKE_CLAUDE_LOG": str(cache_dir / "claude-starts.log"),
         "CLAUDE_CONFIG_DIR": str(tmp_path_factory.mktemp("claude-config")),
     }

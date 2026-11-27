@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -90,6 +91,9 @@ def test_parse_patch_ends_lines_at_newlines_only(tmp_path: Path) -> None:
 
 def test_read_diff_reads_the_paths_git_quotes(tmp_path: Path) -> None:
     names = ["docs/café.md", 'say "hi".txt', "tab\there.txt", "back\\slash.txt", "Plan b/notes.md"]
+    if sys.platform == "win32":
+        # Windows forbids these characters in file names, so no checkout there can hold such a file.
+        names = [name for name in names if not set(name) & set('"\t\\')]
     diff = make_diff(
         tmp_path,
         old={**dict.fromkeys(names, "a\n"), "old é.py": "x = 1\n"},

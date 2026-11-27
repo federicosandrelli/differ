@@ -331,7 +331,7 @@ def build(ref: PullRef, log: Log = print) -> Path:
     log("Rendering the page")
     html = render.render_page(classified, page_pr)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(html)
+    target.write_text(html, encoding="utf-8", newline="")
     prune(ref)
     log("Done")
     return target

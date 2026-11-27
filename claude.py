@@ -352,14 +352,14 @@ def install_skills() -> None:
     that ships now. A copy from an older or a newer differ is replaced; one the user edited stays until the shipped
     text changes. A failure to write goes to stderr."""
     for shipped in sorted(SHIPPED_SKILLS.glob("*.md")):
-        text = shipped.read_text()
+        text = shipped.read_text(encoding="utf-8")
         marker = skill_marker(text)
         path = SKILLS / shipped.stem / "SKILL.md"
         try:
             if path.exists() and path.read_bytes().rstrip().endswith(marker.encode()):
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(f"{text.rstrip()}\n\n{marker}\n")
+            path.write_text(f"{text.rstrip()}\n\n{marker}\n", encoding="utf-8", newline="")
         except OSError as e:
             sys.stderr.write(f"Could not install the {shipped.stem} skill in {path.parent}: {e}\n")
 

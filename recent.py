@@ -44,7 +44,7 @@ def ref_of(p: Opened) -> PullRef:
 
 def load() -> Recent:
     try:
-        data = json.loads(PATH.read_text())
+        data = json.loads(PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return Recent(pages=[])
     # A list saved before recent.json was an object, or before it kept one list, holds more than KEPT.

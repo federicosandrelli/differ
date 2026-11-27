@@ -217,11 +217,11 @@ tr.runhead.locked td { cursor: default; }
 .hljs-number, .hljs-literal { color: var(--syntax-num); } .hljs-title.function_ { color: var(--syntax-fn); } .hljs-title.class_ { color: var(--syntax-cls); } .hljs-built_in { color: var(--syntax-builtin); }
 .hljs-params { color: inherit; } .hljs-meta { color: var(--syntax-num); }
 
-/* In the desktop app the title bar is transparent and the page runs under it; the panes start below it
+/* On macOS the desktop app's title bar is transparent and the page runs under it; the panes start below it
    and the strip behind the traffic lights takes each pane's own colour. */
-html.app { --titlebar: 28px; }
-html.app body { padding-top: var(--titlebar); background: linear-gradient(90deg, var(--bg-panel) 0 var(--side, 420px), var(--border) 0 calc(var(--side, 420px) + 1px), var(--bg-canvas) 0); }
-html.app #side, html.app #main { height: calc(100vh - var(--titlebar)); }
+html.titlebar { --titlebar: 28px; }
+html.titlebar body { padding-top: var(--titlebar); background: linear-gradient(90deg, var(--bg-panel) 0 var(--side, 420px), var(--border) 0 calc(var(--side, 420px) + 1px), var(--bg-canvas) 0); }
+html.titlebar #side, html.titlebar #main { height: calc(100vh - var(--titlebar)); }
 
 /* Review threads sit under the line they refer to; the compose form under the last selected line.
    The number cell that shows a row's line is its comment button, drawn on hover; a row without an id (in a

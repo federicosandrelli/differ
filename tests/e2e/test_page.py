@@ -43,13 +43,13 @@ def test_cmd_r_on_the_start_page_asks_github_again_and_says_why_an_update_failed
     notice = page.locator("[data-updated]")
     expect(notice).to_contain_text("Updated")
     with page.expect_response(lambda r: "/board?force=1" in r.url):
-        page.keyboard.press("Meta+R")
+        page.keyboard.press("ControlOrMeta+R")
     expect(notice).to_contain_text("Updated just now")
     page.route(
         "**/board?force=1",
         lambda route: route.fulfill(status=502, content_type="text/plain", body="GitHub did not answer"),
     )
-    page.keyboard.press("Meta+R")
+    page.keyboard.press("ControlOrMeta+R")
     expect(notice).to_have_text("Update failed: GitHub did not answer · try again")
     page.unroute("**/board?force=1")
     notice.get_by_text("try again").click()
@@ -760,7 +760,7 @@ def hit_row(page: Page) -> str:
 
 def test_cmd_f_focuses_the_search_and_enter_goes_to_the_first_hit(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
-    page.keyboard.press("Meta+f")
+    page.keyboard.press("ControlOrMeta+f")
     expect(page.locator("#side .search")).to_be_focused()
     page.keyboard.type("hello")
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
@@ -783,7 +783,7 @@ def test_cmd_f_shows_the_search_box_over_a_scrolled_tree_and_keeps_the_active_fi
       return scroll.scrollTop;
     }""")
     assert scrolled > 0
-    page.keyboard.press("Meta+f")
+    page.keyboard.press("ControlOrMeta+f")
     expect(page.locator("#side .search")).to_be_focused()
     assert page.evaluate("document.querySelector('#side .scroll').scrollTop") == scrolled
     box_in_view = """() => {
@@ -1011,7 +1011,7 @@ def test_search_skips_closed_folds_and_counts_closed_sections(page: Page, server
 def test_cmd_f_fills_the_search_with_the_selected_code(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.locator(f"{APP} tr.add td.c", has_text="hello").select_text()
-    page.keyboard.press("Meta+f")
+    page.keyboard.press("ControlOrMeta+f")
     expect(page.locator("#side .search")).to_be_focused()
     expect(page.locator("#side .search")).to_have_value('print("hello")')
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
@@ -1028,7 +1028,7 @@ def test_cmd_f_keeps_the_files_without_a_hit_and_the_selected_row_still(
     expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "a.py")
     before = row.bounding_box()
     row.select_text()
-    page.keyboard.press("Meta+f")
+    page.keyboard.press("ControlOrMeta+f")
     expect(page.locator("#searchmeta")).to_have_text("1 file · 1 line")
     expect(page.locator("#main section[data-file='a.py']")).to_have_count(1)
     after = row.bounding_box()
@@ -1048,16 +1048,16 @@ def test_a_click_on_the_header_leaves_the_section_open_and_the_chevron_closes_it
 def test_shift_cmd_f_searches_the_file_paths_and_cmd_f_goes_back_to_the_rows(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     meta = page.locator("#searchmeta")
-    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.press("ControlOrMeta+Shift+f")
     expect(page.locator("#side .search")).to_be_focused()
     page.keyboard.type("app")
     expect(meta).to_have_text("1 file")
     expect(page.locator("#main section[data-file]")).to_have_attribute("data-file", "src/app.py")
-    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.press("ControlOrMeta+Shift+f")
     expect(meta).to_have_text("1 file")
-    page.keyboard.press("Meta+f")
+    page.keyboard.press("ControlOrMeta+f")
     expect(meta).to_have_text("0 files · 0 lines")
-    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.press("ControlOrMeta+Shift+f")
     page.keyboard.press("Escape")
     page.click("#side .search")
     page.keyboard.type("app")
@@ -1073,7 +1073,7 @@ def test_file_search_lists_only_the_found_files_and_enter_steps_through_them(
     page: Page, server_url: str, add_pr: AddPr
 ) -> None:
     open_pr(page, server_url, search_files_pr(add_pr))
-    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.press("ControlOrMeta+Shift+f")
     page.keyboard.type("one")
     expect(page.locator("#side .leaf")).to_have_count(2)
     active = page.locator("#side .leaf.active")
@@ -1098,7 +1098,7 @@ def test_enter_in_file_search_leaves_a_reviewed_file_closed(page: Page, server_u
     page.click("#side .leaf[data-path='a/one.py'] .check")
     section = page.locator("section[data-file='a/one.py']")
     expect(section).to_have_class(re.compile(r"\bclosed\b"))
-    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.press("ControlOrMeta+Shift+f")
     page.keyboard.type("one")
     page.keyboard.press("Enter")
     expect(page.locator("#side .leaf.active")).to_have_attribute("data-path", "a/one.py")
@@ -1110,7 +1110,7 @@ def test_escape_brings_back_every_file_around_the_one_file_search_went_to(
 ) -> None:
     page.set_viewport_size({"width": 1100, "height": 400})
     open_pr(page, server_url, search_files_pr(add_pr))
-    page.keyboard.press("Meta+Shift+f")
+    page.keyboard.press("ControlOrMeta+Shift+f")
     page.keyboard.type("one")
     page.keyboard.press("Enter")
     page.keyboard.press("Enter")
@@ -1152,7 +1152,7 @@ def test_cmd_r_rebuilds_the_page_in_place_and_the_rebuilt_page_opens_at_the_file
     head = push_pr(pr, {**CONFIG_NEW, "src/added.py": "x = 1\n"})
     statuses = hold_requests(page, "**/status/acme/widgets/*")
     page.evaluate("window.beforeRebuild = true")
-    page.keyboard.press("Meta+r")
+    page.keyboard.press("ControlOrMeta+r")
     wait_for(page, lambda: len(statuses) == 1)
     section = page.locator("#side [data-sect='rebuild']")
     expect(section).to_contain_text("Rebuilding the page")
@@ -1167,7 +1167,7 @@ def test_cmd_r_rebuilds_the_page_in_place_and_the_rebuilt_page_opens_at_the_file
 def test_cmd_r_without_new_commits_says_so_and_keeps_the_page(page: Page, server_url: str) -> None:
     open_pr(page, server_url)
     page.evaluate("window.beforeRebuild = true")
-    page.keyboard.press("Meta+r")
+    page.keyboard.press("ControlOrMeta+r")
     section = page.locator("#side [data-sect='rebuild']")
     expect(section).to_contain_text("No new commits")
     expect(section).to_be_empty(timeout=10000)
@@ -1191,10 +1191,10 @@ def test_a_rebuild_with_unsent_text_waits_for_cmd_r_which_asks_before_it_discard
         dialog.dismiss()
 
     page.on("dialog", dismiss)
-    page.keyboard.press("Meta+r")
+    page.keyboard.press("ControlOrMeta+r")
     expect(page.locator("#side [data-sect='rebuild']")).to_contain_text("The rebuilt page is ready", timeout=30000)
     assert asked == []
-    page.keyboard.press("Meta+r")
+    page.keyboard.press("ControlOrMeta+r")
     wait_for(page, lambda: bool(asked))
     assert asked == ["Rebuilding the page discards your unsent text. Rebuild anyway?"]
     expect(box).to_have_value("Rename this")
@@ -2181,7 +2181,7 @@ def test_the_shell_opens_the_settings_on_cmd_comma_and_closes_them_on_escape_and
     )
     # Focus sits inside the page, which forwards the chord to the shell.
     frame.click("#side .list")
-    page.keyboard.press("Meta+,")
+    page.keyboard.press("ControlOrMeta+,")
     dialog = page.locator("#settings")
     expect(dialog).to_be_visible()
     expect(dialog.locator("h2", has_text="Cache")).to_be_visible()
@@ -2328,7 +2328,7 @@ def test_cmd_enter_in_the_review_summary_submits_a_comment_review(page: Page, se
     page.click("#side button[data-review-panel]")
     box = page.locator("textarea[data-review-text]")
     box.fill("Looks good")
-    box.press("Meta+Enter")
+    box.press("ControlOrMeta+Enter")
     expect(page.locator("textarea[data-review-text]")).to_have_count(0)
 
     mutations = [json.loads(line) for line in (gh_state / "mutations.log").read_text().splitlines()]
@@ -2719,7 +2719,7 @@ def test_while_searching_the_tree_cursor_stays_on_a_hit_near_the_end(
 ) -> None:
     page.set_viewport_size({"width": 1280, "height": 720})
     open_pr(page, server_url, config_pr)
-    page.keyboard.press("Meta+f")
+    page.keyboard.press("ControlOrMeta+f")
     page.keyboard.type("a + b")
     page.click("#side .leaf[data-path='src/jobs.py']")
     page.keyboard.press("ArrowDown")

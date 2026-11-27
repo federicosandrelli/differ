@@ -118,8 +118,12 @@ fn cache_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-// curl rather than an HTTP crate: a TLS stack is a large dependency for a few requests a day.
+// curl rather than an HTTP crate: a TLS stack is a large dependency for a few requests a day. The cask, like the
+// releases, carries only the macOS app, so elsewhere there is no newer version to offer.
 fn fetch() -> Option<String> {
+    if cfg!(not(target_os = "macos")) {
+        return None;
+    }
     let out = Command::new("/usr/bin/curl")
         .args(["-fsSL", "--max-time", "8", CASK_URL])
         .output()

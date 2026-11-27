@@ -21,7 +21,6 @@ import socket
 import struct
 import sys
 import threading
-import tty
 import urllib.request
 from pathlib import Path
 
@@ -30,6 +29,24 @@ def log(record: dict) -> None:
     if path := os.environ.get("FAKE_CLAUDE_LOG"):
         with Path(path).open("a") as f:
             f.write(json.dumps(record) + "\n")
+
+
+def raw() -> None:
+    """Put the terminal in raw mode. A Windows console's raw mode is virtual terminal input alone: no line input, no
+    echo, and Ctrl+C arrives as a byte. The console reads the bytes the echo writes in its code page, so that becomes
+    UTF-8, as Claude Code's output is, and so does what it reads."""
+    if sys.platform == "win32":
+        import ctypes
+        import msvcrt
+
+        enable_virtual_terminal_input = 0x0200
+        ctypes.windll.kernel32.SetConsoleMode(msvcrt.get_osfhandle(0), enable_virtual_terminal_input)
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    else:
+        import tty
+
+        tty.setraw(0)
 
 
 def frame(opcode: int, payload: bytes) -> bytes:
@@ -128,7 +145,7 @@ def main() -> None:
         print(f"{version} (Claude Code)")
         return
     env = {k: v for k, v in os.environ.items() if k.startswith("CLAUDE") or k in ("TERM", "COLORTERM")}
-    log({"args": args, "cwd": os.getcwd(), "env": env, "pid": os.getpid()})
+    log({"args": args, "cwd": os.getcwd(), "env": env, "pid": os.getpid(), "ppid": os.getppid()})
     if "--resume" in args and fail == "resume":
         print("No conversation found with session ID", flush=True)
         sys.exit(1)
@@ -142,7 +159,7 @@ def main() -> None:
     # twice, and what nobody reads waits in the terminal's queue. It goes first, since the switch drops what was
     # typed before it, and a test types as soon as it sees the banner.
     if os.isatty(0):
-        tty.setraw(0)
+        raw()
     print(f"fake claude {' '.join(args[:2])} in {os.getcwd()}\r", flush=True)
     found = re.search(r"ws://\S+/listen", prompt)
     if found:

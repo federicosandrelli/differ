@@ -99,6 +99,7 @@ import recent
 import render
 import session
 import settings
+import terminal
 import websocket
 from github import SLUG, PullRef
 
@@ -147,7 +148,7 @@ def gh_banner() -> str:
 
 
 def shell_file(name: str) -> str:
-    return (render.SHELL_DIR / name).read_text()
+    return (render.SHELL_DIR / name).read_text(encoding="utf-8")
 
 
 def shell(title: str, body: str) -> bytes:
@@ -565,10 +566,8 @@ def port_taken(port: int) -> str | None:
 
 
 def exit_with_parent() -> None:
-    """Exit once the parent process is gone, checked once a second, after ending the Claude sessions."""
-    parent = os.getppid()
-    while os.getppid() == parent:
-        time.sleep(1)
+    """Exit once the parent process is gone, after ending the Claude sessions."""
+    terminal.wait_for_parent(os.getppid())
     session.stop_all()
     os._exit(0)
 
@@ -583,7 +582,7 @@ def open_log(path: Path) -> TextIO:
     """The log file at path, opened for appending, or started over when it already holds more than LOG_MAX bytes."""
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = "w" if path.exists() and path.stat().st_size > LOG_MAX else "a"
-    return path.open(mode, buffering=1)
+    return path.open(mode, buffering=1, encoding="utf-8")
 
 
 def log_to(path: Path) -> None:
